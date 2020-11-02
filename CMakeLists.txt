@@ -29,6 +29,7 @@ endif()
 
 option(ENABLE_TESTS    "Build tests" OFF)
 #option(ENABLE_EXAMPLES "Build examples" OFF)
+option(ENABLE_PGAS      "Build PGAS Extension" OFF)
 
 # add our cmake module directory to the path
 set (CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH}
@@ -55,3 +56,7 @@ endif(${ENABLE_TESTS})
 if(${ENABLE_EXAMPLES})
   add_subdirectory (examples)
 endif(${ENABLE_EXAMPLES})
+
+if(${ENABLE_PGAS})
+  add_subdirectory (pgas_extension)
+endif(${ENABLE_PGAS})

@@ -11,6 +11,10 @@
 #include <margo.h>
 #include <dspaces-common.h>
 
+#ifdef ENABLE_PGAS
+#include "dspaces_pgas_client.h"
+#endif
+
 
 #if defined(__cplusplus)
 extern "C" {
@@ -165,6 +169,7 @@ int dspaces_get (dspaces_client_t client,
  * @param[in] client dspaces client
  */
 void dspaces_kill(dspaces_client_t client);
+
 
 #if defined(__cplusplus)
 }

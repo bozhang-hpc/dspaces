@@ -40,6 +40,9 @@ struct dspaces_client {
     hg_id_t ss_id;
     hg_id_t drain_id;
     hg_id_t kill_id;
+#ifdef ENABLE_PGAS
+    hg_id_t view_reg_id;
+#endif
     struct dc_gspace *dcg;
     char **server_address;
     int size_sp;
@@ -254,6 +257,10 @@ int client_init(char *listen_addr_str, int rank, dspaces_client_t* c)
         margo_registered_name(client->mid, "ss_rpc",        &client->ss_id, &flag);
         margo_registered_name(client->mid, "drain_rpc",     &client->drain_id, &flag);
         margo_registered_name(client->mid, "kill_rpc",      &client->kill_id, &flag); 
+#ifdef ENABLE_PGAS
+        margo_registered_name(client->mid, "view_reg_rpc",      &client->view_reg_id, &flag); 
+#endif
+
     } else {
 
         client->put_id =
@@ -272,7 +279,11 @@ int client_init(char *listen_addr_str, int rank, dspaces_client_t* c)
         margo_register_data(client->mid, client->drain_id, (void*)client, NULL);
         client->kill_id =
             MARGO_REGISTER(client->mid, "kill_rpc", int32_t, void, NULL);
-        margo_registered_disable_response(client->mid, client->kill_id, HG_TRUE);            
+        margo_registered_disable_response(client->mid, client->kill_id, HG_TRUE);
+#ifdef ENABLE_PGAS
+        client->view_reg_id =
+            MARGO_REGISTER(client->mid, "view_reg_rpc", odsc_gdim_t, bulk_out_t, NULL);
+#endif      
     }
 
     build_address(client);
