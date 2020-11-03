@@ -329,7 +329,10 @@ struct lock_data *create_lock(struct list_head *list, char* name);
 char ** addr_str_buf_to_list(char * buf, int num_addrs);
 
 
-
+/* split in_odsc to multiple 1D odsc and put them in a table
+   return the number of table entries
+*/
+uint64_t obj_desc_to1Dbbox(obj_descriptor *odsc, obj_descriptor **odsc_tab);
 
 
 #endif /* __SS_DATA_H_ */

@@ -16,6 +16,7 @@
 #include <pthread.h>
 #include "ss_data.h"
 #include "dspaces-client.h"
+#include "client.h"
 #include "gspace.h"
 
 #define DEBUG_OUT(args...) \
@@ -40,9 +41,9 @@ struct dspaces_client {
     hg_id_t ss_id;
     hg_id_t drain_id;
     hg_id_t kill_id;
-#ifdef ENABLE_PGAS
+    /* ifdef ENABLE_PGAS */
     hg_id_t view_reg_id;
-#endif
+
     struct dc_gspace *dcg;
     char **server_address;
     int size_sp;
@@ -837,4 +838,76 @@ void dspaces_kill(dspaces_client_t client)
     margo_addr_free(client->mid, server_addr);
     margo_destroy(h);
     
+}
+
+/* ifdef ENABLE_PGAS */
+int dspaces_view_reg(dspaces_client_t client, 
+        const char *var_name,
+        unsigned int ver, int elem_size,
+        int ndim, uint64_t *lb, uint64_t *ub)
+{
+    hg_addr_t server_addr;
+    hg_handle_t handle;
+	hg_return_t hret;
+    int ret = dspaces_SUCCESS;
+
+    obj_descriptor odsc = {
+            .version = ver, .owner = {0}, 
+            .st = st,
+            .size = elem_size,
+            .bb = {.num_dims = ndim,}
+    };
+
+    memset(odsc.bb.lb.c, 0, sizeof(uint64_t)*BBOX_MAX_NDIM);
+    memset(odsc.bb.ub.c, 0, sizeof(uint64_t)*BBOX_MAX_NDIM);
+
+    memcpy(odsc.bb.lb.c, lb, sizeof(uint64_t)*ndim);
+    memcpy(odsc.bb.ub.c, ub, sizeof(uint64_t)*ndim);
+
+    strncpy(odsc.name, var_name, sizeof(odsc.name)-1);
+    odsc.name[sizeof(odsc.name)-1] = '\0';
+
+    odsc_gdim_t in;
+    bulk_out_t out;
+    struct global_dimension odsc_gdim;
+    set_global_dimension(&(client->dcg->gdim_list), var_name, &(client->dcg->default_gdim),
+                         &odsc_gdim);
+
+
+    in.odsc_gdim.size = sizeof(odsc);
+    in.odsc_gdim.raw_odsc = (char*)(&odsc);
+    in.odsc_gdim.gdim_size = sizeof(struct global_dimension);
+    in.odsc_gdim.raw_gdim = (char*)(&odsc_gdim);
+
+    
+    get_server_address(client, &server_addr);
+    /* create handle */
+    hret = margo_create( client->mid,
+            server_addr,
+            client->view_reg_id,
+            &handle);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr,"ERROR: (%s): margo_create() failed\n", __func__);
+        return dspaces_ERR_MERCURY;
+    }
+
+    hret = margo_forward(handle, &in);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr,"ERROR: (%s): margo_forward() failed\n", __func__);
+        margo_destroy(handle);
+        return dspaces_ERR_MERCURY;
+    }
+
+    hret = margo_get_output(handle, &out);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr,"ERROR: (%s): margo_get_output() failed\n", __func__);
+        margo_destroy(handle);
+        return dspaces_ERR_MERCURY;
+    }
+
+    ret = out.ret;
+    margo_free_output(handle, &out);
+    margo_destroy(handle);
+    margo_addr_free(client->mid, server_addr);
+	return ret;
 }

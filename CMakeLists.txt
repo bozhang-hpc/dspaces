@@ -48,7 +48,9 @@ xpkg_import_module (margo REQUIRED margo)
 
 find_package(MPI COMPONENTS REQUIRED)
 
+message(STATUS "before adding src")
 add_subdirectory (src)
+message(STATUS "after adding src")
 if(${ENABLE_TESTS})
   enable_testing()
   add_subdirectory (tests)
@@ -56,7 +58,4 @@ endif(${ENABLE_TESTS})
 if(${ENABLE_EXAMPLES})
   add_subdirectory (examples)
 endif(${ENABLE_EXAMPLES})
-
-if(${ENABLE_PGAS})
-  add_subdirectory (pgas_extension)
-endif(${ENABLE_PGAS})
+message(STATUS "before adding pgas_extension")

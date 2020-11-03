@@ -11,9 +11,6 @@
 #include <margo.h>
 #include <dspaces-common.h>
 
-#ifdef ENABLE_PGAS
-#include "dspaces_pgas_client.h"
-#endif
 
 
 #if defined(__cplusplus)
@@ -169,6 +166,33 @@ int dspaces_get (dspaces_client_t client,
  * @param[in] client dspaces client
  */
 void dspaces_kill(dspaces_client_t client);
+
+/* ifdef ENABLE_PGAS */
+/**
+ * @brief register a PGAS view to server.
+ *
+ * This function will register the local view, which is described by the 
+ * local bounding box {(lb[0],lb[1],..,lb[n-1]), (ub[0],ub[1],..,ub[n-1])},
+ * to the server.
+ * 
+ *
+ * @param[in] client dspaces client  
+ * @param[in] var_name:     Name of the variable.
+ * @param[in] ver:      Version of the variable.
+ * @param[in] size:     Size (in bytes) for each element of the global
+ *              array.
+ * @param[in] ndim:     the number of dimensions for the local bounding
+ *              box. 
+ * @param[in] lb:       coordinates for the lower corner of the local
+ *                  bounding box.
+ * @param[in] ub:       coordinates for the upper corner of the local
+ *                  bounding box. 
+ * @return  0 indicates success.
+ */
+int dspaces_view_reg(dspaces_client_t client, 
+        const char *var_name,
+        unsigned int ver, int size,
+        int ndim, uint64_t *lb, uint64_t *ub);
 
 
 #if defined(__cplusplus)
