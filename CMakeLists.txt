@@ -28,7 +28,7 @@ if(NOT CMAKE_RUNTIME_OUTPUT_DIRECTORY)
 endif()
 
 option(ENABLE_TESTS    "Build tests" OFF)
-#option(ENABLE_EXAMPLES "Build examples" OFF)
+option(ENABLE_EXAMPLES "Build examples" OFF)
 option(ENABLE_PGAS      "Build PGAS Extension" OFF)
 
 # add our cmake module directory to the path
