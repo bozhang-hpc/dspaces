@@ -16,7 +16,6 @@
 #include <pthread.h>
 #include "ss_data.h"
 #include "dspaces-client.h"
-#include "client.h"
 #include "gspace.h"
 
 #define DEBUG_OUT(args...) \

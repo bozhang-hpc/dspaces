@@ -14,7 +14,6 @@
 #include <abt.h>
 #include "ss_data.h"
 #include "dspaces-server.h"
-#include "server.h"
 #include "gspace.h"
 
 #define DEBUG_OUT(args...) \
