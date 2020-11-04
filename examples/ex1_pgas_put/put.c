@@ -41,6 +41,9 @@ int main(int argc, char** argv)
     sprintf(var_name, "example1_data");
 
     int ndim = 2;
+    uint64_t view_layout[2];
+    view_layout[0]=2;
+    view_layout[1]=8;
     uint64_t lb[2] = {0}, ub[2] = {0};
 
     lb[0] = 1;
@@ -48,7 +51,13 @@ int main(int argc, char** argv)
     ub[0] = 5;
     ub[1] = 1;
 
-    int err = dspaces_view_reg(ndcl, var_name, 0, sizeof(double), ndim, lb, ub);
+    int err = dspaces_view_reg(ndcl, var_name, 0, sizeof(double), ndim, view_layout, lb, ub);
+
+    MPI_Barrier(gcomm);
+
+    sleep(15);
+
+    client_finalize(ndcl);
 
     return err;
 

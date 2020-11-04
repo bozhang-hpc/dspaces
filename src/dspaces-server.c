@@ -689,9 +689,9 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm, dspaces_provider_t
         margo_registered_name(server->mid, "ss_rpc",            &server->ss_id,             &flag);
         margo_registered_name(server->mid, "drain_rpc",         &server->drain_id,          &flag);
         margo_registered_name(server->mid, "kill_rpc",          &server->kill_id,           &flag);
-#ifdef ENABLE_PGAS
+
         margo_registered_name(server->mid, "view_reg_rpc",      &server->view_reg_id,       &flag);
-#endif
+
     } else {
 
         server->put_id =
@@ -722,11 +722,11 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm, dspaces_provider_t
             MARGO_REGISTER(server->mid, "kill_rpc", int32_t, void, kill_rpc);
         margo_registered_disable_response(server->mid, server->kill_id, HG_TRUE);
         margo_register_data(server->mid, server->kill_id, (void*)server, NULL);
-#ifdef ENABLE_PGAS
+
         server->view_reg_id =
-            MARGO_REGISTER(server->mid, "view_reg_rpc", odsc_gdim_t, bulk_out_t, view_reg_rpc);
+            MARGO_REGISTER(server->mid, "view_reg_rpc", odsc_gdim_layout_t, bulk_out_t, view_reg_rpc);
         margo_register_data(server->mid, server->view_reg_id, (void*)server, NULL);
-#endif
+
         
     }
     int size_sp = 1;
@@ -1322,7 +1322,7 @@ void dspaces_server_fini(dspaces_provider_t server)
 static void view_reg_rpc(hg_handle_t handle)
 {
     hg_return_t hret;
-    odsc_gdim_t in;
+    odsc_gdim_layout_t in;
     bulk_out_t out;
 
     margo_instance_id mid = margo_hg_handle_get_instance(handle);
@@ -1334,7 +1334,9 @@ static void view_reg_rpc(hg_handle_t handle)
     assert(hret == HG_SUCCESS);
 
     obj_descriptor in_odsc;
-    memcpy(&in_odsc, in.odsc_gdim.raw_odsc, sizeof(in_odsc));
+    memcpy(&in_odsc, in.odsc_gdim_layout.raw_odsc, sizeof(in_odsc));
+    uint64_t *view_layout = (uint64_t*) malloc(sizeof(uint64_t)*in_odsc.bb.num_dims);
+    memcpy(view_layout, in.odsc_gdim_layout.view_layout, sizeof(uint64_t)*in_odsc.bb.num_dims);
     //set the owner to be this server address
     hg_addr_t owner_addr;
     size_t owner_addr_size = 128;
@@ -1343,13 +1345,13 @@ static void view_reg_rpc(hg_handle_t handle)
     margo_addr_to_string(server->mid, in_odsc.owner, &owner_addr_size, owner_addr);
     margo_addr_free(server->mid, owner_addr);
 
-    obj_descriptor **odsc_tab; 
-    uint64_t ent_num = obj_desc_to1Dbbox(&in_odsc, odsc_tab);
-
+    obj_descriptor *odsc_tab; 
+    uint64_t ent_num = obj_desc_to1Dbbox(&in_odsc, odsc_tab, view_layout);
+/*
     int i;
     for(i = 0; i < ent_num; i++) {
         struct obj_data *od;
-        od = obj_data_alloc(odsc_tab[i]);
+        od = obj_data_alloc(&odsc_tab[i]);
         memcpy(&od->gdim, in.odsc_gdim.raw_gdim, sizeof(struct global_dimension));
 
         if(!od)
@@ -1361,7 +1363,7 @@ static void view_reg_rpc(hg_handle_t handle)
 
         obj_update_dht(server, od, DS_OBJ_NEW);
     }
-
+*/
     DEBUG_OUT("Finished obj_put_update from put_rpc\n");
 
     out.ret = dspaces_SUCCESS;

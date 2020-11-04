@@ -1607,19 +1607,20 @@ char ** addr_str_buf_to_list(
 /* split in_odsc to multiple 1D odsc and put them in a table
    return the number of table entries
 */
-uint64_t obj_desc_to1Dbbox(obj_descriptor *odsc, obj_descriptor **odsc_tab)
+uint64_t obj_desc_to1Dbbox(obj_descriptor *odsc, obj_descriptor *odsc_tab, uint64_t *layout)
 {
     uint64_t num_odsc = bbox1D_num(&odsc->bb);
-    odsc_tab = malloc(sizeof(odsc) * num_odsc);
+    odsc_tab = malloc(sizeof(obj_descriptor) * num_odsc);
     
-    int i;
-    for(i=0; i < num_odsc; i++){
-        memcpy(odsc_tab[i], odsc, sizeof(odsc));
-    }
+    
+    memcpy(odsc_tab, odsc, sizeof(obj_descriptor) * num_odsc);
+    
     
     uint64_t a[10];
     uint64_t index = 0;
     int dim;
+    uint64_t lb_1D_index = 0; 
+    uint64_t ub_1D_index = 0;
 
     switch (odsc->bb.num_dims)
     {
@@ -1685,34 +1686,68 @@ dim3:       for(a[2] = odsc->bb.lb.c[2]; a[2] <= odsc->bb.ub.c[2]; a[2]++) {
 
 dim2:       for(a[1] = odsc->bb.lb.c[1]; a[1] <= odsc->bb.ub.c[1]; a[1]++) {
 
-dim1:           odsc_tab[index]->bb.lb.c[0] = odsc->bb.lb.c[0];
-                odsc_tab[index]->bb.ub.c[0] = odsc->bb.ub.c[0];
+dim1:           odsc_tab[index].bb.lb.c[0] = odsc->bb.lb.c[0];
+                odsc_tab[index].bb.ub.c[0] = odsc->bb.ub.c[0];
 
             if(odsc->bb.num_dims == 1)  return num_odsc;
 
             for(dim = 1; dim < odsc->bb.num_dims; dim++) {
-                odsc_tab[index]->bb.lb.c[dim] = a[dim];
-                odsc_tab[index]->bb.ub.c[dim] = a[dim];                
+                odsc_tab[index].bb.lb.c[dim] = a[dim];
+                odsc_tab[index].bb.ub.c[dim] = a[dim];                
             }
-            bbox_print(&odsc_tab[index]->bb);           
+
+            /*
+            for(dim = odsc->bb.num_dims-1; dim > 0; dim--) {
+                lb_1D_index += odsc_tab[index].bb.lb.c[dim] * layout[dim];
+                ub_1D_index += odsc_tab[index].bb.ub.c[dim] * layout[dim];
+            }
+
+            lb_1D_index += odsc_tab[index].bb.lb.c[0];
+            ub_1D_index += odsc_tab[index].bb.ub.c[0];
+
+            odsc_tab[index].bb.num_dims = 1;
+            memset(odsc_tab[index].bb.lb.c, 0, sizeof(uint64_t)*odsc->bb.num_dims);
+            memset(odsc_tab[index].bb.ub.c, 0, sizeof(uint64_t)*odsc->bb.num_dims);
+            odsc_tab[index].bb.lb.c[0] = lb_1D_index;
+            odsc_tab[index].bb.ub.c[0] = ub_1D_index;
+            
+            bbox_print(&odsc_tab[index].bb);
+            */           
             index++;
 
             }
-            if(odsc->bb.num_dims == 2)  return num_odsc;
+            if(odsc->bb.num_dims == 2)  goto cont;
         }
-        if(odsc->bb.num_dims == 3)  return num_odsc;
+        if(odsc->bb.num_dims == 3)  goto cont;
     }
-    if(odsc->bb.num_dims == 4)  return num_odsc;
+    if(odsc->bb.num_dims == 4)  goto cont;
 }
-if(odsc->bb.num_dims == 5)  return num_odsc;
+if(odsc->bb.num_dims == 5)  goto cont;
 }
-if(odsc->bb.num_dims == 6)  return num_odsc;
+if(odsc->bb.num_dims == 6)  goto cont;
 }
-if(odsc->bb.num_dims == 7)  return num_odsc;
+if(odsc->bb.num_dims == 7)  goto cont;
 }
-if(odsc->bb.num_dims == 8)  return num_odsc;
+if(odsc->bb.num_dims == 8)  goto cont;
 }
-if(odsc->bb.num_dims == 9)  return num_odsc;
+if(odsc->bb.num_dims == 9)  goto cont;
 }
-return num_odsc;
+cont:       for(index = 0; index < num_odsc; index ++) {
+                lb_1D_index = 0;
+                ub_1D_index = 0;
+                for(dim = odsc->bb.num_dims-1; dim > 0; dim--) {
+                    lb_1D_index += odsc_tab[index].bb.lb.c[dim] * layout[dim];
+                    ub_1D_index += odsc_tab[index].bb.ub.c[dim] * layout[dim];
+                }
+                lb_1D_index += odsc_tab[index].bb.lb.c[0];
+                ub_1D_index += odsc_tab[index].bb.ub.c[0];
+                odsc_tab[index].bb.num_dims = 1;
+                memset(odsc_tab[index].bb.lb.c, 0, sizeof(uint64_t)*odsc->bb.num_dims);
+                memset(odsc_tab[index].bb.ub.c, 0, sizeof(uint64_t)*odsc->bb.num_dims);
+                odsc_tab[index].bb.lb.c[0] = lb_1D_index;
+                odsc_tab[index].bb.ub.c[0] = ub_1D_index;
+            }
+            
+
+            return num_odsc;
 }

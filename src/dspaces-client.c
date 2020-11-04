@@ -257,9 +257,9 @@ int client_init(char *listen_addr_str, int rank, dspaces_client_t* c)
         margo_registered_name(client->mid, "ss_rpc",        &client->ss_id, &flag);
         margo_registered_name(client->mid, "drain_rpc",     &client->drain_id, &flag);
         margo_registered_name(client->mid, "kill_rpc",      &client->kill_id, &flag); 
-#ifdef ENABLE_PGAS
+
         margo_registered_name(client->mid, "view_reg_rpc",      &client->view_reg_id, &flag); 
-#endif
+
 
     } else {
 
@@ -280,10 +280,10 @@ int client_init(char *listen_addr_str, int rank, dspaces_client_t* c)
         client->kill_id =
             MARGO_REGISTER(client->mid, "kill_rpc", int32_t, void, NULL);
         margo_registered_disable_response(client->mid, client->kill_id, HG_TRUE);
-#ifdef ENABLE_PGAS
+
         client->view_reg_id =
-            MARGO_REGISTER(client->mid, "view_reg_rpc", odsc_gdim_t, bulk_out_t, NULL);
-#endif      
+            MARGO_REGISTER(client->mid, "view_reg_rpc", odsc_gdim_layout_t, bulk_out_t, NULL);
+     
     }
 
     build_address(client);
@@ -843,7 +843,8 @@ void dspaces_kill(dspaces_client_t client)
 int dspaces_view_reg(dspaces_client_t client, 
         const char *var_name,
         unsigned int ver, int elem_size,
-        int ndim, uint64_t *lb, uint64_t *ub)
+        int ndim, uint64_t *view_layout,
+        uint64_t *lb, uint64_t *ub)
 {
     hg_addr_t server_addr;
     hg_handle_t handle;
@@ -866,17 +867,19 @@ int dspaces_view_reg(dspaces_client_t client,
     strncpy(odsc.name, var_name, sizeof(odsc.name)-1);
     odsc.name[sizeof(odsc.name)-1] = '\0';
 
-    odsc_gdim_t in;
+    odsc_gdim_layout_t in;
     bulk_out_t out;
     struct global_dimension odsc_gdim;
     set_global_dimension(&(client->dcg->gdim_list), var_name, &(client->dcg->default_gdim),
                          &odsc_gdim);
 
 
-    in.odsc_gdim.size = sizeof(odsc);
-    in.odsc_gdim.raw_odsc = (char*)(&odsc);
-    in.odsc_gdim.gdim_size = sizeof(struct global_dimension);
-    in.odsc_gdim.raw_gdim = (char*)(&odsc_gdim);
+    in.odsc_gdim_layout.size = sizeof(odsc);
+    in.odsc_gdim_layout.raw_odsc = (char*)(&odsc);
+    in.odsc_gdim_layout.gdim_size = sizeof(struct global_dimension);
+    in.odsc_gdim_layout.raw_gdim = (char*)(&odsc_gdim);
+    in.odsc_gdim_layout.layout_size = ndim * sizeof(uint64_t);
+    in.odsc_gdim_layout.view_layout = (char*)(view_layout);
 
     
     get_server_address(client, &server_addr);

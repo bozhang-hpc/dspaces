@@ -192,7 +192,8 @@ void dspaces_kill(dspaces_client_t client);
 int dspaces_view_reg(dspaces_client_t client, 
         const char *var_name,
         unsigned int ver, int size,
-        int ndim, uint64_t *lb, uint64_t *ub);
+        int ndim, uint64_t *view_layout, 
+        uint64_t *lb, uint64_t *ub);
 
 
 #if defined(__cplusplus)
