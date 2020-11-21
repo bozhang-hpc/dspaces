@@ -317,6 +317,10 @@ MERCURY_GEN_PROC(ss_information, ((odsc_hdr)(ss_buf)))
 MERCURY_GEN_PROC(odsc_gdim_layout_t, ((odsc_hdr_with_gdim_view_layout)(odsc_gdim_layout))\
                 ((int32_t)(param)))
 
+MERCURY_GEN_PROC(bulk_layout_in_t,
+        ((odsc_hdr_with_gdim_view_layout)(odsc_gdim_layout))\
+        ((hg_bulk_t)(handle)))
+
 char * obj_desc_sprint(obj_descriptor *);
 //
 struct sspace* ssd_alloc(const struct bbox *, int, int, enum sspace_hash_version);
@@ -385,9 +389,14 @@ char ** addr_str_buf_to_list(char * buf, int num_addrs);
 
 
 /* split in_odsc to multiple 1D odsc and put them in a table
-   return the number of table entries
+   return 0 indicates SUCCESS
 */
-uint64_t obj_desc_to1Dbbox(obj_descriptor *odsc, obj_descriptor *odsc_tab, uint64_t *layout);
+int obj_desc_to1Dbbox(obj_descriptor *odsc, obj_descriptor *odsc_tab, uint64_t *layout, uint64_t num_odsc);
+int obj_desc_to1Dbbox_v2(obj_descriptor *odsc, obj_descriptor *odsc_tab, uint64_t *layout, 
+                        uint64_t num_odsc, int pivot);
+
+int obj_data_to1Dbbox(struct obj_data *od, struct obj_data **od_tab, obj_descriptor* odsc_tab, 
+                    uint64_t *layout, uint64_t num_od);
 
 
 #endif /* __SS_DATA_H_ */

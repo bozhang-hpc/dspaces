@@ -551,3 +551,24 @@ uint64_t bbox1D_num(struct bbox *bb)
 
     return n;
 }
+
+uint64_t bbox1D_num_v2(struct bbox *bb, uint64_t *layout, int *pivot)
+{
+    uint64_t n = 1;
+    int ndims = bb->num_dims;
+    *pivot=0;
+    int i;
+
+    for(i=0; i < ndims; i++) {
+        if(coord_dist(&bb->lb, &bb->ub, i) != layout[i] || i == ndims-1) {
+            *pivot = i;
+            break;
+        }
+    }
+
+    for(i=*pivot+1; i < ndims; i++) {
+        n = n * coord_dist(&bb->lb, &bb->ub, i);
+    }
+
+    return n;
+}

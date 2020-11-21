@@ -83,5 +83,6 @@ void bbox_print(struct bbox *bb);
 char * bbox_sprint(const struct bbox *bb);
 
 uint64_t bbox1D_num(struct bbox *bb);
+uint64_t bbox1D_num_v2(struct bbox *bb, uint64_t *layout, int *pivot);
 
 #endif /* __BBOX_H_ */

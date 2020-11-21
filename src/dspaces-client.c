@@ -41,7 +41,7 @@ struct dspaces_client {
     hg_id_t drain_id;
     hg_id_t kill_id;
     /* ifdef ENABLE_PGAS */
-    hg_id_t view_reg_id;
+    hg_id_t view_put_id;
 
     struct dc_gspace *dcg;
     char **server_address;
@@ -258,7 +258,7 @@ int client_init(char *listen_addr_str, int rank, dspaces_client_t* c)
         margo_registered_name(client->mid, "drain_rpc",     &client->drain_id, &flag);
         margo_registered_name(client->mid, "kill_rpc",      &client->kill_id, &flag); 
 
-        margo_registered_name(client->mid, "view_reg_rpc",      &client->view_reg_id, &flag); 
+        margo_registered_name(client->mid, "view_put_rpc",      &client->view_put_id, &flag); 
 
 
     } else {
@@ -281,8 +281,8 @@ int client_init(char *listen_addr_str, int rank, dspaces_client_t* c)
             MARGO_REGISTER(client->mid, "kill_rpc", int32_t, void, NULL);
         margo_registered_disable_response(client->mid, client->kill_id, HG_TRUE);
 
-        client->view_reg_id =
-            MARGO_REGISTER(client->mid, "view_reg_rpc", odsc_gdim_layout_t, bulk_out_t, NULL);
+        client->view_put_id =
+            MARGO_REGISTER(client->mid, "view_put_rpc", bulk_layout_in_t, bulk_out_t, NULL);
      
     }
 
@@ -840,11 +840,11 @@ void dspaces_kill(dspaces_client_t client)
 }
 
 /* ifdef ENABLE_PGAS */
-int dspaces_view_reg(dspaces_client_t client, 
+int dspaces_view_put(dspaces_client_t client, 
         const char *var_name,
         unsigned int ver, int elem_size,
         int ndim, uint64_t *view_layout,
-        uint64_t *lb, uint64_t *ub)
+        uint64_t *lb, uint64_t *ub, void *data)
 {
     hg_addr_t server_addr;
     hg_handle_t handle;
@@ -867,7 +867,7 @@ int dspaces_view_reg(dspaces_client_t client,
     strncpy(odsc.name, var_name, sizeof(odsc.name)-1);
     odsc.name[sizeof(odsc.name)-1] = '\0';
 
-    odsc_gdim_layout_t in;
+    bulk_layout_in_t in;
     bulk_out_t out;
     struct global_dimension odsc_gdim;
     set_global_dimension(&(client->dcg->gdim_list), var_name, &(client->dcg->default_gdim),
@@ -880,22 +880,33 @@ int dspaces_view_reg(dspaces_client_t client,
     in.odsc_gdim_layout.raw_gdim = (char*)(&odsc_gdim);
     in.odsc_gdim_layout.layout_size = ndim * sizeof(uint64_t);
     in.odsc_gdim_layout.view_layout = (char*)(view_layout);
+    hg_size_t rdma_size = (elem_size)*bbox_volume(&odsc.bb);
 
+    DEBUG_OUT("sending object %s \n", obj_desc_sprint(&odsc));
+
+    hret = margo_bulk_create(client->mid, 1, (void**)&data, &rdma_size,
+                            HG_BULK_READ_ONLY, &in.handle);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr,"ERROR: (%s): margo_bulk_create() failed\n", __func__);
+        return dspaces_ERR_MERCURY;
+    }
     
     get_server_address(client, &server_addr);
     /* create handle */
     hret = margo_create( client->mid,
             server_addr,
-            client->view_reg_id,
+            client->view_put_id,
             &handle);
     if(hret != HG_SUCCESS) {
         fprintf(stderr,"ERROR: (%s): margo_create() failed\n", __func__);
+        margo_bulk_free(in.handle);
         return dspaces_ERR_MERCURY;
     }
 
     hret = margo_forward(handle, &in);
     if(hret != HG_SUCCESS) {
         fprintf(stderr,"ERROR: (%s): margo_forward() failed\n", __func__);
+        margo_bulk_free(in.handle);
         margo_destroy(handle);
         return dspaces_ERR_MERCURY;
     }
@@ -903,13 +914,16 @@ int dspaces_view_reg(dspaces_client_t client,
     hret = margo_get_output(handle, &out);
     if(hret != HG_SUCCESS) {
         fprintf(stderr,"ERROR: (%s): margo_get_output() failed\n", __func__);
+        margo_bulk_free(in.handle);
         margo_destroy(handle);
         return dspaces_ERR_MERCURY;
     }
 
     ret = out.ret;
     margo_free_output(handle, &out);
+    margo_bulk_free(in.handle);
     margo_destroy(handle);
     margo_addr_free(client->mid, server_addr);
 	return ret;
 }
+

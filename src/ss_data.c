@@ -1605,20 +1605,18 @@ char ** addr_str_buf_to_list(
 
 /* ifdef ENABLE_PGAS */
 /* split in_odsc to multiple 1D odsc and put them in a table
-   return the number of table entries
+   return 0 indicates SUCCESS
 */
-uint64_t obj_desc_to1Dbbox(obj_descriptor *odsc, obj_descriptor *odsc_tab, uint64_t *layout)
+int obj_desc_to1Dbbox(obj_descriptor *odsc, obj_descriptor *odsc_tab, uint64_t *layout, uint64_t num_odsc)
 {
-    uint64_t num_odsc = bbox1D_num(&odsc->bb);
-    odsc_tab = malloc(sizeof(obj_descriptor) * num_odsc);
-    
     
     memcpy(odsc_tab, odsc, sizeof(obj_descriptor) * num_odsc);
     
     
     uint64_t a[10];
     uint64_t index = 0;
-    int dim;
+    int dim, i;
+    uint64_t tmp;
     uint64_t lb_1D_index = 0; 
     uint64_t ub_1D_index = 0;
 
@@ -1689,30 +1687,13 @@ dim2:       for(a[1] = odsc->bb.lb.c[1]; a[1] <= odsc->bb.ub.c[1]; a[1]++) {
 dim1:           odsc_tab[index].bb.lb.c[0] = odsc->bb.lb.c[0];
                 odsc_tab[index].bb.ub.c[0] = odsc->bb.ub.c[0];
 
-            if(odsc->bb.num_dims == 1)  return num_odsc;
+            if(odsc->bb.num_dims == 1)  goto cont;
 
             for(dim = 1; dim < odsc->bb.num_dims; dim++) {
                 odsc_tab[index].bb.lb.c[dim] = a[dim];
                 odsc_tab[index].bb.ub.c[dim] = a[dim];                
             }
-
-            /*
-            for(dim = odsc->bb.num_dims-1; dim > 0; dim--) {
-                lb_1D_index += odsc_tab[index].bb.lb.c[dim] * layout[dim];
-                ub_1D_index += odsc_tab[index].bb.ub.c[dim] * layout[dim];
-            }
-
-            lb_1D_index += odsc_tab[index].bb.lb.c[0];
-            ub_1D_index += odsc_tab[index].bb.ub.c[0];
-
-            odsc_tab[index].bb.num_dims = 1;
-            memset(odsc_tab[index].bb.lb.c, 0, sizeof(uint64_t)*odsc->bb.num_dims);
-            memset(odsc_tab[index].bb.ub.c, 0, sizeof(uint64_t)*odsc->bb.num_dims);
-            odsc_tab[index].bb.lb.c[0] = lb_1D_index;
-            odsc_tab[index].bb.ub.c[0] = ub_1D_index;
-            
-            bbox_print(&odsc_tab[index].bb);
-            */           
+        
             index++;
 
             }
@@ -1733,12 +1714,18 @@ if(odsc->bb.num_dims == 8)  goto cont;
 if(odsc->bb.num_dims == 9)  goto cont;
 }
 cont:       for(index = 0; index < num_odsc; index ++) {
+                
                 lb_1D_index = 0;
                 ub_1D_index = 0;
                 for(dim = odsc->bb.num_dims-1; dim > 0; dim--) {
-                    lb_1D_index += odsc_tab[index].bb.lb.c[dim] * layout[dim];
-                    ub_1D_index += odsc_tab[index].bb.ub.c[dim] * layout[dim];
+                    tmp = 1;
+                    for(i = 0; i < dim; i++) {
+                        tmp *= layout[i]; 
+                    }
+                    lb_1D_index += odsc_tab[index].bb.lb.c[dim] * tmp;
+                    ub_1D_index += odsc_tab[index].bb.ub.c[dim] * tmp;
                 }
+                
                 lb_1D_index += odsc_tab[index].bb.lb.c[0];
                 ub_1D_index += odsc_tab[index].bb.ub.c[0];
                 odsc_tab[index].bb.num_dims = 1;
@@ -1749,5 +1736,1123 @@ cont:       for(index = 0; index < num_odsc; index ++) {
             }
             
 
-            return num_odsc;
+            return 0;
+}
+
+int obj_data_to1Dbbox(struct obj_data *od, struct obj_data **od_tab, obj_descriptor* odsc_tab, 
+                    uint64_t *layout, uint64_t num_od)
+{
+    
+    //memcpy(odsc_tab, odsc, sizeof(obj_descriptor) * num_odsc);
+    
+    
+    uint64_t a[10];
+    uint64_t index = 0;
+
+    for(index = 0; index < num_od; index++) {
+        memcpy(&odsc_tab[index], &(od->obj_desc), sizeof(obj_descriptor));
+        od_tab[index] = obj_data_alloc_no_data(&odsc_tab[index], NULL);
+    }
+
+    int dim, i;
+    uint64_t tmp;
+    uint64_t lb_1D_index = 0; 
+    uint64_t ub_1D_index = 0;
+    index = 0;
+
+    switch (od->obj_desc.bb.num_dims)
+    {
+    case 1:
+        goto dim1;
+        break;
+
+    case 2:
+        goto dim2;
+        break;
+
+    case 3:
+        goto dim3;
+        break;
+
+    case 4:
+        goto dim4;
+        break;
+
+    case 5:
+        goto dim5;
+        break;
+
+    case 6:
+        goto dim6;
+        break;
+
+    case 7:
+        goto dim7;
+        break;
+
+    case 8:
+        goto dim8;
+        break;
+
+    case 9:
+        goto dim9;
+        break;
+
+    case 10:
+        goto dim10;
+        break;
+    
+    default:
+        break;
+    }
+
+dim10:    for(a[9] = od->obj_desc.bb.lb.c[9]; a[9] <= od->obj_desc.bb.ub.c[9]; a[9]++) {
+
+dim9:       for(a[8] = od->obj_desc.bb.lb.c[8]; a[8] <= od->obj_desc.bb.ub.c[8]; a[8]++) {
+
+dim8:       for(a[7] = od->obj_desc.bb.lb.c[7]; a[7] <= od->obj_desc.bb.ub.c[7]; a[7]++) {
+
+dim7:       for(a[6] = od->obj_desc.bb.lb.c[6]; a[6] <= od->obj_desc.bb.ub.c[6]; a[6]++) {
+
+dim6:       for(a[5] = od->obj_desc.bb.lb.c[5]; a[5] <= od->obj_desc.bb.ub.c[5]; a[5]++) {
+
+dim5:       for(a[4] = od->obj_desc.bb.lb.c[4]; a[4] <= od->obj_desc.bb.ub.c[4]; a[4]++) {
+
+dim4:       for(a[3] = od->obj_desc.bb.lb.c[3]; a[3] <= od->obj_desc.bb.ub.c[3]; a[3]++) {
+
+dim3:       for(a[2] = od->obj_desc.bb.lb.c[2]; a[2] <= od->obj_desc.bb.ub.c[2]; a[2]++) {
+
+dim2:       for(a[1] = od->obj_desc.bb.lb.c[1]; a[1] <= od->obj_desc.bb.ub.c[1]; a[1]++) {
+
+dim1:           od_tab[index]->obj_desc.bb.lb.c[0] = od->obj_desc.bb.lb.c[0];
+                od_tab[index]->obj_desc.bb.ub.c[0] = od->obj_desc.bb.ub.c[0];
+
+            if(od->obj_desc.bb.num_dims == 1)  goto cont;
+
+            for(dim = 1; dim < od->obj_desc.bb.num_dims; dim++) {
+                od_tab[index]->obj_desc.bb.lb.c[dim] = a[dim];
+                od_tab[index]->obj_desc.bb.ub.c[dim] = a[dim];                
+            }
+        
+            index++;
+
+            }
+            if(od->obj_desc.bb.num_dims == 2)  goto cont;
+        }
+        if(od->obj_desc.bb.num_dims == 3)  goto cont;
+    }
+    if(od->obj_desc.bb.num_dims == 4)  goto cont;
+}
+if(od->obj_desc.bb.num_dims == 5)  goto cont;
+}
+if(od->obj_desc.bb.num_dims == 6)  goto cont;
+}
+if(od->obj_desc.bb.num_dims == 7)  goto cont;
+}
+if(od->obj_desc.bb.num_dims == 8)  goto cont;
+}
+if(od->obj_desc.bb.num_dims == 9)  goto cont;
+}
+cont:       for(index = 0; index < num_od; index ++) {
+                //malloc for od
+                int size = obj_data_size(&od_tab[index]->obj_desc);
+                od_tab[index]->data = malloc(size);
+                if (!od_tab[index]->data) {
+                    fprintf(stderr, "Malloc od_data error\n");
+                    for(int j=0; j++; j < index) {
+                        free(od_tab[j]->data);
+                        free(od_tab[j]);
+                    }
+                    free(od_tab[index]);
+                    return 1;
+                }
+	            ALIGN_ADDR_QUAD_BYTES(od->data);
+                // using original bbox copy data first
+                ssd_copy(od_tab[index], od);
+                
+                // modify the bbox to 1D 
+                lb_1D_index = 0;
+                ub_1D_index = 0;
+                for(dim = od->obj_desc.bb.num_dims-1; dim > 0; dim--) {
+                    tmp = 1;
+                    for(i = 0; i < dim; i++) {
+                        tmp *= layout[i]; 
+                    }
+                    lb_1D_index += od_tab[index]->obj_desc.bb.lb.c[dim] * tmp;
+                    ub_1D_index += od_tab[index]->obj_desc.bb.ub.c[dim] * tmp;
+                }
+                
+                lb_1D_index += od_tab[index]->obj_desc.bb.lb.c[0];
+                ub_1D_index += od_tab[index]->obj_desc.bb.ub.c[0];
+                od_tab[index]->obj_desc.bb.num_dims = 1;
+                memset( od_tab[index]->obj_desc.bb.lb.c, 0, sizeof(uint64_t)*od->obj_desc.bb.num_dims);
+                memset( od_tab[index]->obj_desc.bb.ub.c, 0, sizeof(uint64_t)*od->obj_desc.bb.num_dims);
+                od_tab[index]->obj_desc.bb.lb.c[0] = lb_1D_index;
+                od_tab[index]->obj_desc.bb.ub.c[0] = ub_1D_index;
+            }
+            
+
+            return 0;
+}
+
+static int obj_desc_to1Dbbox_p1(obj_descriptor *odsc, obj_descriptor *odsc_tab, 
+                                uint64_t *layout, uint64_t num_odsc)
+{
+    memcpy(odsc_tab, odsc, sizeof(obj_descriptor) * num_odsc);
+
+    uint64_t a[10];
+    uint64_t index = 0;
+    int dim, i;
+    uint64_t tmp;
+    uint64_t lb_1D_index = 0; 
+    uint64_t ub_1D_index = 0;
+
+    switch (odsc->bb.num_dims)
+    {
+        case 2:
+            goto dim2;
+            break;
+        case 3:
+            goto dim3;
+            break;
+        case 4:
+            goto dim4;
+            break;
+        case 5:
+            goto dim5;
+            break;
+        case 6:
+            goto dim6;
+            break;
+        case 7:
+            goto dim7;
+            break;
+        case 8:
+            goto dim8;
+            break;
+        case 9:
+            goto dim9;
+            break;
+        case 10:
+            goto dim10;
+            break;  
+        default:
+            break;
+        }
+
+    dim10:    for(a[9] = odsc->bb.lb.c[9]; a[9] <= odsc->bb.ub.c[9]; a[9]++) {
+
+    dim9:       for(a[8] = odsc->bb.lb.c[8]; a[8] <= odsc->bb.ub.c[8]; a[8]++) {
+
+    dim8:       for(a[7] = odsc->bb.lb.c[7]; a[7] <= odsc->bb.ub.c[7]; a[7]++) {
+
+    dim7:       for(a[6] = odsc->bb.lb.c[6]; a[6] <= odsc->bb.ub.c[6]; a[6]++) {
+
+    dim6:       for(a[5] = odsc->bb.lb.c[5]; a[5] <= odsc->bb.ub.c[5]; a[5]++) {
+
+    dim5:       for(a[4] = odsc->bb.lb.c[4]; a[4] <= odsc->bb.ub.c[4]; a[4]++) {
+
+    dim4:       for(a[3] = odsc->bb.lb.c[3]; a[3] <= odsc->bb.ub.c[3]; a[3]++) {
+
+    dim3:       for(a[2] = odsc->bb.lb.c[2]; a[2] <= odsc->bb.ub.c[2]; a[2]++) {
+
+    dim2:           odsc_tab[index].bb.lb.c[1] = odsc->bb.lb.c[1];
+                    odsc_tab[index].bb.ub.c[1] = odsc->bb.ub.c[1];
+
+                    odsc_tab[index].bb.lb.c[0] = odsc->bb.lb.c[0];
+                    odsc_tab[index].bb.ub.c[0] = odsc->bb.ub.c[0];
+
+                
+                if(odsc->bb.num_dims == 2)  goto cont;
+
+                for(dim = 2; dim < odsc->bb.num_dims; dim++) {
+                    odsc_tab[index].bb.lb.c[dim] = a[dim];
+                    odsc_tab[index].bb.ub.c[dim] = a[dim];                
+                }
+        
+                index++;
+   
+            }
+            if(odsc->bb.num_dims == 3)  goto cont;
+        }
+        if(odsc->bb.num_dims == 4)  goto cont;
+    }
+    if(odsc->bb.num_dims == 5)  goto cont;
+    }
+    if(odsc->bb.num_dims == 6)  goto cont;
+    }
+    if(odsc->bb.num_dims == 7)  goto cont;
+    }
+    if(odsc->bb.num_dims == 8)  goto cont;
+    }
+    if(odsc->bb.num_dims == 9)  goto cont;
+    }
+    goto cont;
+
+    cont:       for(index = 0; index < num_odsc; index ++) {
+                    lb_1D_index = 0;
+                    ub_1D_index = 0;
+                    for(dim = odsc->bb.num_dims-1; dim > 0; dim--) {
+                        tmp = 1;
+                        for(i = 0; i < dim; i++) {
+                            tmp *= layout[i]; 
+                        }
+                    lb_1D_index += odsc_tab[index].bb.lb.c[dim] * tmp;
+                    ub_1D_index += odsc_tab[index].bb.ub.c[dim] * tmp;
+                    }
+                    lb_1D_index += odsc_tab[index].bb.lb.c[0];
+                    ub_1D_index += odsc_tab[index].bb.ub.c[0];
+                    odsc_tab[index].bb.num_dims = 1;
+                    memset(odsc_tab[index].bb.lb.c, 0, sizeof(uint64_t)*odsc->bb.num_dims);
+                    memset(odsc_tab[index].bb.ub.c, 0, sizeof(uint64_t)*odsc->bb.num_dims);
+                    odsc_tab[index].bb.lb.c[0] = lb_1D_index;
+                    odsc_tab[index].bb.ub.c[0] = ub_1D_index;
+                }
+            
+
+    return 0;
+
+
+}
+
+static int obj_desc_to1Dbbox_p2(obj_descriptor *odsc, obj_descriptor *odsc_tab, 
+                                uint64_t *layout, uint64_t num_odsc)
+{
+    memcpy(odsc_tab, odsc, sizeof(obj_descriptor) * num_odsc);
+
+    uint64_t a[10];
+    uint64_t index = 0;
+    int dim, i;
+    uint64_t tmp;
+    uint64_t lb_1D_index = 0; 
+    uint64_t ub_1D_index = 0;
+
+    switch (odsc->bb.num_dims)
+        {
+        case 3:
+            goto dim3;
+            break;
+        case 4:
+            goto dim4;
+            break;
+        case 5:
+            goto dim5;
+            break;
+        case 6:
+            goto dim6;
+            break;
+        case 7:
+            goto dim7;
+            break;
+        case 8:
+            goto dim8;
+            break;
+        case 9:
+            goto dim9;
+            break;
+        case 10:
+            goto dim10;
+            break;  
+        default:
+            break;
+        }
+
+    dim10:    for(a[9] = odsc->bb.lb.c[9]; a[9] <= odsc->bb.ub.c[9]; a[9]++) {
+
+    dim9:       for(a[8] = odsc->bb.lb.c[8]; a[8] <= odsc->bb.ub.c[8]; a[8]++) {
+
+    dim8:       for(a[7] = odsc->bb.lb.c[7]; a[7] <= odsc->bb.ub.c[7]; a[7]++) {
+
+    dim7:       for(a[6] = odsc->bb.lb.c[6]; a[6] <= odsc->bb.ub.c[6]; a[6]++) {
+
+    dim6:       for(a[5] = odsc->bb.lb.c[5]; a[5] <= odsc->bb.ub.c[5]; a[5]++) {
+
+    dim5:       for(a[4] = odsc->bb.lb.c[4]; a[4] <= odsc->bb.ub.c[4]; a[4]++) {
+
+    dim4:       for(a[3] = odsc->bb.lb.c[3]; a[3] <= odsc->bb.ub.c[3]; a[3]++) {
+
+    dim3:           odsc_tab[index].bb.lb.c[2] = odsc->bb.lb.c[2];
+                    odsc_tab[index].bb.ub.c[2] = odsc->bb.ub.c[2];
+
+
+                    odsc_tab[index].bb.lb.c[1] = odsc->bb.lb.c[1];
+                    odsc_tab[index].bb.ub.c[1] = odsc->bb.ub.c[1];
+
+                    odsc_tab[index].bb.lb.c[0] = odsc->bb.lb.c[0];
+                    odsc_tab[index].bb.ub.c[0] = odsc->bb.ub.c[0];
+
+ 
+                if(odsc->bb.num_dims == 3)  goto cont;
+
+                for(dim = 3; dim < odsc->bb.num_dims; dim++) {
+                    odsc_tab[index].bb.lb.c[dim] = a[dim];
+                    odsc_tab[index].bb.ub.c[dim] = a[dim];                
+                }
+        
+                index++;
+
+        }
+        if(odsc->bb.num_dims == 4)  goto cont;
+    }
+    if(odsc->bb.num_dims == 5)  goto cont;
+    }
+    if(odsc->bb.num_dims == 6)  goto cont;
+    }
+    if(odsc->bb.num_dims == 7)  goto cont;
+    }
+    if(odsc->bb.num_dims == 8)  goto cont;
+    }
+    if(odsc->bb.num_dims == 9)  goto cont;
+    }
+    goto cont;
+
+    cont:       for(index = 0; index < num_odsc; index ++) {
+                    lb_1D_index = 0;
+                    ub_1D_index = 0;
+                    for(dim = odsc->bb.num_dims-1; dim > 0; dim--) {
+                        tmp = 1;
+                        for(i = 0; i < dim; i++) {
+                            tmp *= layout[i]; 
+                        }
+                    lb_1D_index += odsc_tab[index].bb.lb.c[dim] * tmp;
+                    ub_1D_index += odsc_tab[index].bb.ub.c[dim] * tmp;
+                    }
+                    lb_1D_index += odsc_tab[index].bb.lb.c[0];
+                    ub_1D_index += odsc_tab[index].bb.ub.c[0];
+                    odsc_tab[index].bb.num_dims = 1;
+                    memset(odsc_tab[index].bb.lb.c, 0, sizeof(uint64_t)*odsc->bb.num_dims);
+                    memset(odsc_tab[index].bb.ub.c, 0, sizeof(uint64_t)*odsc->bb.num_dims);
+                    odsc_tab[index].bb.lb.c[0] = lb_1D_index;
+                    odsc_tab[index].bb.ub.c[0] = ub_1D_index;
+                }
+            
+
+    return 0;
+
+}
+
+static int obj_desc_to1Dbbox_p3(obj_descriptor *odsc, obj_descriptor *odsc_tab, 
+                                uint64_t *layout, uint64_t num_odsc)
+{
+    memcpy(odsc_tab, odsc, sizeof(obj_descriptor) * num_odsc);
+
+    uint64_t a[10];
+    uint64_t index = 0;
+    int dim, i;
+    uint64_t tmp;
+    uint64_t lb_1D_index = 0; 
+    uint64_t ub_1D_index = 0;
+
+    switch (odsc->bb.num_dims)
+        {
+        case 4:
+            goto dim4;
+            break;
+        case 5:
+            goto dim5;
+            break;
+        case 6:
+            goto dim6;
+            break;
+        case 7:
+            goto dim7;
+            break;
+        case 8:
+            goto dim8;
+            break;
+        case 9:
+            goto dim9;
+            break;
+        case 10:
+            goto dim10;
+            break;  
+        default:
+            break;
+        }
+
+    dim10:    for(a[9] = odsc->bb.lb.c[9]; a[9] <= odsc->bb.ub.c[9]; a[9]++) {
+
+    dim9:       for(a[8] = odsc->bb.lb.c[8]; a[8] <= odsc->bb.ub.c[8]; a[8]++) {
+
+    dim8:       for(a[7] = odsc->bb.lb.c[7]; a[7] <= odsc->bb.ub.c[7]; a[7]++) {
+
+    dim7:       for(a[6] = odsc->bb.lb.c[6]; a[6] <= odsc->bb.ub.c[6]; a[6]++) {
+
+    dim6:       for(a[5] = odsc->bb.lb.c[5]; a[5] <= odsc->bb.ub.c[5]; a[5]++) {
+
+    dim5:       for(a[4] = odsc->bb.lb.c[4]; a[4] <= odsc->bb.ub.c[4]; a[4]++) {
+
+    dim4:           odsc_tab[index].bb.lb.c[3] = odsc->bb.lb.c[3];
+                    odsc_tab[index].bb.ub.c[3] = odsc->bb.ub.c[3];
+
+                    odsc_tab[index].bb.lb.c[2] = odsc->bb.lb.c[2];
+                    odsc_tab[index].bb.ub.c[2] = odsc->bb.ub.c[2];
+
+
+                    odsc_tab[index].bb.lb.c[1] = odsc->bb.lb.c[1];
+                    odsc_tab[index].bb.ub.c[1] = odsc->bb.ub.c[1];
+
+                    odsc_tab[index].bb.lb.c[0] = odsc->bb.lb.c[0];
+                    odsc_tab[index].bb.ub.c[0] = odsc->bb.ub.c[0];
+
+ 
+                if(odsc->bb.num_dims == 4)  goto cont;
+
+                for(dim = 4; dim < odsc->bb.num_dims; dim++) {
+                    odsc_tab[index].bb.lb.c[dim] = a[dim];
+                    odsc_tab[index].bb.ub.c[dim] = a[dim];                
+                }
+        
+                index++;
+
+    }
+    if(odsc->bb.num_dims == 5)  goto cont;
+    }
+    if(odsc->bb.num_dims == 6)  goto cont;
+    }
+    if(odsc->bb.num_dims == 7)  goto cont;
+    }
+    if(odsc->bb.num_dims == 8)  goto cont;
+    }
+    if(odsc->bb.num_dims == 9)  goto cont;
+    }
+    goto cont;
+
+    cont:       for(index = 0; index < num_odsc; index ++) {
+                    lb_1D_index = 0;
+                    ub_1D_index = 0;
+                    for(dim = odsc->bb.num_dims-1; dim > 0; dim--) {
+                        tmp = 1;
+                        for(i = 0; i < dim; i++) {
+                            tmp *= layout[i]; 
+                        }
+                    lb_1D_index += odsc_tab[index].bb.lb.c[dim] * tmp;
+                    ub_1D_index += odsc_tab[index].bb.ub.c[dim] * tmp;
+                    }
+                    lb_1D_index += odsc_tab[index].bb.lb.c[0];
+                    ub_1D_index += odsc_tab[index].bb.ub.c[0];
+                    odsc_tab[index].bb.num_dims = 1;
+                    memset(odsc_tab[index].bb.lb.c, 0, sizeof(uint64_t)*odsc->bb.num_dims);
+                    memset(odsc_tab[index].bb.ub.c, 0, sizeof(uint64_t)*odsc->bb.num_dims);
+                    odsc_tab[index].bb.lb.c[0] = lb_1D_index;
+                    odsc_tab[index].bb.ub.c[0] = ub_1D_index;
+                }
+            
+
+    return 0;
+}
+
+static int obj_desc_to1Dbbox_p4(obj_descriptor *odsc, obj_descriptor *odsc_tab, 
+                                uint64_t *layout, uint64_t num_odsc)
+{
+    memcpy(odsc_tab, odsc, sizeof(obj_descriptor) * num_odsc);
+
+    uint64_t a[10];
+    uint64_t index = 0;
+    int dim, i;
+    uint64_t tmp;
+    uint64_t lb_1D_index = 0; 
+    uint64_t ub_1D_index = 0;
+
+    switch (odsc->bb.num_dims)
+        {
+        case 5:
+            goto dim5;
+            break;
+        case 6:
+            goto dim6;
+            break;
+        case 7:
+            goto dim7;
+            break;
+        case 8:
+            goto dim8;
+            break;
+        case 9:
+            goto dim9;
+            break;
+        case 10:
+            goto dim10;
+            break;  
+        default:
+            break;
+        }
+
+    dim10:    for(a[9] = odsc->bb.lb.c[9]; a[9] <= odsc->bb.ub.c[9]; a[9]++) {
+
+    dim9:       for(a[8] = odsc->bb.lb.c[8]; a[8] <= odsc->bb.ub.c[8]; a[8]++) {
+
+    dim8:       for(a[7] = odsc->bb.lb.c[7]; a[7] <= odsc->bb.ub.c[7]; a[7]++) {
+
+    dim7:       for(a[6] = odsc->bb.lb.c[6]; a[6] <= odsc->bb.ub.c[6]; a[6]++) {
+
+    dim6:       for(a[5] = odsc->bb.lb.c[5]; a[5] <= odsc->bb.ub.c[5]; a[5]++) {
+
+    dim5:           odsc_tab[index].bb.lb.c[4] = odsc->bb.lb.c[4];
+                    odsc_tab[index].bb.ub.c[4] = odsc->bb.ub.c[4];
+
+                    odsc_tab[index].bb.lb.c[3] = odsc->bb.lb.c[3];
+                    odsc_tab[index].bb.ub.c[3] = odsc->bb.ub.c[3];
+
+                    odsc_tab[index].bb.lb.c[2] = odsc->bb.lb.c[2];
+                    odsc_tab[index].bb.ub.c[2] = odsc->bb.ub.c[2];
+
+
+                    odsc_tab[index].bb.lb.c[1] = odsc->bb.lb.c[1];
+                    odsc_tab[index].bb.ub.c[1] = odsc->bb.ub.c[1];
+
+                    odsc_tab[index].bb.lb.c[0] = odsc->bb.lb.c[0];
+                    odsc_tab[index].bb.ub.c[0] = odsc->bb.ub.c[0];
+
+ 
+                if(odsc->bb.num_dims == 5)  goto cont;
+
+                for(dim = 5; dim < odsc->bb.num_dims; dim++) {
+                    odsc_tab[index].bb.lb.c[dim] = a[dim];
+                    odsc_tab[index].bb.ub.c[dim] = a[dim];                
+                }
+        
+                index++;
+
+    }
+    if(odsc->bb.num_dims == 6)  goto cont;
+    }
+    if(odsc->bb.num_dims == 7)  goto cont;
+    }
+    if(odsc->bb.num_dims == 8)  goto cont;
+    }
+    if(odsc->bb.num_dims == 9)  goto cont;
+    }
+    goto cont;
+
+    cont:       for(index = 0; index < num_odsc; index ++) {
+                    lb_1D_index = 0;
+                    ub_1D_index = 0;
+                    for(dim = odsc->bb.num_dims-1; dim > 0; dim--) {
+                        tmp = 1;
+                        for(i = 0; i < dim; i++) {
+                            tmp *= layout[i]; 
+                        }
+                    lb_1D_index += odsc_tab[index].bb.lb.c[dim] * tmp;
+                    ub_1D_index += odsc_tab[index].bb.ub.c[dim] * tmp;
+                    }
+                    lb_1D_index += odsc_tab[index].bb.lb.c[0];
+                    ub_1D_index += odsc_tab[index].bb.ub.c[0];
+                    odsc_tab[index].bb.num_dims = 1;
+                    memset(odsc_tab[index].bb.lb.c, 0, sizeof(uint64_t)*odsc->bb.num_dims);
+                    memset(odsc_tab[index].bb.ub.c, 0, sizeof(uint64_t)*odsc->bb.num_dims);
+                    odsc_tab[index].bb.lb.c[0] = lb_1D_index;
+                    odsc_tab[index].bb.ub.c[0] = ub_1D_index;
+                }
+    return 0;
+
+}
+
+static int obj_desc_to1Dbbox_p5(obj_descriptor *odsc, obj_descriptor *odsc_tab, 
+                                uint64_t *layout, uint64_t num_odsc)
+{
+    memcpy(odsc_tab, odsc, sizeof(obj_descriptor) * num_odsc);
+
+    uint64_t a[10];
+    uint64_t index = 0;
+    int dim, i;
+    uint64_t tmp;
+    uint64_t lb_1D_index = 0; 
+    uint64_t ub_1D_index = 0;
+
+    switch (odsc->bb.num_dims)
+        {
+        case 6:
+            goto dim6;
+            break;
+        case 7:
+            goto dim7;
+            break;
+        case 8:
+            goto dim8;
+            break;
+        case 9:
+            goto dim9;
+            break;
+        case 10:
+            goto dim10;
+            break;  
+        default:
+            break;
+        }
+
+    dim10:    for(a[9] = odsc->bb.lb.c[9]; a[9] <= odsc->bb.ub.c[9]; a[9]++) {
+
+    dim9:       for(a[8] = odsc->bb.lb.c[8]; a[8] <= odsc->bb.ub.c[8]; a[8]++) {
+
+    dim8:       for(a[7] = odsc->bb.lb.c[7]; a[7] <= odsc->bb.ub.c[7]; a[7]++) {
+
+    dim7:       for(a[6] = odsc->bb.lb.c[6]; a[6] <= odsc->bb.ub.c[6]; a[6]++) {
+
+    dim6:           odsc_tab[index].bb.lb.c[5] = odsc->bb.lb.c[5];
+                    odsc_tab[index].bb.ub.c[5] = odsc->bb.ub.c[5];
+
+                    odsc_tab[index].bb.lb.c[4] = odsc->bb.lb.c[4];
+                    odsc_tab[index].bb.ub.c[4] = odsc->bb.ub.c[4];
+
+                    odsc_tab[index].bb.lb.c[3] = odsc->bb.lb.c[3];
+                    odsc_tab[index].bb.ub.c[3] = odsc->bb.ub.c[3];
+
+                    odsc_tab[index].bb.lb.c[2] = odsc->bb.lb.c[2];
+                    odsc_tab[index].bb.ub.c[2] = odsc->bb.ub.c[2];
+
+
+                    odsc_tab[index].bb.lb.c[1] = odsc->bb.lb.c[1];
+                    odsc_tab[index].bb.ub.c[1] = odsc->bb.ub.c[1];
+
+                    odsc_tab[index].bb.lb.c[0] = odsc->bb.lb.c[0];
+                    odsc_tab[index].bb.ub.c[0] = odsc->bb.ub.c[0];
+
+ 
+                if(odsc->bb.num_dims == 6)  goto cont;
+
+                for(dim = 6; dim < odsc->bb.num_dims; dim++) {
+                    odsc_tab[index].bb.lb.c[dim] = a[dim];
+                    odsc_tab[index].bb.ub.c[dim] = a[dim];                
+                }
+        
+                index++;
+
+    }
+    if(odsc->bb.num_dims == 7)  goto cont;
+    }
+    if(odsc->bb.num_dims == 8)  goto cont;
+    }
+    if(odsc->bb.num_dims == 9)  goto cont;
+    }
+    goto cont;
+
+    cont:       for(index = 0; index < num_odsc; index ++) {
+                    lb_1D_index = 0;
+                    ub_1D_index = 0;
+                    for(dim = odsc->bb.num_dims-1; dim > 0; dim--) {
+                        tmp = 1;
+                        for(i = 0; i < dim; i++) {
+                            tmp *= layout[i]; 
+                        }
+                    lb_1D_index += odsc_tab[index].bb.lb.c[dim] * tmp;
+                    ub_1D_index += odsc_tab[index].bb.ub.c[dim] * tmp;
+                    }
+                    lb_1D_index += odsc_tab[index].bb.lb.c[0];
+                    ub_1D_index += odsc_tab[index].bb.ub.c[0];
+                    odsc_tab[index].bb.num_dims = 1;
+                    memset(odsc_tab[index].bb.lb.c, 0, sizeof(uint64_t)*odsc->bb.num_dims);
+                    memset(odsc_tab[index].bb.ub.c, 0, sizeof(uint64_t)*odsc->bb.num_dims);
+                    odsc_tab[index].bb.lb.c[0] = lb_1D_index;
+                    odsc_tab[index].bb.ub.c[0] = ub_1D_index;
+                }
+    return 0;
+}
+
+static int obj_desc_to1Dbbox_p6(obj_descriptor *odsc, obj_descriptor *odsc_tab, 
+                                uint64_t *layout, uint64_t num_odsc)
+{
+    memcpy(odsc_tab, odsc, sizeof(obj_descriptor) * num_odsc);
+
+    uint64_t a[10];
+    uint64_t index = 0;
+    int dim, i;
+    uint64_t tmp;
+    uint64_t lb_1D_index = 0; 
+    uint64_t ub_1D_index = 0;
+
+    switch (odsc->bb.num_dims)
+        {
+        case 7:
+            goto dim7;
+            break;
+        case 8:
+            goto dim8;
+            break;
+        case 9:
+            goto dim9;
+            break;
+        case 10:
+            goto dim10;
+            break;  
+        default:
+            break;
+        }
+
+    dim10:    for(a[9] = odsc->bb.lb.c[9]; a[9] <= odsc->bb.ub.c[9]; a[9]++) {
+
+    dim9:       for(a[8] = odsc->bb.lb.c[8]; a[8] <= odsc->bb.ub.c[8]; a[8]++) {
+
+    dim8:       for(a[7] = odsc->bb.lb.c[7]; a[7] <= odsc->bb.ub.c[7]; a[7]++) {
+
+    dim7:           odsc_tab[index].bb.lb.c[6] = odsc->bb.lb.c[6];
+                    odsc_tab[index].bb.ub.c[6] = odsc->bb.ub.c[6];
+
+                    odsc_tab[index].bb.lb.c[5] = odsc->bb.lb.c[5];
+                    odsc_tab[index].bb.ub.c[5] = odsc->bb.ub.c[5];
+
+                    odsc_tab[index].bb.lb.c[4] = odsc->bb.lb.c[4];
+                    odsc_tab[index].bb.ub.c[4] = odsc->bb.ub.c[4];
+
+                    odsc_tab[index].bb.lb.c[3] = odsc->bb.lb.c[3];
+                    odsc_tab[index].bb.ub.c[3] = odsc->bb.ub.c[3];
+
+                    odsc_tab[index].bb.lb.c[2] = odsc->bb.lb.c[2];
+                    odsc_tab[index].bb.ub.c[2] = odsc->bb.ub.c[2];
+
+
+                    odsc_tab[index].bb.lb.c[1] = odsc->bb.lb.c[1];
+                    odsc_tab[index].bb.ub.c[1] = odsc->bb.ub.c[1];
+
+                    odsc_tab[index].bb.lb.c[0] = odsc->bb.lb.c[0];
+                    odsc_tab[index].bb.ub.c[0] = odsc->bb.ub.c[0];
+
+ 
+                if(odsc->bb.num_dims == 7)  goto cont;
+
+                for(dim = 7; dim < odsc->bb.num_dims; dim++) {
+                    odsc_tab[index].bb.lb.c[dim] = a[dim];
+                    odsc_tab[index].bb.ub.c[dim] = a[dim];                
+                }
+        
+                index++;
+
+    }
+    if(odsc->bb.num_dims == 8)  goto cont;
+    }
+    if(odsc->bb.num_dims == 9)  goto cont;
+    }
+    goto cont;
+
+    cont:       for(index = 0; index < num_odsc; index ++) {
+                    lb_1D_index = 0;
+                    ub_1D_index = 0;
+                    for(dim = odsc->bb.num_dims-1; dim > 0; dim--) {
+                        tmp = 1;
+                        for(i = 0; i < dim; i++) {
+                            tmp *= layout[i]; 
+                        }
+                    lb_1D_index += odsc_tab[index].bb.lb.c[dim] * tmp;
+                    ub_1D_index += odsc_tab[index].bb.ub.c[dim] * tmp;
+                    }
+                    lb_1D_index += odsc_tab[index].bb.lb.c[0];
+                    ub_1D_index += odsc_tab[index].bb.ub.c[0];
+                    odsc_tab[index].bb.num_dims = 1;
+                    memset(odsc_tab[index].bb.lb.c, 0, sizeof(uint64_t)*odsc->bb.num_dims);
+                    memset(odsc_tab[index].bb.ub.c, 0, sizeof(uint64_t)*odsc->bb.num_dims);
+                    odsc_tab[index].bb.lb.c[0] = lb_1D_index;
+                    odsc_tab[index].bb.ub.c[0] = ub_1D_index;
+                }
+    return 0;
+}
+
+static int obj_desc_to1Dbbox_p7(obj_descriptor *odsc, obj_descriptor *odsc_tab, 
+                                uint64_t *layout, uint64_t num_odsc)
+{
+    memcpy(odsc_tab, odsc, sizeof(obj_descriptor) * num_odsc);
+
+    uint64_t a[10];
+    uint64_t index = 0;
+    int dim, i;
+    uint64_t tmp;
+    uint64_t lb_1D_index = 0; 
+    uint64_t ub_1D_index = 0;
+
+    switch (odsc->bb.num_dims)
+        {
+        case 8:
+            goto dim8;
+            break;
+        case 9:
+            goto dim9;
+            break;
+        case 10:
+            goto dim10;
+            break;  
+        default:
+            break;
+        }
+
+    dim10:    for(a[9] = odsc->bb.lb.c[9]; a[9] <= odsc->bb.ub.c[9]; a[9]++) {
+
+    dim9:       for(a[8] = odsc->bb.lb.c[8]; a[8] <= odsc->bb.ub.c[8]; a[8]++) {
+
+    dim8:           odsc_tab[index].bb.lb.c[7] = odsc->bb.lb.c[7];
+                    odsc_tab[index].bb.ub.c[7] = odsc->bb.ub.c[7];
+
+                    odsc_tab[index].bb.lb.c[6] = odsc->bb.lb.c[6];
+                    odsc_tab[index].bb.ub.c[6] = odsc->bb.ub.c[6];
+
+                    odsc_tab[index].bb.lb.c[5] = odsc->bb.lb.c[5];
+                    odsc_tab[index].bb.ub.c[5] = odsc->bb.ub.c[5];
+
+                    odsc_tab[index].bb.lb.c[4] = odsc->bb.lb.c[4];
+                    odsc_tab[index].bb.ub.c[4] = odsc->bb.ub.c[4];
+
+                    odsc_tab[index].bb.lb.c[3] = odsc->bb.lb.c[3];
+                    odsc_tab[index].bb.ub.c[3] = odsc->bb.ub.c[3];
+
+                    odsc_tab[index].bb.lb.c[2] = odsc->bb.lb.c[2];
+                    odsc_tab[index].bb.ub.c[2] = odsc->bb.ub.c[2];
+
+
+                    odsc_tab[index].bb.lb.c[1] = odsc->bb.lb.c[1];
+                    odsc_tab[index].bb.ub.c[1] = odsc->bb.ub.c[1];
+
+                    odsc_tab[index].bb.lb.c[0] = odsc->bb.lb.c[0];
+                    odsc_tab[index].bb.ub.c[0] = odsc->bb.ub.c[0];
+
+ 
+                if(odsc->bb.num_dims == 8)  goto cont;
+
+                for(dim = 8; dim < odsc->bb.num_dims; dim++) {
+                    odsc_tab[index].bb.lb.c[dim] = a[dim];
+                    odsc_tab[index].bb.ub.c[dim] = a[dim];                
+                }
+        
+                index++;
+
+    }
+    if(odsc->bb.num_dims == 9)  goto cont;
+    }
+    goto cont;
+
+    cont:       for(index = 0; index < num_odsc; index ++) {
+                    lb_1D_index = 0;
+                    ub_1D_index = 0;
+                    for(dim = odsc->bb.num_dims-1; dim > 0; dim--) {
+                        tmp = 1;
+                        for(i = 0; i < dim; i++) {
+                            tmp *= layout[i]; 
+                        }
+                    lb_1D_index += odsc_tab[index].bb.lb.c[dim] * tmp;
+                    ub_1D_index += odsc_tab[index].bb.ub.c[dim] * tmp;
+                    }
+                    lb_1D_index += odsc_tab[index].bb.lb.c[0];
+                    ub_1D_index += odsc_tab[index].bb.ub.c[0];
+                    odsc_tab[index].bb.num_dims = 1;
+                    memset(odsc_tab[index].bb.lb.c, 0, sizeof(uint64_t)*odsc->bb.num_dims);
+                    memset(odsc_tab[index].bb.ub.c, 0, sizeof(uint64_t)*odsc->bb.num_dims);
+                    odsc_tab[index].bb.lb.c[0] = lb_1D_index;
+                    odsc_tab[index].bb.ub.c[0] = ub_1D_index;
+                }
+    return 0;
+}
+
+static int obj_desc_to1Dbbox_p8(obj_descriptor *odsc, obj_descriptor *odsc_tab, 
+                                uint64_t *layout, uint64_t num_odsc)
+{
+    memcpy(odsc_tab, odsc, sizeof(obj_descriptor) * num_odsc);
+
+    uint64_t a[10];
+    uint64_t index = 0;
+    int dim, i;
+    uint64_t tmp;
+    uint64_t lb_1D_index = 0; 
+    uint64_t ub_1D_index = 0;
+
+    switch (odsc->bb.num_dims)
+        {
+        case 9:
+            goto dim9;
+            break;
+        case 10:
+            goto dim10;
+            break;  
+        default:
+            break;
+        }
+
+    dim10:    for(a[9] = odsc->bb.lb.c[9]; a[9] <= odsc->bb.ub.c[9]; a[9]++) {
+
+    dim9:           odsc_tab[index].bb.lb.c[8] = odsc->bb.lb.c[8];
+                    odsc_tab[index].bb.ub.c[8] = odsc->bb.ub.c[8];
+
+                    odsc_tab[index].bb.lb.c[7] = odsc->bb.lb.c[7];
+                    odsc_tab[index].bb.ub.c[7] = odsc->bb.ub.c[7];
+
+                    odsc_tab[index].bb.lb.c[6] = odsc->bb.lb.c[6];
+                    odsc_tab[index].bb.ub.c[6] = odsc->bb.ub.c[6];
+
+                    odsc_tab[index].bb.lb.c[5] = odsc->bb.lb.c[5];
+                    odsc_tab[index].bb.ub.c[5] = odsc->bb.ub.c[5];
+
+                    odsc_tab[index].bb.lb.c[4] = odsc->bb.lb.c[4];
+                    odsc_tab[index].bb.ub.c[4] = odsc->bb.ub.c[4];
+
+                    odsc_tab[index].bb.lb.c[3] = odsc->bb.lb.c[3];
+                    odsc_tab[index].bb.ub.c[3] = odsc->bb.ub.c[3];
+
+                    odsc_tab[index].bb.lb.c[2] = odsc->bb.lb.c[2];
+                    odsc_tab[index].bb.ub.c[2] = odsc->bb.ub.c[2];
+
+
+                    odsc_tab[index].bb.lb.c[1] = odsc->bb.lb.c[1];
+                    odsc_tab[index].bb.ub.c[1] = odsc->bb.ub.c[1];
+
+                    odsc_tab[index].bb.lb.c[0] = odsc->bb.lb.c[0];
+                    odsc_tab[index].bb.ub.c[0] = odsc->bb.ub.c[0];
+
+ 
+                if(odsc->bb.num_dims == 9)  goto cont;
+
+                for(dim = 9; dim < odsc->bb.num_dims; dim++) {
+                    odsc_tab[index].bb.lb.c[dim] = a[dim];
+                    odsc_tab[index].bb.ub.c[dim] = a[dim];                
+                }
+        
+                index++;
+
+    }
+    goto cont;
+
+    cont:       for(index = 0; index < num_odsc; index ++) {
+                    lb_1D_index = 0;
+                    ub_1D_index = 0;
+                    for(dim = odsc->bb.num_dims-1; dim > 0; dim--) {
+                        tmp = 1;
+                        for(i = 0; i < dim; i++) {
+                            tmp *= layout[i]; 
+                        }
+                    lb_1D_index += odsc_tab[index].bb.lb.c[dim] * tmp;
+                    ub_1D_index += odsc_tab[index].bb.ub.c[dim] * tmp;
+                    }
+                    lb_1D_index += odsc_tab[index].bb.lb.c[0];
+                    ub_1D_index += odsc_tab[index].bb.ub.c[0];
+                    odsc_tab[index].bb.num_dims = 1;
+                    memset(odsc_tab[index].bb.lb.c, 0, sizeof(uint64_t)*odsc->bb.num_dims);
+                    memset(odsc_tab[index].bb.ub.c, 0, sizeof(uint64_t)*odsc->bb.num_dims);
+                    odsc_tab[index].bb.lb.c[0] = lb_1D_index;
+                    odsc_tab[index].bb.ub.c[0] = ub_1D_index;
+                }
+    return 0;
+}
+
+static int obj_desc_to1Dbbox_p9(obj_descriptor *odsc, obj_descriptor *odsc_tab, 
+                                uint64_t *layout, uint64_t num_odsc)
+{
+    memcpy(odsc_tab, odsc, sizeof(obj_descriptor) * num_odsc);
+
+    uint64_t a[10];
+    uint64_t index = 0;
+    int dim, i;
+    uint64_t tmp;
+    uint64_t lb_1D_index = 0; 
+    uint64_t ub_1D_index = 0;
+
+    switch (odsc->bb.num_dims)
+        {
+        case 10:
+            goto dim10;
+            break;  
+        default:
+            break;
+        }
+
+    dim10:          odsc_tab[index].bb.lb.c[9] = odsc->bb.lb.c[9];
+                    odsc_tab[index].bb.ub.c[9] = odsc->bb.ub.c[9];
+
+                    odsc_tab[index].bb.lb.c[8] = odsc->bb.lb.c[8];
+                    odsc_tab[index].bb.ub.c[8] = odsc->bb.ub.c[8];
+
+                    odsc_tab[index].bb.lb.c[7] = odsc->bb.lb.c[7];
+                    odsc_tab[index].bb.ub.c[7] = odsc->bb.ub.c[7];
+
+                    odsc_tab[index].bb.lb.c[6] = odsc->bb.lb.c[6];
+                    odsc_tab[index].bb.ub.c[6] = odsc->bb.ub.c[6];
+
+                    odsc_tab[index].bb.lb.c[5] = odsc->bb.lb.c[5];
+                    odsc_tab[index].bb.ub.c[5] = odsc->bb.ub.c[5];
+
+                    odsc_tab[index].bb.lb.c[4] = odsc->bb.lb.c[4];
+                    odsc_tab[index].bb.ub.c[4] = odsc->bb.ub.c[4];
+
+                    odsc_tab[index].bb.lb.c[3] = odsc->bb.lb.c[3];
+                    odsc_tab[index].bb.ub.c[3] = odsc->bb.ub.c[3];
+
+                    odsc_tab[index].bb.lb.c[2] = odsc->bb.lb.c[2];
+                    odsc_tab[index].bb.ub.c[2] = odsc->bb.ub.c[2];
+
+
+                    odsc_tab[index].bb.lb.c[1] = odsc->bb.lb.c[1];
+                    odsc_tab[index].bb.ub.c[1] = odsc->bb.ub.c[1];
+
+                    odsc_tab[index].bb.lb.c[0] = odsc->bb.lb.c[0];
+                    odsc_tab[index].bb.ub.c[0] = odsc->bb.ub.c[0];
+
+ 
+                if(odsc->bb.num_dims == 10)  goto cont;
+
+                for(dim = 10; dim < odsc->bb.num_dims; dim++) {
+                    odsc_tab[index].bb.lb.c[dim] = a[dim];
+                    odsc_tab[index].bb.ub.c[dim] = a[dim];                
+                }
+        
+                index++;
+
+
+    goto cont;
+
+    cont:       for(index = 0; index < num_odsc; index ++) {
+                    lb_1D_index = 0;
+                    ub_1D_index = 0;
+                    for(dim = odsc->bb.num_dims-1; dim > 0; dim--) {
+                        tmp = 1;
+                        for(i = 0; i < dim; i++) {
+                            tmp *= layout[i]; 
+                        }
+                    lb_1D_index += odsc_tab[index].bb.lb.c[dim] * tmp;
+                    ub_1D_index += odsc_tab[index].bb.ub.c[dim] * tmp;
+                    }
+                    lb_1D_index += odsc_tab[index].bb.lb.c[0];
+                    ub_1D_index += odsc_tab[index].bb.ub.c[0];
+                    odsc_tab[index].bb.num_dims = 1;
+                    memset(odsc_tab[index].bb.lb.c, 0, sizeof(uint64_t)*odsc->bb.num_dims);
+                    memset(odsc_tab[index].bb.ub.c, 0, sizeof(uint64_t)*odsc->bb.num_dims);
+                    odsc_tab[index].bb.lb.c[0] = lb_1D_index;
+                    odsc_tab[index].bb.ub.c[0] = ub_1D_index;
+                }
+    return 0;
+}
+/* split in_odsc to multiple 1D odsc and put them in a table
+   return 0 indicates SUCCESS
+*/
+int obj_desc_to1Dbbox_v2(obj_descriptor *odsc, obj_descriptor *odsc_tab, uint64_t *layout, 
+                        uint64_t num_odsc, int pivot)
+{
+    fprintf(stderr, "I'm here: (%s)\n", __func__);
+    switch (pivot)
+    {
+    case 1:
+        obj_desc_to1Dbbox_p1(odsc, odsc_tab, layout, num_odsc);
+        break;
+    case 2:
+        obj_desc_to1Dbbox_p2(odsc, odsc_tab, layout, num_odsc);
+        break;
+    case 3:
+        obj_desc_to1Dbbox_p3(odsc, odsc_tab, layout, num_odsc);
+        break;
+    case 4:
+        obj_desc_to1Dbbox_p4(odsc, odsc_tab, layout, num_odsc);
+        break;
+    case 5:
+        obj_desc_to1Dbbox_p5(odsc, odsc_tab, layout, num_odsc);
+        break;
+    case 6:
+        obj_desc_to1Dbbox_p6(odsc, odsc_tab, layout, num_odsc);
+        break;
+    case 7:
+        obj_desc_to1Dbbox_p7(odsc, odsc_tab, layout, num_odsc);
+        break; 
+    case 8:
+        obj_desc_to1Dbbox_p8(odsc, odsc_tab, layout, num_odsc);
+        break;
+    case 9:
+        obj_desc_to1Dbbox_p9(odsc, odsc_tab, layout, num_odsc);
+        break;
+    default:
+        obj_desc_to1Dbbox(odsc, odsc_tab, layout, num_odsc);
+    }
+
+    return 0;
 }

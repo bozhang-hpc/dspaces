@@ -45,7 +45,7 @@ struct dspaces_provider{
     hg_id_t drain_id;
     hg_id_t kill_id;
     /* ifdef ENABLE_PGAS */
-    hg_id_t view_reg_id;
+    hg_id_t view_put_id;
 
     struct ds_gspace *dsg; 
     char **server_address;  
@@ -76,7 +76,7 @@ DECLARE_MARGO_RPC_HANDLER(odsc_internal_rpc);
 DECLARE_MARGO_RPC_HANDLER(ss_rpc);
 DECLARE_MARGO_RPC_HANDLER(kill_rpc);
 /* ifdef ENABLE_PGAS */
-DECLARE_MARGO_RPC_HANDLER(view_reg_rpc);
+DECLARE_MARGO_RPC_HANDLER(view_put_rpc);
 
 static void put_rpc(hg_handle_t h);
 static void put_local_rpc(hg_handle_t h);
@@ -89,7 +89,7 @@ static void kill_rpc(hg_handle_t h);
 //static void write_lock_rpc(hg_handle_t h);
 //static void read_lock_rpc(hg_handle_t h);
 
-static void view_reg_rpc(hg_handle_t h);
+static void view_put_rpc(hg_handle_t h);
 
 
 
@@ -690,7 +690,7 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm, dspaces_provider_t
         margo_registered_name(server->mid, "drain_rpc",         &server->drain_id,          &flag);
         margo_registered_name(server->mid, "kill_rpc",          &server->kill_id,           &flag);
 
-        margo_registered_name(server->mid, "view_reg_rpc",      &server->view_reg_id,       &flag);
+        margo_registered_name(server->mid, "view_put_rpc",      &server->view_put_id,       &flag);
 
     } else {
 
@@ -723,9 +723,9 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm, dspaces_provider_t
         margo_registered_disable_response(server->mid, server->kill_id, HG_TRUE);
         margo_register_data(server->mid, server->kill_id, (void*)server, NULL);
 
-        server->view_reg_id =
-            MARGO_REGISTER(server->mid, "view_reg_rpc", odsc_gdim_layout_t, bulk_out_t, view_reg_rpc);
-        margo_register_data(server->mid, server->view_reg_id, (void*)server, NULL);
+        server->view_put_id =
+            MARGO_REGISTER(server->mid, "view_put_rpc", bulk_layout_in_t, bulk_out_t, view_put_rpc);
+        margo_register_data(server->mid, server->view_put_id, (void*)server, NULL);
 
         
     }
@@ -1319,11 +1319,24 @@ void dspaces_server_fini(dspaces_provider_t server)
     margo_wait_for_finalize(server->mid);
 }
 /* ifdef ENABLE_PGAS */
-static void view_reg_rpc(hg_handle_t handle)
+
+static void print_od(struct obj_data *od) {
+    fprintf(stderr, "Print obj_data\n %s\n", obj_desc_sprint(&od->obj_desc));
+    fprintf(stderr, "Print Data\n");
+    for(int i=0; i<bbox_volume(&od->obj_desc.bb); i++) {
+        if (i % 8 == 0)
+            fprintf(stderr, "\n");
+        fprintf(stderr, "%lf ", *((double*) (od->data)+i));
+    }
+    fprintf(stderr, "\n");
+}
+
+static void view_put_rpc(hg_handle_t handle)
 {
     hg_return_t hret;
-    odsc_gdim_layout_t in;
+    bulk_layout_in_t in;
     bulk_out_t out;
+    hg_bulk_t bulk_handle;
 
     margo_instance_id mid = margo_hg_handle_get_instance(handle);
     
@@ -1345,32 +1358,87 @@ static void view_reg_rpc(hg_handle_t handle)
     margo_addr_to_string(server->mid, in_odsc.owner, &owner_addr_size, owner_addr);
     margo_addr_free(server->mid, owner_addr);
 
-    obj_descriptor *odsc_tab; 
-    uint64_t ent_num = obj_desc_to1Dbbox(&in_odsc, odsc_tab, view_layout);
-/*
-    int i;
-    for(i = 0; i < ent_num; i++) {
-        struct obj_data *od;
-        od = obj_data_alloc(&odsc_tab[i]);
-        memcpy(&od->gdim, in.odsc_gdim.raw_gdim, sizeof(struct global_dimension));
+    struct obj_data *od;
+    od = obj_data_alloc(&in_odsc);
+    memcpy(&od->gdim, in.odsc_gdim_layout.raw_gdim, sizeof(struct global_dimension));
 
-        if(!od)
-            fprintf(stderr, "ERROR: (%s): object allocation failed!\n", __func__);
+    if(!od)
+        fprintf(stderr, "ERROR: (%s): object allocation failed!\n", __func__);
+
+    hg_size_t size = (in_odsc.size)*bbox_volume(&(in_odsc.bb));
+
+    void *buffer = (void*) od->data;
+    hret = margo_bulk_create(mid, 1, (void**)&(od->data), &size,
+                HG_BULK_WRITE_ONLY, &bulk_handle);
+
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_bulk_create failed!\n", __func__);
+        out.ret = dspaces_ERR_MERCURY;
+        margo_respond(handle, &out);
+        margo_free_input(handle, &in);
+        margo_destroy(handle);
+        return;
+	}
+
+    hret = margo_bulk_transfer(mid, HG_BULK_PULL, info->addr, in.handle, 0,
+            bulk_handle, 0, size);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_bulk_transfer failed!\n", __func__);
+        out.ret = dspaces_ERR_MERCURY;
+        margo_respond(handle, &out);
+        margo_free_input(handle, &in);
+        margo_bulk_free(bulk_handle);
+        margo_destroy(handle);
+        return;
+    }
+
+    print_od(od);
+
+    uint64_t ent_num = bbox1D_num(&in_odsc.bb);
+    obj_descriptor odsc_tab[ent_num];
+    struct obj_data **od_tab = malloc(sizeof(struct obj_data*) * ent_num);
+    int err = obj_data_to1Dbbox(od, od_tab, odsc_tab, view_layout, ent_num);
+    if(err) {
+        free(od_tab);
+        return;
+    }
+
+    for(int i=0; i<ent_num; i++) {
+        print_od(od_tab[i]);
+    }
+
+/*
+    uint64_t ent_num = bbox1D_num(&in_odsc.bb);
+    obj_descriptor *odsc_tab = malloc(sizeof(obj_descriptor) * ent_num);
+    obj_desc_to1Dbbox(&in_odsc, odsc_tab, view_layout, ent_num);
+*/
+/*
+    int pivot;
+    uint64_t ent_num = bbox1D_num_v2(&in_odsc.bb, view_layout, &pivot);
+
+    struct obj_data **od_tab = malloc(sizeof(struct obj_data) * ent_num);
+
+    obj_descriptor *odsc_tab = malloc(sizeof(obj_descriptor) * ent_num);
+    obj_desc_to1Dbbox_v2(&in_odsc, odsc_tab, view_layout, ent_num, pivot);
+*/
+
+    for(int i = 0; i < ent_num; i++) {
+        memcpy(&od_tab[i]->gdim, in.odsc_gdim_layout.raw_gdim, sizeof(struct global_dimension));
 
         ABT_mutex_lock(server->ls_mutex);
-        ls_add_obj(server->dsg->ls, od);
+        ls_add_obj(server->dsg->ls, od_tab[i]);
         ABT_mutex_unlock(server->ls_mutex);
 
-        obj_update_dht(server, od, DS_OBJ_NEW);
+        obj_update_dht(server, od_tab[i], DS_OBJ_NEW);
     }
-*/
+
     DEBUG_OUT("Finished obj_put_update from put_rpc\n");
 
     out.ret = dspaces_SUCCESS;
-
+    margo_bulk_free(bulk_handle);
     margo_respond(handle, &out);
     margo_free_input(handle, &in);
     margo_destroy(handle);
   
 }
-DEFINE_MARGO_RPC_HANDLER(view_reg_rpc)
+DEFINE_MARGO_RPC_HANDLER(view_put_rpc)
