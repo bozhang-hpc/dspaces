@@ -42,6 +42,7 @@ struct dspaces_client {
     hg_id_t kill_id;
     /* ifdef ENABLE_PGAS */
     hg_id_t view_put_id;
+    hg_id_t pgas_query_id;
 
     struct dc_gspace *dcg;
     char **server_address;
@@ -259,6 +260,7 @@ int client_init(char *listen_addr_str, int rank, dspaces_client_t* c)
         margo_registered_name(client->mid, "kill_rpc",      &client->kill_id, &flag); 
 
         margo_registered_name(client->mid, "view_put_rpc",      &client->view_put_id, &flag); 
+        margo_registered_name(client->mid, "pgas_query_rpc",    &client->pgas_query_id, &flag); 
 
 
     } else {
@@ -283,6 +285,8 @@ int client_init(char *listen_addr_str, int rank, dspaces_client_t* c)
 
         client->view_put_id =
             MARGO_REGISTER(client->mid, "view_put_rpc", bulk_layout_in_t, bulk_out_t, NULL);
+        client->pgas_query_id =
+            MARGO_REGISTER(client->mid, "pgas_query_rpc", odsc_gdim_layout_t, odsc_map_list_t, NULL);
      
     }
 
@@ -927,3 +931,92 @@ int dspaces_view_put(dspaces_client_t client,
 	return ret;
 }
 
+int dspaces_view_get(dspaces_client_t client,
+		const char *var_name,
+        unsigned int ver, int elem_size,
+        int ndim, uint64_t *view_layout,
+        uint64_t *lb, uint64_t *ub, 
+        void *data, int timeout)
+{
+    hg_addr_t server_addr;
+    hg_handle_t handle;
+    hg_return_t hret;
+    int ret = dspaces_SUCCESS;
+
+    obj_descriptor odsc = {
+            .version = ver, .owner = {0}, 
+            .st = st,
+            .size = elem_size,
+            .bb = {.num_dims = ndim,}
+    };
+
+    memset(odsc.bb.lb.c, 0, sizeof(uint64_t)*BBOX_MAX_NDIM);
+    memset(odsc.bb.ub.c, 0, sizeof(uint64_t)*BBOX_MAX_NDIM);
+
+    memcpy(odsc.bb.lb.c, lb, sizeof(uint64_t)*ndim);
+    memcpy(odsc.bb.ub.c, ub, sizeof(uint64_t)*ndim);
+
+    strncpy(odsc.name, var_name, sizeof(odsc.name)-1);
+    odsc.name[sizeof(odsc.name)-1] = '\0';
+
+    odsc_gdim_layout_t in;
+    odsc_map_list_t out;
+
+    in.odsc_gdim_layout.size = sizeof(odsc);
+    in.odsc_gdim_layout.raw_odsc = (char*)(&odsc);
+    in.param = timeout;
+
+    struct global_dimension od_gdim;
+
+    set_global_dimension(&(client->dcg->gdim_list), var_name, &(client->dcg->default_gdim),
+                         &od_gdim);
+
+    in.odsc_gdim_layout.gdim_size = sizeof(struct global_dimension);
+    in.odsc_gdim_layout.raw_gdim = (char*)(&od_gdim);
+    in.odsc_gdim_layout.layout_size = ndim * sizeof(uint64_t);
+    in.odsc_gdim_layout.view_layout = (char*)(view_layout);
+
+    get_server_address(client, &server_addr);
+
+    hret = margo_create( client->mid,
+            server_addr,
+            client->pgas_query_id,
+            &handle);
+    assert(hret == HG_SUCCESS);
+
+    hret = margo_forward(handle, &in);
+    assert(hret == HG_SUCCESS);
+
+    hret = margo_get_output(handle, &out);
+    assert(hret == HG_SUCCESS);
+
+    obj_descriptor *src_odsc_tab, *dst_odsc_tab;
+    int num_src_odscs = (out.src_odsc_list.size)/sizeof(obj_descriptor);
+    src_odsc_tab = malloc(out.src_odsc_list.size);
+    memcpy(src_odsc_tab, out.src_odsc_list.raw_odsc, out.src_odsc_list.size);
+
+    uint64_t *map_num_tab = malloc(out.map_num.size);
+    memcpy(map_num_tab, out.map_num.data, out.map_num.size);
+
+    int num_dst_odscs = (out.dst_odsc_list.size)/sizeof(obj_descriptor);
+    dst_odsc_tab = malloc(out.dst_odsc_list.size);
+    memcpy(dst_odsc_tab, out.dst_odsc_list.raw_odsc, out.dst_odsc_list.size);
+
+
+    margo_free_output(handle, &out);
+    margo_destroy(handle);
+
+    DEBUG_OUT("Finished query - need to fetch %d objects\n", num_dst_odscs);
+    fprintf(stderr, "1D odsc in sequence:\n");
+    for (int i = 0; i < num_src_odscs; i++)
+    {
+        fprintf(stderr,"%s\n", obj_desc_sprint(&src_odsc_tab[i]));
+        fprintf(stderr,"corresponding num of odscs to search: %llu\n", map_num_tab[i]);
+    }
+
+    fprintf(stderr, "all odscs to search in sequence:\n");
+    for (int i = 0; i < num_dst_odscs; i++)
+    {
+        fprintf(stderr,"%s\n", obj_desc_sprint(&dst_odsc_tab[i]));
+    }
+}

@@ -27,15 +27,34 @@ int main(int argc, char** argv)
     char var_name[128];
     sprintf(var_name, "example1_data");
 
-/*
+    int err;
+
+    int gdim0 = 2;
+    int gdim1 = 8;
+
     int dim0 = 2;
-    int dim1 = 8;
+    int dim1 = 2;
 
     double *data = (double*) malloc(dim0*dim1*sizeof(double));
 
+/*
+    for(int i = 0 ; i < dim0; i++) {
+        for(int j = 2*rank; j < 2*rank+2; j++) {
+            data[i*dim1+j] = i*dim1+j;
+            printf("%lf ", data[i*dim1+j]);
+        }
+        printf("\n");
+    }
+*/
+
+    data[0] = 2*rank;
+    data[1] = 2*rank+1;
+    data[2] = 8+2*rank;
+    data[3] = 8+2*rank+1;
+
     for(int i = 0 ; i < dim0; i++) {
         for(int j = 0; j < dim1; j++) {
-            data[i*dim1+j] = i*dim1+j;
+            //data[i*dim1+j] = i*dim1+j;
             printf("%lf ", data[i*dim1+j]);
         }
         printf("\n");
@@ -47,12 +66,12 @@ int main(int argc, char** argv)
     view_layout[1]=2;
     uint64_t lb[2] = {0}, ub[2] = {0};
 
-    lb[0] = 1;
+    lb[0] = 2*rank;
     lb[1] = 0;
-    ub[0] = 5;
+    ub[0] = 2*rank+1;
     ub[1] = 1;
 
-*/
+
 
 /*
     int dim0 = 2;
@@ -85,6 +104,7 @@ int main(int argc, char** argv)
     ub[2] = 1;
 */
 
+/*
     int dim0 = 2;
     int dim1 = 4;
     int dim2 = 4;
@@ -114,9 +134,10 @@ int main(int argc, char** argv)
     ub[1] = 3;
     ub[2] = 1;
 
-
-    int err = dspaces_view_put(ndcl, var_name, 0, sizeof(double), ndim, view_layout, lb, ub, data);
-
+*/
+    
+        err = dspaces_view_put(ndcl, var_name, 0, sizeof(double), ndim, view_layout, lb, ub, data);
+    
     MPI_Barrier(gcomm);
 
     sleep(15);

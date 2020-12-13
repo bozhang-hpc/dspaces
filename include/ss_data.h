@@ -118,6 +118,12 @@ typedef struct{
 
 } odsc_hdr_with_gdim_view_layout;
 
+typedef struct {
+        size_t size;
+        char *data;
+} raw_array;
+
+
 struct dht_sub_list_entry {
     obj_descriptor *odsc; //subbed object
     long remaining;
@@ -303,6 +309,33 @@ static inline hg_return_t hg_proc_odsc_hdr_with_gdim_view_layout(hg_proc_t proc,
 
 }
 
+static inline hg_return_t hg_proc_raw_array(hg_proc_t proc, void *arg)
+{
+  hg_return_t ret;
+  raw_array *in = (raw_array*) arg;
+  ret = hg_proc_hg_size_t(proc, &in->size);
+  if(ret != HG_SUCCESS) return ret;
+  if (in->size) {
+    switch (hg_proc_get_op(proc)) {
+    case HG_ENCODE:
+        ret = hg_proc_raw(proc, in->data, in->size);
+        if(ret != HG_SUCCESS) return ret;
+      break;
+    case HG_DECODE:
+        in->data = (char*) malloc(in->size);
+        ret = hg_proc_raw(proc, in->data, in->size);
+        if(ret != HG_SUCCESS) return ret;
+      break;
+    case HG_FREE:
+        free(in->data);
+      break;
+    default:
+      break;
+    }
+  }
+  return HG_SUCCESS;
+}
+
 MERCURY_GEN_PROC(bulk_gdim_t,
         ((odsc_hdr_with_gdim)(odsc))\
         ((hg_bulk_t)(handle)))
@@ -320,6 +353,10 @@ MERCURY_GEN_PROC(odsc_gdim_layout_t, ((odsc_hdr_with_gdim_view_layout)(odsc_gdim
 MERCURY_GEN_PROC(bulk_layout_in_t,
         ((odsc_hdr_with_gdim_view_layout)(odsc_gdim_layout))\
         ((hg_bulk_t)(handle)))
+
+MERCURY_GEN_PROC(odsc_map_list_t, ((odsc_hdr)(src_odsc_list))\
+                ((raw_array)(map_num))\
+                ((odsc_hdr)(dst_odsc_list)))
 
 char * obj_desc_sprint(obj_descriptor *);
 //

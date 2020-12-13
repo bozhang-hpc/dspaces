@@ -1,1 +1,1 @@
-add_subdirectory(ex1_pgas_put)
+add_subdirectory(ex1_pgas_put_get)

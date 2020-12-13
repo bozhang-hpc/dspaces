@@ -1609,13 +1609,14 @@ char ** addr_str_buf_to_list(
 */
 int obj_desc_to1Dbbox(obj_descriptor *odsc, obj_descriptor *odsc_tab, uint64_t *layout, uint64_t num_odsc)
 {
-    
-    memcpy(odsc_tab, odsc, sizeof(obj_descriptor) * num_odsc);
-    
+    int i;
+    for(i=0; i < num_odsc; i++) {
+        memcpy(&odsc_tab[i], odsc, sizeof(obj_descriptor));
+    }
     
     uint64_t a[10];
     uint64_t index = 0;
-    int dim, i;
+    int dim;
     uint64_t tmp;
     uint64_t lb_1D_index = 0; 
     uint64_t ub_1D_index = 0;
