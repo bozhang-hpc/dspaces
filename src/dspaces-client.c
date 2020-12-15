@@ -435,6 +435,7 @@ int dspaces_put (dspaces_client_t client,
 
 static int get_data(dspaces_client_t client, int num_odscs, obj_descriptor req_obj, obj_descriptor *odsc_tab, void *data)
 {
+    int ret;
     bulk_in_t *in;
     in = (bulk_in_t*)malloc(sizeof(bulk_in_t)*num_odscs);
 
@@ -481,6 +482,7 @@ static int get_data(dspaces_client_t client, int num_odscs, obj_descriptor req_o
         margo_wait(serv_req[i]);
         bulk_out_t resp;
         margo_get_output(hndl[i], &resp);
+        ret = resp.ret;
         margo_free_output(hndl[i], &resp);
         margo_destroy(hndl[i]);
         //copy received data into user return buffer
@@ -491,6 +493,8 @@ static int get_data(dspaces_client_t client, int num_odscs, obj_descriptor req_o
     free(serv_req);
     free(in);
     free(return_od);
+
+    return ret;
 
 }
 
@@ -931,6 +935,17 @@ int dspaces_view_put(dspaces_client_t client,
 	return ret;
 }
 
+static void print_od(struct obj_data *od) {
+    fprintf(stderr, "Print obj_data\n %s\n", obj_desc_sprint(&od->obj_desc));
+    fprintf(stderr, "Print Data\n");
+    for(int i=0; i<bbox_volume(&od->obj_desc.bb); i++) {
+        if (i % 8 == 0)
+            fprintf(stderr, "\n");
+        fprintf(stderr, "%lf ", *((double*) (od->data)+i));
+    }
+    fprintf(stderr, "\n");
+}
+
 int dspaces_view_get(dspaces_client_t client,
 		const char *var_name,
         unsigned int ver, int elem_size,
@@ -1008,15 +1023,53 @@ int dspaces_view_get(dspaces_client_t client,
 
     DEBUG_OUT("Finished query - need to fetch %d objects\n", num_dst_odscs);
     fprintf(stderr, "1D odsc in sequence:\n");
-    for (int i = 0; i < num_src_odscs; i++)
-    {
+    for (int i = 0; i < num_src_odscs; i++) {
         fprintf(stderr,"%s\n", obj_desc_sprint(&src_odsc_tab[i]));
         fprintf(stderr,"corresponding num of odscs to search: %llu\n", map_num_tab[i]);
     }
 
     fprintf(stderr, "all odscs to search in sequence:\n");
-    for (int i = 0; i < num_dst_odscs; i++)
-    {
+    for (int i = 0; i < num_dst_odscs; i++) {
         fprintf(stderr,"%s\n", obj_desc_sprint(&dst_odsc_tab[i]));
     }
+
+    struct obj_data **src_od_list;
+    src_od_list = malloc(sizeof(*src_od_list) * num_src_odscs);
+
+    //obj_descriptor *tmp_odsc_tab;
+    obj_descriptor *curr_odsc = dst_odsc_tab;
+    void *curr = data;
+
+    for(int i = 0; i < num_src_odscs; i++) {
+        src_od_list[i] = obj_data_alloc(&src_odsc_tab[i]);
+        ret = get_data(client, map_num_tab[i], src_odsc_tab[i], curr_odsc, src_od_list[i]->data);
+        curr_odsc += map_num_tab[i];
+        //tmp_od_list = malloc(sizeof(*tmp_od_list) * map_num_tab[i]);
+        //tmp_odsc_tab = malloc(sizeof(*tmp_odsc_tab) * map_num_tab[i]);
+        print_od(src_od_list[i]);
+        memcpy(curr, src_od_list[i]->data, obj_data_size(&src_odsc_tab[i]));
+        curr += obj_data_size(&src_odsc_tab[i]);
+
+        obj_data_free(src_od_list[i]);
+    }
+
+    margo_addr_free(client->mid, server_addr);
+
+    free(src_od_list);
+
+    fprintf(stderr, "Print Final obj_data\n %s\n", obj_desc_sprint(&odsc));
+    fprintf(stderr, "Print Data\n");
+    for(int i=0; i<bbox_volume(&odsc.bb); i++) {
+        if (i % 8 == 0)
+            fprintf(stderr, "\n");
+        fprintf(stderr, "%lf ", *((double*) (data)+i));
+    }
+    fprintf(stderr, "\n");
+
+    free(src_odsc_tab);
+    free(dst_odsc_tab);
+    free(map_num_tab);
+
+    return ret;
+
 }

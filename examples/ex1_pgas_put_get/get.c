@@ -32,7 +32,9 @@ int main(int argc, char** argv)
     int dim0 = 4;
     int dim1 = 4;
 
-    double *data = (double*) malloc(dim0*dim1*sizeof(double));
+    double *data = (double*) malloc(4*4*sizeof(double));
+
+    //double *data = (double*) malloc(dim0*dim1*sizeof(double));
 
     int ndim = 2;
     uint64_t view_layout[2];
@@ -42,14 +44,26 @@ int main(int argc, char** argv)
 
     lb[0] = 0;
     lb[1] = 0;
-    ub[0] = 2;
-    ub[1] = 2;
+    ub[0] = 3;
+    ub[1] = 3;
 
     
         err = dspaces_view_get(ndcl, var_name, 0, sizeof(double), ndim, view_layout, lb, ub, data, -1);
     
     MPI_Barrier(gcomm);
-
+    
+    printf("=======\n");
+    /*
+    printf("%lf", data[0]);
+    printf("%lf", data[1]);
+    */
+    for(int i=0; i<4; i++) {
+        for(int j=0; j<4; j++) {
+            fprintf(stderr, "%lf ", data[i*4+j]);
+        }
+        fprintf(stderr, "\n");
+    }
+    
     sleep(15);
 
     client_finalize(ndcl);
