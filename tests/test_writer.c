@@ -153,6 +153,7 @@ int main(int argc, char **argv)
         npapp *= np[i];
     }
 
+
     // Using SPMD style programming
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
@@ -166,6 +167,8 @@ int main(int argc, char **argv)
     if(npapp != nprocs) {
         fprintf(stderr,
                 "Product of np[i] args must equal number of MPI processes!\n");
+        fprintf(stderr,
+                "npapp=%d, nprocs=%d\n", npapp, nprocs);
         print_usage();
         return (-1);
     }
