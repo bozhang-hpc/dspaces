@@ -58,6 +58,7 @@ struct dspaces_provider {
     hg_id_t kill_client_id;
     hg_id_t sub_id;
     hg_id_t notify_id;
+    hg_id_t transpose_id;
     struct ds_gspace *dsg;
     char **server_address;
     char **node_names;
@@ -92,6 +93,7 @@ DECLARE_MARGO_RPC_HANDLER(odsc_internal_rpc);
 DECLARE_MARGO_RPC_HANDLER(ss_rpc);
 DECLARE_MARGO_RPC_HANDLER(kill_rpc);
 DECLARE_MARGO_RPC_HANDLER(sub_rpc);
+DECLARE_MARGO_RPC_HANDLER(transpose_rpc);
 
 static void put_rpc(hg_handle_t h);
 static void put_local_rpc(hg_handle_t h);
@@ -104,6 +106,7 @@ static void odsc_internal_rpc(hg_handle_t h);
 static void ss_rpc(hg_handle_t h);
 static void kill_rpc(hg_handle_t h);
 static void sub_rpc(hg_handle_t h);
+static void transpose_rpc(hg_handle_t h);
 // static void write_lock_rpc(hg_handle_t h);
 // static void read_lock_rpc(hg_handle_t h);
 
@@ -797,6 +800,9 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm,
         DS_HG_REGISTER(hg, server->sub_id, odsc_gdim_t, void, sub_rpc);
         margo_registered_name(server->mid, "notify_rpc", &server->notify_id,
                               &flag);
+
+        margo_registered_name(server->mid, "transpose_rpc", &server->transpose_id, &flag);
+        DS_HG_REGISTER(hg, server->transpose_id, bulk_gdim_t, bulk_out_t, transpose_rpc);
     } else {
         server->put_id = MARGO_REGISTER(server->mid, "put_rpc", bulk_gdim_t,
                                         bulk_out_t, put_rpc);
@@ -859,6 +865,10 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm,
             MARGO_REGISTER(server->mid, "notify_rpc", odsc_list_t, void, NULL);
         margo_registered_disable_response(server->mid, server->notify_id,
                                           HG_TRUE);
+        server->transpose_id = MARGO_REGISTER(server->mid, "transpose_rpc", bulk_gdim_t,
+                                          bulk_out_t, transpose_rpc);
+        margo_register_data(server->mid, server->transpose_id, (void *)server,
+                            NULL);
     }
     int size_sp = 1;
     int err = dsg_alloc(server, "dataspaces.conf", comm);
@@ -1821,3 +1831,76 @@ void dspaces_server_fini(dspaces_provider_t server)
     margo_wait_for_finalize(server->mid);
     free(server);
 }
+
+static void transpose_rpc(hg_handle_t handle)
+{
+    hg_return_t hret;
+    bulk_gdim_t in;
+    bulk_out_t out;
+
+    margo_instance_id mid = margo_hg_handle_get_instance(handle);
+
+    const struct hg_info *info = margo_get_info(handle);
+    dspaces_provider_t server =
+        (dspaces_provider_t)margo_registered_data(mid, info->id);
+
+    hret = margo_get_input(handle, &in);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr,
+                "DATASPACES: ERROR handling %s: margo_get_input() failed with "
+                "%d.\n",
+                __func__, hret);
+        margo_destroy(handle);
+        return;
+    }
+
+    obj_descriptor in_odsc, ts_odsc;
+    memcpy(&in_odsc, in.odsc.raw_odsc, sizeof(in_odsc));
+
+    DEBUG_OUT("received transposed request\n");
+
+    // if find any obj_data that contains transposed sub obj_data, return
+    struct obj_data *transposed_from_obj;
+    obj_desc_transpose(&ts_odsc, &in_odsc);
+    transposed_from_obj = ls_find(server->dsg->ls, &ts_odsc);
+    if(transposed_from_obj != NULL) {
+        out.ret = dspaces_SUCCESS;
+        margo_respond(handle, &out);
+        margo_free_input(handle, &in);
+        margo_destroy(handle);
+        DEBUG_OUT("Transposed obj_data already exists, return!\n");
+        return;
+    }
+
+    struct obj_data *src_od, *from_obj, *ts_od;
+
+    from_obj = ls_find(server->dsg->ls, &in_odsc);
+
+    src_od = obj_data_alloc(&in_odsc);
+    ssd_copy(src_od, from_obj);
+
+    ts_od = obj_data_alloc(&ts_odsc);
+
+    int ret = od_transpose(ts_od, src_od);
+    if(ret != bbox_volume(&src_od->obj_desc.bb)) {
+        printf(stderr,
+                "DATASPACES: ERROR handling %s: od_transpose() failed with "
+                "%d.\n",
+                __func__, ret);
+        return;
+    }
+
+    ABT_mutex_lock(server->ls_mutex);
+    ls_add_obj(server->dsg->ls, ts_od);
+    ABT_mutex_unlock(server->ls_mutex);
+
+    // now update the dht
+    out.ret = dspaces_SUCCESS;
+    margo_respond(handle, &out);
+    margo_free_input(handle, &in);
+    margo_destroy(handle);
+
+    obj_update_dht(server, ts_od, DS_OBJ_NEW);
+    DEBUG_OUT("Finished obj_transpose_update from put_rpc\n");
+}
+DEFINE_MARGO_RPC_HANDLER(transpose_rpc)

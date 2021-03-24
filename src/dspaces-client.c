@@ -62,6 +62,7 @@ struct dspaces_client {
     hg_id_t kill_client_id;
     hg_id_t sub_id;
     hg_id_t notify_id;
+    hg_id_t transpose_id;
     struct dc_gspace *dcg;
     char **server_address;
     char **node_names;
@@ -454,6 +455,7 @@ int dspaces_init(int rank, dspaces_client_t *c)
         DS_HG_REGISTER(hg, client->notify_id, odsc_list_t, void, notify_rpc);
         margo_registered_name(client->mid, "query_meta_rpc",
                               &client->query_meta_id, &flag);
+        margo_registered_name(client->mid, "transpose_rpc", &client->transpose_id, &flag);
     } else {
         client->put_id = MARGO_REGISTER(client->mid, "put_rpc", bulk_gdim_t,
                                         bulk_out_t, NULL);
@@ -501,6 +503,9 @@ int dspaces_init(int rank, dspaces_client_t *c)
                             NULL);
         margo_registered_disable_response(client->mid, client->notify_id,
                                           HG_TRUE);
+
+        client->transpose_id =
+            MARGO_REGISTER(client->mid, "transpose_rpc", bulk_gdim_t, bulk_out_t, NULL);
     }
 
     get_ss_info(client);
@@ -1660,4 +1665,96 @@ void dspaces_kill(dspaces_client_t client)
 
     margo_addr_free(client->mid, server_addr);
     margo_destroy(h);
+}
+
+static int transpose_data(dspaces_client_t client, int num_odscs, obj_descriptor *odsc_tab)
+{
+    hg_handle_t *hndl;
+    margo_request *serv_req;
+    bulk_gdim_t *in
+    in = (bulk_gdim_t *) malloc(sizeof(bulk_gdim_t) * num_odscs);
+    
+    hndl = (hg_handle_t *)malloc(sizeof(hg_handle_t) * num_odscs);
+    serv_req = (margo_request *)malloc(sizeof(margo_request) * num_odscs);
+    int ret = dspaces_SUCCESS;
+
+    for(int i = 0; i < num_odscs; i++) {
+        const char* var_name = odsc_tab[i].name;
+        struct global_dimension odsc_gdim;
+        set_global_dimension(&(client->dcg->gdim_list), var_name,
+                            &(client->dcg->default_gdim), &odsc_gdim);
+
+        in[i].odsc.size = sizeof(obj_descriptor);
+        in[i].odsc.raw_odsc = (char*) (&odsc_tab[i]);
+        in[i].odsc.gdim_size = sizeof(struct global_dimension);
+        in[i].odsc.raw_gdim = (char*) (&odsc_gdim);
+
+
+        hg_addr_t server_addr;
+        margo_addr_lookup(client->mid, odsc_tab[i].owner, &server_addr);
+
+        hg_handle_t handle;
+        
+
+        if(odsc_tab[i].flags & DS_CLIENT_STORAGE) {
+            DEBUG_OUT("Transposing object from client-local storage.\n");
+            //margo_create(client->mid, server_addr, client->get_local_id,
+            //             &handle);
+        } else {
+            DEBUG_OUT("Transposing object from server storage.\n");
+            margo_create(client->mid, server_addr, client->get_id, &handle);
+        }
+
+        margo_request req;
+        // forward get requests
+        margo_iforward(handle, &in[i], &req);
+        hndl[i] = handle;
+        serv_req[i] = req;
+        margo_addr_free(client->mid, server_addr);
+    }
+
+    for(int i = 0; i < num_odscs; i++) {
+        margo_wait(serv_req[i]);
+        bulk_out_t resp;
+        margo_get_output(hndl[i], &resp);
+        if(ret == dspaces_SUCCESS)
+            ret = resp.ret;
+        margo_free_output(hndl[i], &resp);
+        margo_destroy(hndl[i]);
+    }
+
+    free(hndl);
+    free(serv_req);
+    free(in);
+
+    return ret;
+}
+
+
+int dspaces_transpose(dspace_client_t client, const char *var_name, unsigned int ver,
+                        int elem_size, int ndim, uint64_t *lb, uint64_t ub, const void *data,
+                        enum storage_type dst_st)
+{
+    obj_descriptor odsc;
+    obj_descriptor *odsc_tab;
+    int num_odscs;
+    int ret = dspaces_SUCCESS;
+
+    fill_odsc(var_name, ver, elem_size, ndim, lb, ub, &odsc);
+
+    DEBUG_OUT("Querying %s with timeout %d\n", obj_desc_sprint(&odsc), timeout);
+
+    num_odscs = get_odscs(client, &odsc, timeout, &odsc_tab);
+
+    DEBUG_OUT("Finished query - need to transpose %d objects\n", num_odscs);
+    for(int i = 0; i < num_odscs; ++i) {
+        DEBUG_OUT("%s\n", obj_desc_sprint(&odsc_tab[i]));
+    }
+
+    // send request to transpose the obj_data
+
+    if(num_odscs != 0) 
+        transpose_data(client, num_odscs, odsc_tab);
+
+    return (0);
 }

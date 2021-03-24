@@ -370,4 +370,7 @@ struct lock_data *create_lock(struct list_head *list, char *name);
 
 char **addr_str_buf_to_list(char *buf, int num_addrs);
 
+void obj_desc_transpose(obj_descriptor* dst_odsc, obj_descriptor* src_odsc);
+int od_transpose(struct obj_data* dst_od, struct obj_data* src_od);
+
 #endif /* __SS_DATA_H_ */

@@ -1181,6 +1181,7 @@ int obj_desc_equals_no_owner(const obj_descriptor *odsc1,
 {
     if(odsc1->version == odsc2->version &&
        strcmp(odsc1->name, odsc2->name) == 0 &&
+       odsc1->st == odsc2->st &&
        bbox_equals(&odsc1->bb, &odsc2->bb))
         return 1;
     return 0;
@@ -1188,7 +1189,9 @@ int obj_desc_equals_no_owner(const obj_descriptor *odsc1,
 
 int obj_desc_equals(obj_descriptor *odsc1, obj_descriptor *odsc2)
 {
-    if(odsc1->owner == odsc2->owner && bbox_equals(&odsc1->bb, &odsc2->bb))
+    if(odsc1->owner == odsc2->owner &&
+        odsc1->st == odsc2->st &&
+        bbox_equals(&odsc1->bb, &odsc2->bb))
         return 1;
     else
         return 0;
@@ -1202,6 +1205,7 @@ int obj_desc_equals_intersect(obj_descriptor *odsc1, obj_descriptor *odsc2)
 {
     if(strcmp(odsc1->name, odsc2->name) == 0 &&
        odsc1->version == odsc2->version &&
+       odsc1->st == odsc2->st &&
        bbox_does_intersect(&odsc1->bb, &odsc2->bb))
         return 1;
     return 0;
@@ -1215,7 +1219,8 @@ int obj_desc_by_name_intersect(const obj_descriptor *odsc1,
                                const obj_descriptor *odsc2)
 {
     if(strcmp(odsc1->name, odsc2->name) == 0 &&
-       bbox_does_intersect(&odsc1->bb, &odsc2->bb))
+        odsc1->st == odsc2->st &&
+        bbox_does_intersect(&odsc1->bb, &odsc2->bb))
         return 1;
     return 0;
 }
@@ -1875,4 +1880,147 @@ char **addr_str_buf_to_list(char *buf, int num_addrs)
         ret[i] = a + strlen(a) + 1;
     }
     return ret;
+}
+
+void obj_desc_transpose(obj_descriptor* dst_odsc, obj_descriptor* src_odsc)
+{
+    memcpy(dst_odsc, src_odsc, sizeof(obj_descriptor));
+    if(src_odsc->st == row_major)
+        dst_odsc->st = column_major;
+    if(src_odsc->st == column_major)
+        dst_odsc->st = row_major;
+}
+
+int od_transpose(struct obj_data* dst_od, struct obj_data* src_od)
+{
+    if(dst_od->obj_desc.st == src_od->obj_desc.st ||
+        dst_od->obj_desc.size != src_od->obj_desc.size ||
+        !bbox_equals(dst_od->obj_desc.bb, src_od->obj_desc.bb)) {
+        
+        fprintf(stderr, 
+                "ERROR %s: dst_od does not match src_od.\n", __func__);
+        return 0;
+    }
+
+    void* dst = dst_od->data;
+    void* src = src_od->data;
+    struct bbox* bb = &dst_od->obj_desc.bb;
+    size_t elem_size = dst_od->obj_desc.size;
+
+    uint64_t i[10]; //index in dst layout
+    uint64_t loc = 0, loc1 = 0, loc2 = 0, loc3 = 0, loc4 = 0, loc5 = 0, loc6 =0,
+                loc7 = 0, loc8 = 0, loc9 = 0;
+    uint64_t src_loc = 0;
+    uint64_t d;
+    uint64_t num_transposed_elem = 0;
+
+    switch(bb->num_dims) {
+    case(1):
+        goto dim1;
+        break;
+    case(2):
+        goto dim2;
+        break;
+    case(3):
+        goto dim3;
+        break;
+    case(4):
+        goto dim4;
+        break;
+    case(5):
+        goto dim5;
+        break;
+    case(6):
+        goto dim6;
+        break;
+    case(7):
+        goto dim7;
+        break;
+    case(8):
+        goto dim8;
+        break;
+    case(9):
+        goto dim9;
+        break;
+    case(10):
+        goto dim10;
+        break;
+    default:
+        break;
+    }
+
+dim10:
+    for(i[9]=0; i[9]<bbox_dist(bb, bb->num_dims-10); i[9]++) {
+        loc9 = i[9] * bbox_dist(bb, bb->num_dims-9);
+
+dim9:
+    for(i[8]=0; i[8]<bbox_dist(bb, bb->num_dims-9); i[8]++) {
+        loc8 = i[8] * bbox_dist(bb, bb->num_dims-8);
+
+dim8:
+    for(i[7]=0; i[7]<bbox_dist(bb, bb->num_dims-8); i[7]++) {
+        loc7 = i[7] * bbox_dist(bb, bb->num_dims-7);
+
+dim7:
+    for(i[6]=0; i[6]<bbox_dist(bb, bb->num_dims-7); i[6]++) {
+        loc6 = i[6] * bbox_dist(bb, bb->num_dims-6);
+
+dim6:
+    for(i[5]=0; i[5]<bbox_dist(bb, bb->num_dims-6); i[5]++) {
+        loc5 = i[5] * bbox_dist(bb, bb->num_dims-5);
+
+dim5:
+    for(i[4]=0; i[4]<bbox_dist(bb, bb->num_dims-5); i[4]++) {
+        loc4 = i[4] * bbox_dist(bb, bb->num_dims-4);
+
+dim4:
+    for(i[3]=0; i[3]<bbox_dist(bb, bb->num_dims-4); i[3]++) {
+        loc3 = i[3] * bbox_dist(bb, bb->num_dims-3);
+
+dim3:
+    for(i[2]=0; i[2]<bbox_dist(bb, bb->num_dims-3); i[2]++) {
+        loc2 = i[2] * bbox_dist(bb, bb->num_dims-2);
+
+dim2:
+    for(i[1]=0; i[1]<bbox_dist(bb, bb->num_dims-2); i[1]++) {
+        loc1 = (loc2+i[1]) * bbox_dist(bb, bb->num_dims-1);
+dim1:
+    for(i[0]=0; i[0]<bbox_dist(bb, bb->num_dims-1); i[0]++) {
+        loc = loc1+i[0];
+        for(d=0; d<bb->num_dims-1, d++) {
+            src_loc += (src_loc + i[d])*bbox_dist(bb, bb->num_dims-2-d)
+        }
+        src_loc += i[bb->num_dims-1];
+        memcpy(&dst[loc*elem_size], &src[src_loc*elem_size], elem_size); 
+        num_transposed_elem++;
+    }
+    if(bb->num_dims == 1)
+        return num_transposed_elem;
+    }
+    if(bb->num_dims == 2)
+        return num_transposed_elem;
+    }
+    if(bb->num_dims == 3)
+        return num_transposed_elem;
+    }
+    if(bb->num_dims == 4)
+        return num_transposed_elem;
+    }
+    if(bb->num_dims == 5)
+        return num_transposed_elem;
+    }
+    if(bb->num_dims == 6)
+        return num_transposed_elem;
+    }
+    if(bb->num_dims == 7)
+        return num_transposed_elem;
+    }
+    if(bb->num_dims == 8)
+        return num_transposed_elem;
+    }
+    if(bb->num_dims == 9)
+        return num_transposed_elem;
+    }
+    if(bb->num_dims == 10)
+        return num_transposed_elem;
 }
