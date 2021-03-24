@@ -1884,9 +1884,9 @@ int dspaces_transpose(dspaces_client_t client, const char *var_name, unsigned in
 
     fill_odsc(var_name, ver, elem_size, ndim, lb, ub, &odsc);
 
-    DEBUG_OUT("Querying %s with timeout %d\n", obj_desc_sprint(&odsc), timeout);
+    DEBUG_OUT("Querying %s with timeout %d\n", obj_desc_sprint(&odsc), -1);
 
-    num_odscs = get_odscs(client, &odsc, timeout, &odsc_tab);
+    num_odscs = get_odscs(client, &odsc, -1, &odsc_tab);
 
     DEBUG_OUT("Finished query - need to transpose %d objects\n", num_odscs);
     for(int i = 0; i < num_odscs; ++i) {
