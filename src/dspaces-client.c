@@ -1813,7 +1813,7 @@ static int transpose_data(dspaces_client_t client, int num_odscs, obj_descriptor
 {
     hg_handle_t *hndl;
     margo_request *serv_req;
-    bulk_gdim_t *in
+    bulk_gdim_t *in;
     in = (bulk_gdim_t *) malloc(sizeof(bulk_gdim_t) * num_odscs);
     
     hndl = (hg_handle_t *)malloc(sizeof(hg_handle_t) * num_odscs);
@@ -1873,7 +1873,7 @@ static int transpose_data(dspaces_client_t client, int num_odscs, obj_descriptor
 }
 
 
-int dspaces_transpose(dspace_client_t client, const char *var_name, unsigned int ver,
+int dspaces_transpose(dspaces_client_t client, const char *var_name, unsigned int ver,
                         int elem_size, int ndim, uint64_t *lb, uint64_t ub, const void *data,
                         enum storage_type dst_st)
 {

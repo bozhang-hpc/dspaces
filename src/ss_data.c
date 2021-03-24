@@ -1896,7 +1896,7 @@ int od_transpose(struct obj_data* dst_od, struct obj_data* src_od)
 {
     if(dst_od->obj_desc.st == src_od->obj_desc.st ||
         dst_od->obj_desc.size != src_od->obj_desc.size ||
-        !bbox_equals(dst_od->obj_desc.bb, src_od->obj_desc.bb)) {
+        !bbox_equals(&dst_od->obj_desc.bb, &src_od->obj_desc.bb)) {
         
         fprintf(stderr, 
                 "ERROR %s: dst_od does not match src_od.\n", __func__);
@@ -1988,8 +1988,8 @@ dim2:
 dim1:
     for(i[0]=0; i[0]<bbox_dist(bb, bb->num_dims-1); i[0]++) {
         loc = loc1+i[0];
-        for(d=0; d<bb->num_dims-1, d++) {
-            src_loc += (src_loc + i[d])*bbox_dist(bb, bb->num_dims-2-d)
+        for(d=0; d<bb->num_dims-;, d++) {
+            src_loc += (src_loc + i[d])*bbox_dist(bb, bb->num_dims-2-d);
         }
         src_loc += i[bb->num_dims-1];
         memcpy(&dst[loc*elem_size], &src[src_loc*elem_size], elem_size); 

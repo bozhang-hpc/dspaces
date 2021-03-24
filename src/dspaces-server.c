@@ -1888,7 +1888,7 @@ static void transpose_rpc(hg_handle_t handle)
 
     int ret = od_transpose(ts_od, src_od);
     if(ret != bbox_volume(&src_od->obj_desc.bb)) {
-        printf(stderr,
+        fprintf(stderr,
                 "DATASPACES: ERROR handling %s: od_transpose() failed with "
                 "%d.\n",
                 __func__, ret);
