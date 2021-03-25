@@ -1874,7 +1874,7 @@ static int transpose_data(dspaces_client_t client, int num_odscs, obj_descriptor
 
 
 int dspaces_transpose(dspaces_client_t client, const char *var_name, unsigned int ver,
-                        int elem_size, int ndim, uint64_t *lb, uint64_t ub, const void *data,
+                        int elem_size, int ndim, uint64_t *lb, uint64_t *ub,
                         enum storage_type dst_st)
 {
     obj_descriptor odsc;
