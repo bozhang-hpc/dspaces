@@ -23,6 +23,8 @@ typedef struct dspaces_client *dspaces_client_t;
 #define META_MODE_NEXT 2
 #define META_MODE_LAST 3
 
+enum layout_type { dspaces_LAYOUT_RIGHT, dspaces_LAYOUT_LEFT };
+
 /**
  * @brief Creates a dspaces client.
  * @param[in] rank: rank of this process relative in the application
@@ -347,13 +349,53 @@ int dspaces_get_meta(dspaces_client_t client, char *name, int mode,
  *                  bounding box.
  * @param[in] ub:       coordinates for the upper corner of the local
  *                  bounding box.
- * @param[in] dst_st:  destnation data layout type: row_major or column_major
- *
+ * @param[in] dst_layout:  destnation data layout type: dspaces_LAYOUT_RIGHT 
+ *                  or dspaces_LAYOUT_LEFT
  * @return  0 indicates success.
  */
 int dspaces_transpose(dspaces_client_t client, const char *var_name, unsigned int ver,
                         int elem_size, int ndim, uint64_t *lb, uint64_t *ub,
-                        enum storage_type dst_st)
+                        enum layout_type dst_layout)
+
+/**
+ * @brief Query the space to get data specified by a geometric
+ *    descriptor.
+ *
+ * Memory buffer pointed by pointer "data" is a sub-region of the
+ * global n-dimensional array in user application, which is described
+ * by the local bounding box {(lb[0],lb[1],..,lb[n-1]),
+ * (ub[0],ub[1],..,ub[n-1])}.
+ *
+ * This routine is non-blocking, and successful return of the routine does not
+ * guarantee the completion of data transfer from client process to dataspaces
+ * staging server. User applications need to call dspaces_put_sync to check if
+ * the most recent dspaces_put is complete or not.
+ *
+ * Note: ordering of dimension (fast->slow) is 0, 1, ..., n-1. For C row-major
+ * array, the dimensions need to be reordered to construct the bounding box. For
+ * example, the bounding box for C array c[2][4] is lb: {0,0}, ub: {3,1}.
+ *
+ * @param[in] client dspaces client
+ * @param[in] var_name:     Name of the variable.
+ * @param[in] ver:      Version of the variable.
+ * @param[in] size:     Size (in bytes) for each element of the global
+ *              array.
+ * @param[in] ndim:     the number of dimensions for the local bounding
+ *              box.
+ * @param[in] lb:       coordinates for the lower corner of the local
+ *                  bounding box.
+ * @param[in] ub:       coordinates for the upper corner of the local
+ *                  bounding box.
+ * @param[in] layout:   data layout type: dspaces_LAYOUT_RIGHT 
+ *                  or dspaces_LAYOUT_LEFT
+ * @param[in] data:     Pointer to user data buffer.
+ * @param[in] timeout:  Timeout value: -1 is never, 0 is immediate.
+ *
+ * @return  0 indicates success.
+ */
+int dspaces_get_layout(dspaces_client_t client, const char *var_name, unsigned int ver,
+                int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum layout_type layout, 
+                void *data, int timeout)
 
 #if defined(__cplusplus)
 }

@@ -1874,8 +1874,7 @@ static int transpose_data(dspaces_client_t client, int num_odscs, obj_descriptor
 
 
 int dspaces_transpose(dspaces_client_t client, const char *var_name, unsigned int ver,
-                        int elem_size, int ndim, uint64_t *lb, uint64_t *ub,
-                        enum storage_type dst_st)
+                        int elem_size, int ndim, uint64_t *lb, uint64_t *ub)
 {
     obj_descriptor odsc;
     obj_descriptor *odsc_tab;
@@ -1897,6 +1896,59 @@ int dspaces_transpose(dspaces_client_t client, const char *var_name, unsigned in
 
     if(num_odscs != 0) 
         transpose_data(client, num_odscs, odsc_tab);
+
+    return (0);
+}
+
+static void fill_odsc_st(const char *var_name, unsigned int ver, int elem_size,
+                      int ndim, uint64_t *lb, uint64_t *ub, enum storage_type st_,
+                      obj_descriptor *odsc)
+{
+    odsc->version = ver;
+    memset(odsc->owner, 0, sizeof(odsc->owner));
+    odsc->st = st_;
+    odsc->size = elem_size;
+    odsc->bb.num_dims = ndim;
+
+    memset(odsc->bb.lb.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+    memset(odsc->bb.ub.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+
+    memcpy(odsc->bb.lb.c, lb, sizeof(uint64_t) * ndim);
+    memcpy(odsc->bb.ub.c, ub, sizeof(uint64_t) * ndim);
+
+    strncpy(odsc->name, var_name, sizeof(odsc->name) - 1);
+    odsc->name[sizeof(odsc->name) - 1] = '\0';
+}
+
+int dspaces_get_layout(dspaces_client_t client, const char *var_name, unsigned int ver,
+                int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum layout_type dst_layout, 
+                void *data, int timeout)
+{
+    obj_descriptor odsc;
+    obj_descriptor *odsc_tab;
+    int num_odscs;
+    int ret = dspaces_SUCCESS;
+
+    enum storage_type st;
+    if (dst_layout == dspaces_LAYOUT_RIGHT)
+        st = row_major;
+    else
+        st = column_major;
+    
+    fill_odsc_st(var_name, ver, elem_size, ndim, lb, ub, st, &odsc);
+
+    DEBUG_OUT("Querying %s with timeout %d\n", obj_desc_sprint(&odsc), timeout);
+
+    num_odscs = get_odscs(client, &odsc, timeout, &odsc_tab);
+
+    DEBUG_OUT("Finished query - need to fetch %d objects\n", num_odscs);
+    for(int i = 0; i < num_odscs; ++i) {
+        DEBUG_OUT("%s\n", obj_desc_sprint(&odsc_tab[i]));
+    }
+
+    // send request to get the obj_desc
+    if(num_odscs != 0)
+        get_data(client, num_odscs, odsc, odsc_tab, data);
 
     return (0);
 }
