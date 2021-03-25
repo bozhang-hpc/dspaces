@@ -354,8 +354,7 @@ int dspaces_get_meta(dspaces_client_t client, char *name, int mode,
  * @return  0 indicates success.
  */
 int dspaces_transpose(dspaces_client_t client, const char *var_name, unsigned int ver,
-                        int elem_size, int ndim, uint64_t *lb, uint64_t *ub,
-                        enum layout_type dst_layout)
+                        int elem_size, int ndim, uint64_t *lb, uint64_t *ub)
 
 /**
  * @brief Query the space to get data specified by a geometric
