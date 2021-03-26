@@ -7,7 +7,7 @@
 #include "stdio.h"
 #include "stdlib.h"
 #include "stdint.h"
-#include "dspaces-client.h"
+#include "dspaces.h"
 #include "mpi.h"
 
 int main(int argc, char** argv)
