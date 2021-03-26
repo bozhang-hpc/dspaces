@@ -77,6 +77,4 @@ endif(${ENABLE_TESTS})
 if(${ENABLE_EXAMPLES})
   add_subdirectory(examples)
 endif(${ENABLE_EXAMPLES})
-if(${ENABLE_EXAMPLES})
-  add_subdirectory (examples)
-endif(${ENABLE_EXAMPLES})
+
