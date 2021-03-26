@@ -1903,8 +1903,8 @@ int od_transpose(struct obj_data* dst_od, struct obj_data* src_od)
         return 0;
     }
 
-    void* dst = dst_od->data;
-    void* src = src_od->data;
+    char* dst = dst_od->data;
+    char* src = src_od->data;
     struct bbox* bb = &dst_od->obj_desc.bb;
     size_t elem_size = dst_od->obj_desc.size;
 
