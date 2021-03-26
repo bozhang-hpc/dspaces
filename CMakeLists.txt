@@ -39,6 +39,7 @@ if((NOT BUILD_SHARED_LIBS) AND (NOT DEFINED CMAKE_POSITION_INDEPENDENT_CODE))
 endif()
 
 option(ENABLE_TESTS    "Build tests" OFF)
+option(ENABLE_EXAMPLES "Build examples" OFF)
 
 # add our cmake module directory to the path
 set (CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH}
@@ -75,4 +76,7 @@ if(${ENABLE_TESTS})
 endif(${ENABLE_TESTS})
 if(${ENABLE_EXAMPLES})
   add_subdirectory(examples)
+endif(${ENABLE_EXAMPLES})
+if(${ENABLE_EXAMPLES})
+  add_subdirectory (examples)
 endif(${ENABLE_EXAMPLES})

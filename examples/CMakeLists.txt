@@ -1,0 +1,2 @@
+add_subdirectory(ex1_put_get)
+add_subdirectory(ex2_transpose)
