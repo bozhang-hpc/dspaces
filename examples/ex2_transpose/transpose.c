@@ -34,7 +34,7 @@ int main(int argc, char** argv)
     double *data = (double*) malloc(dim0*dim1*sizeof(double));
     double *recv_data = (double*) malloc(dim0*dim1*sizeof(double));
 
-    prinf("=================PUT================\n");
+    printf("=================PUT================\n");
     for(int i = 0 ; i < dim0; i++) {
         for(int j = 0; j < dim1; j++) {
             data[i*dim1+j] = i*dim1+j;
