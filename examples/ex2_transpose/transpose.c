@@ -12,8 +12,6 @@
 
 int main(int argc, char** argv)
 {
-    char *listen_addr = argv[1];
-
     int rank, nprocs; 
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
@@ -22,7 +20,7 @@ int main(int argc, char** argv)
     MPI_Comm gcomm = MPI_COMM_WORLD;
 
     dspaces_client_t ndcl = dspaces_CLIENT_NULL;
-    client_init(listen_addr, rank, &ndcl);
+    dspaces_init(rank, &ndcl);
 
     char var_name[128];
     sprintf(var_name, "example1_data");
@@ -82,8 +80,10 @@ free:
     free(data);
     free(recv_data);
 
-    client_finalize(ndcl);
+    dspaces_fini(ndcl);
 
     MPI_Finalize();
 
     return err;
+
+}
