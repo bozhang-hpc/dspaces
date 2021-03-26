@@ -1844,7 +1844,7 @@ static int transpose_data(dspaces_client_t client, int num_odscs, obj_descriptor
             //             &handle);
         } else {
             DEBUG_OUT("Transposing object from server storage.\n");
-            margo_create(client->mid, server_addr, client->get_id, &handle);
+            margo_create(client->mid, server_addr, client->transpose_id, &handle);
         }
 
         margo_request req;
