@@ -48,9 +48,9 @@ int main(int argc, char** argv)
 
     uint64_t lb[2] = {0}, ub[2] = {0};
 
-    lb[0] = 0
+    lb[0] = 0;
     lb[1] = 0;
-    ub[0] = 7
+    ub[0] = 7;
     ub[1] = 1;
 
     
