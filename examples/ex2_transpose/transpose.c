@@ -65,7 +65,7 @@ int main(int argc, char** argv)
     if(err != 0 )
         goto free;
 
-    prinf("=================GET================\n");
+    printf("=================GET================\n");
     for(int i = 0 ; i < dim0; i++) {
         for(int j = 0; j < dim1; j++) {
             printf("%lf ", recv_data[i*dim1+j]);
