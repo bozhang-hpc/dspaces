@@ -1892,6 +1892,17 @@ void obj_desc_transpose(obj_descriptor* dst_odsc, obj_descriptor* src_odsc)
         dst_odsc->st = row_major;
 }
 
+
+static void debug_print(char* ptr) {
+    pt = (double*) ptr;
+    for(int i = 0 ; i < 2; i++) {
+        for(int j = 0; j < 8; j++) {
+            printf("%lf ", pt[i*8+j]);
+        }
+        printf("\n");
+    }
+}
+
 int od_transpose(struct obj_data* dst_od, struct obj_data* src_od)
 {
     if(dst_od->obj_desc.st == src_od->obj_desc.st ||
@@ -1976,6 +1987,7 @@ dim1:
         return num_transposed_elem;
     }
     if(bb->num_dims == 2)
+        debug_print(dst);
         return num_transposed_elem;
     }
     if(bb->num_dims == 3)
