@@ -1909,9 +1909,12 @@ int od_transpose(struct obj_data* dst_od, struct obj_data* src_od)
     size_t elem_size = dst_od->obj_desc.size;
 
     uint64_t i[10]; //index in dst layout
+    uint64_t j[10]; //index in src layout
     uint64_t loc = 0, loc1 = 0, loc2 = 0, loc3 = 0, loc4 = 0, loc5 = 0, loc6 =0,
                 loc7 = 0, loc8 = 0, loc9 = 0;
-    uint64_t src_loc = 0;
+    uint64_t src_loc = 0, src_loc1 = 0, src_loc2 = 0, src_loc3 = 0, src_loc4 = 0, 
+             src_loc5 = 0, src_loc6 =0, src_loc7 = 0, src_loc8 = 0, src_loc9 = 0;
+    uint64_t dst_loc = 0;
     uint64_t d;
     uint64_t num_transposed_elem = 0;
 
@@ -1949,6 +1952,24 @@ int od_transpose(struct obj_data* dst_od, struct obj_data* src_od)
     default:
         break;
     }
+/*
+dim3:
+    for(j[2]=0; j<bbox_dist(bb, 2); j[2]++) {
+        src_loc2 = (src_loc3 + j[2]) * bbox_dist(bb, 1);
+dim2:
+    for(j[1]=0; j<bbox_dist(bb, 1); j[1]++) {
+        src_loc1 = (src_loc2 + j[1]) * bbox_dist(bb, 0);
+dim1:
+    for(j[0]=0; j<bbox_dist(bb, 0); j[0]++) {
+        src_loc = src_loc1 + j[0];
+        int dst_loc = 0;
+        for(d=0; d<bb->num_dims; d++) {
+            dst_loc = (dst_loc + j[d]) * bbox_dist(bb, d+1);
+        }
+    }
+    }
+    }
+*/
 
 dim10:
     for(i[9]=0; i[9]<bbox_dist(bb, bb->num_dims-10); i[9]++) {
@@ -1988,9 +2009,9 @@ dim2:
 dim1:
     for(i[0]=0; i[0]<bbox_dist(bb, bb->num_dims-1); i[0]++) {
         loc = loc1+i[0];
-        src_loc = 0;
+        int src_loc1 = 0;
         for(d=0; d<bb->num_dims-1; d++) {
-            src_loc += (src_loc + i[d])*bbox_dist(bb, bb->num_dims-2-d);
+            src_loc1 = (src_loc1 + i[d])*bbox_dist(bb, bb->num_dims-2-d);
         }
         src_loc += i[bb->num_dims-1];
         memcpy(&dst[loc*elem_size], &src[src_loc*elem_size], elem_size); 
@@ -2025,4 +2046,5 @@ dim1:
     }
     if(bb->num_dims == 10)
         return num_transposed_elem;
+
 }
