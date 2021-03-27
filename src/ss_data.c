@@ -1970,10 +1970,10 @@ dim3:
     for(j[2]=0; j[2]<bbox_dist(bb, 2); j[2]++) {
         src_loc2 = (src_loc3 + j[2]) * bbox_dist(bb, 1);
 dim2:
-    for(j[1]=0; j[2]<bbox_dist(bb, 1); j[1]++) {
+    for(j[1]=0; j[1]<bbox_dist(bb, 1); j[1]++) {
         src_loc1 = (src_loc2 + j[1]) * bbox_dist(bb, 0);
 dim1:
-    for(j[0]=0; j[1]<bbox_dist(bb, 0); j[0]++) {
+    for(j[0]=0; j[0]<bbox_dist(bb, 0); j[0]++) {
         src_loc = src_loc1 + j[0];
         int dst_loc = 0;
         for(d=0; d<bb->num_dims-1; d++) {
