@@ -2013,7 +2013,7 @@ dim1:
         for(d=0; d<bb->num_dims-1; d++) {
             src_loc1 = (src_loc1 + i[d])*bbox_dist(bb, bb->num_dims-2-d);
         }
-        src_loc += i[bb->num_dims-1];
+        src_loc1 += i[bb->num_dims-1];
         memcpy(&dst[loc*elem_size], &src[src_loc*elem_size], elem_size); 
         num_transposed_elem++;
     }
