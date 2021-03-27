@@ -1952,7 +1952,7 @@ int od_transpose(struct obj_data* dst_od, struct obj_data* src_od)
     default:
         break;
     }
-/*
+
 dim3:
     for(j[2]=0; j<bbox_dist(bb, 2); j[2]++) {
         src_loc2 = (src_loc3 + j[2]) * bbox_dist(bb, 1);
@@ -1963,14 +1963,23 @@ dim1:
     for(j[0]=0; j<bbox_dist(bb, 0); j[0]++) {
         src_loc = src_loc1 + j[0];
         int dst_loc = 0;
-        for(d=0; d<bb->num_dims; d++) {
+        for(d=0; d<bb->num_dims-1; d++) {
             dst_loc = (dst_loc + j[d]) * bbox_dist(bb, d+1);
         }
+        dst_loc += j[bb->num_dims-1];
+        memcpy(&dst[dst_loc*elem_size], &src[src_loc*elem_size], elem_size); 
+        num_transposed_elem++;
     }
+    if(bb->num_dims == 1)
+        return num_transposed_elem;
     }
+    if(bb->num_dims == 2)
+        return num_transposed_elem;
     }
-*/
+    if(bb->num_dims == 3)
+        return num_transposed_elem;
 
+/*
 dim10:
     for(i[9]=0; i[9]<bbox_dist(bb, bb->num_dims-10); i[9]++) {
         loc9 = i[9] * bbox_dist(bb, bb->num_dims-9);
@@ -2046,5 +2055,5 @@ dim1:
     }
     if(bb->num_dims == 10)
         return num_transposed_elem;
-
+*/
 }
