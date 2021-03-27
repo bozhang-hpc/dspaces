@@ -1928,6 +1928,7 @@ int od_transpose(struct obj_data* dst_od, struct obj_data* src_od)
     case(3):
         goto dim3;
         break;
+/*
     case(4):
         goto dim4;
         break;
@@ -1949,6 +1950,7 @@ int od_transpose(struct obj_data* dst_od, struct obj_data* src_od)
     case(10):
         goto dim10;
         break;
+*/
     default:
         break;
     }
