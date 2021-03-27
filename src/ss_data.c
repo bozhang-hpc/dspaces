@@ -1988,6 +1988,7 @@ dim2:
 dim1:
     for(i[0]=0; i[0]<bbox_dist(bb, bb->num_dims-1); i[0]++) {
         loc = loc1+i[0];
+        src_loc = 0;
         for(d=0; d<bb->num_dims-1; d++) {
             src_loc += (src_loc + i[d])*bbox_dist(bb, bb->num_dims-2-d);
         }
