@@ -1919,13 +1919,9 @@ int od_transpose(struct obj_data* dst_od, struct obj_data* src_od)
     struct bbox* bb = &dst_od->obj_desc.bb;
     size_t elem_size = dst_od->obj_desc.size;
 
-    uint64_t i[10]; //index in dst layout
     uint64_t j[10]; //index in src layout
-    uint64_t loc = 0, loc1 = 0, loc2 = 0, loc3 = 0, loc4 = 0, loc5 = 0, loc6 =0,
-                loc7 = 0, loc8 = 0, loc9 = 0;
     uint64_t src_loc = 0, src_loc1 = 0, src_loc2 = 0, src_loc3 = 0, src_loc4 = 0, 
              src_loc5 = 0, src_loc6 =0, src_loc7 = 0, src_loc8 = 0, src_loc9 = 0;
-    uint64_t dst_loc = 0;
     uint64_t d;
     uint64_t num_transposed_elem = 0;
 
@@ -1939,7 +1935,6 @@ int od_transpose(struct obj_data* dst_od, struct obj_data* src_od)
     case(3):
         goto dim3;
         break;
-/*
     case(4):
         goto dim4;
         break;
@@ -1961,11 +1956,31 @@ int od_transpose(struct obj_data* dst_od, struct obj_data* src_od)
     case(10):
         goto dim10;
         break;
-*/
     default:
         break;
     }
 
+dim10:
+    for(j[9]=0; j[9]<bbox_dist(bb, 9); j[9]++) {
+        src_loc9 = j[9] * bbox_dist(bb, 8);
+dim9:
+    for(j[8]=0; j[8]<bbox_dist(bb, 8); j[8]++) {
+        src_loc8 = (src_loc9 + j[8]) * bbox_dist(bb, 7);
+dim8:
+    for(j[7]=0; j[7]<bbox_dist(bb, 7); j[7]++) {
+        src_loc7 = (src_loc8 + j[7]) * bbox_dist(bb, 6);
+dim7:
+    for(j[6]=0; j[6]<bbox_dist(bb, 6); j[6]++) {
+        src_loc6 = (src_loc7 + j[6]) * bbox_dist(bb, 5);
+dim6:
+    for(j[5]=0; j[5]<bbox_dist(bb, 5); j[5]++) {
+        src_loc5 = (src_loc6 + j[5]) * bbox_dist(bb, 4);
+dim5:
+    for(j[4]=0; j[4]<bbox_dist(bb, 4); j[4]++) {
+        src_loc4 = (src_loc5 + j[4]) * bbox_dist(bb, 3);
+dim4:
+    for(j[3]=0; j[3]<bbox_dist(bb, 3); j[3]++) {
+        src_loc3 = (src_loc4 + j[3]) * bbox_dist(bb, 2);
 dim3:
     for(j[2]=0; j[2]<bbox_dist(bb, 2); j[2]++) {
         src_loc2 = (src_loc3 + j[2]) * bbox_dist(bb, 1);
@@ -1975,7 +1990,7 @@ dim2:
 dim1:
     for(j[0]=0; j[0]<bbox_dist(bb, 0); j[0]++) {
         src_loc = src_loc1 + j[0];
-        int dst_loc = 0;
+        uint64_t dst_loc = 0;
         for(d=0; d<bb->num_dims-1; d++) {
             dst_loc = (dst_loc + j[d]) * bbox_dist(bb, d+1);
         }
@@ -1989,62 +2004,6 @@ dim1:
     }
     if(bb->num_dims == 2)
         debug_print(dst);
-        return num_transposed_elem;
-    }
-    if(bb->num_dims == 3)
-        return num_transposed_elem;
-
-/*
-dim10:
-    for(i[9]=0; i[9]<bbox_dist(bb, bb->num_dims-10); i[9]++) {
-        loc9 = i[9] * bbox_dist(bb, bb->num_dims-9);
-
-dim9:
-    for(i[8]=0; i[8]<bbox_dist(bb, bb->num_dims-9); i[8]++) {
-        loc8 = i[8] * bbox_dist(bb, bb->num_dims-8);
-
-dim8:
-    for(i[7]=0; i[7]<bbox_dist(bb, bb->num_dims-8); i[7]++) {
-        loc7 = i[7] * bbox_dist(bb, bb->num_dims-7);
-
-dim7:
-    for(i[6]=0; i[6]<bbox_dist(bb, bb->num_dims-7); i[6]++) {
-        loc6 = i[6] * bbox_dist(bb, bb->num_dims-6);
-
-dim6:
-    for(i[5]=0; i[5]<bbox_dist(bb, bb->num_dims-6); i[5]++) {
-        loc5 = i[5] * bbox_dist(bb, bb->num_dims-5);
-
-dim5:
-    for(i[4]=0; i[4]<bbox_dist(bb, bb->num_dims-5); i[4]++) {
-        loc4 = i[4] * bbox_dist(bb, bb->num_dims-4);
-
-dim4:
-    for(i[3]=0; i[3]<bbox_dist(bb, bb->num_dims-4); i[3]++) {
-        loc3 = i[3] * bbox_dist(bb, bb->num_dims-3);
-
-dim3:
-    for(i[2]=0; i[2]<bbox_dist(bb, bb->num_dims-3); i[2]++) {
-        loc2 = i[2] * bbox_dist(bb, bb->num_dims-2);
-
-dim2:
-    for(i[1]=0; i[1]<bbox_dist(bb, bb->num_dims-2); i[1]++) {
-        loc1 = (loc2+i[1]) * bbox_dist(bb, bb->num_dims-1);
-dim1:
-    for(i[0]=0; i[0]<bbox_dist(bb, bb->num_dims-1); i[0]++) {
-        loc = loc1+i[0];
-        int src_loc1 = 0;
-        for(d=0; d<bb->num_dims-1; d++) {
-            src_loc1 = (src_loc1 + i[d])*bbox_dist(bb, bb->num_dims-2-d);
-        }
-        src_loc1 += i[bb->num_dims-1];
-        memcpy(&dst[loc*elem_size], &src[src_loc*elem_size], elem_size); 
-        num_transposed_elem++;
-    }
-    if(bb->num_dims == 1)
-        return num_transposed_elem;
-    }
-    if(bb->num_dims == 2)
         return num_transposed_elem;
     }
     if(bb->num_dims == 3)
@@ -2070,5 +2029,5 @@ dim1:
     }
     if(bb->num_dims == 10)
         return num_transposed_elem;
-*/
+
 }
