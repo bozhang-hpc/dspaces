@@ -2007,7 +2007,6 @@ dim1:
         return num_transposed_elem;
     }
     if(bb->num_dims == 2)
-        debug_print(dst);
         return num_transposed_elem;
     }
     if(bb->num_dims == 3)
