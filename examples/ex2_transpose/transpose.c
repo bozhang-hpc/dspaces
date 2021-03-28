@@ -32,8 +32,8 @@ int main(int argc, char** argv)
     int dim1 = 8;
     int dim2 = 4;
 
-    double *data = (double*) malloc(dim0*dim1*sizeof(double));
-    double *recv_data = (double*) malloc(dim0*dim1*sizeof(double));
+    double *data = (double*) malloc(dim0*dim1*dim2*sizeof(double));
+    double *recv_data = (double*) malloc(dim0*dim1*dim2*sizeof(double));
 
     printf("=================PUT================\n");
     for(int i = 0 ; i < dim0; i++) {
