@@ -1898,9 +1898,12 @@ static void debug_print(char* ptr) {
     printf("+++++++++++++++++++++++++++++\n");
     for(int i = 0 ; i < 2; i++) {
         for(int j = 0; j < 8; j++) {
-            printf("%lf ", pt[i*8+j]);
+            for(int k=0; k <4; k++) {
+                printf("%lf ", pt[i*8*4+j*4+k]);
+            }
+            printf("\n");
         }
-        printf("\n");
+        printf("**************\n");
     }
 }
 
