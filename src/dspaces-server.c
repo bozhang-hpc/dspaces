@@ -802,7 +802,7 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm,
                               &flag);
 
         margo_registered_name(server->mid, "transpose_rpc", &server->transpose_id, &flag);
-        DS_HG_REGISTER(hg, server->transpose_id, bulk_gdim_t, bulk_out_t, transpose_rpc);
+        DS_HG_REGISTER(hg, server->transpose_id, odsc_gdim_t, bulk_out_t, transpose_rpc);
     } else {
         server->put_id = MARGO_REGISTER(server->mid, "put_rpc", bulk_gdim_t,
                                         bulk_out_t, put_rpc);
@@ -865,7 +865,7 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm,
             MARGO_REGISTER(server->mid, "notify_rpc", odsc_list_t, void, NULL);
         margo_registered_disable_response(server->mid, server->notify_id,
                                           HG_TRUE);
-        server->transpose_id = MARGO_REGISTER(server->mid, "transpose_rpc", bulk_gdim_t,
+        server->transpose_id = MARGO_REGISTER(server->mid, "transpose_rpc", odsc_gdim_t,
                                           bulk_out_t, transpose_rpc);
         margo_register_data(server->mid, server->transpose_id, (void *)server,
                             NULL);
@@ -1840,7 +1840,7 @@ void dspaces_server_fini(dspaces_provider_t server)
 static void transpose_rpc(hg_handle_t handle)
 {
     hg_return_t hret;
-    bulk_gdim_t in;
+    odsc_gdim_t in;
     bulk_out_t out;
 
     margo_instance_id mid = margo_hg_handle_get_instance(handle);

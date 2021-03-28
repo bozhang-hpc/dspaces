@@ -589,7 +589,7 @@ static int dspaces_init_margo(dspaces_client_t client,
                                           HG_TRUE);
 
         client->transpose_id =
-            MARGO_REGISTER(client->mid, "transpose_rpc", bulk_gdim_t, bulk_out_t, NULL);
+            MARGO_REGISTER(client->mid, "transpose_rpc", odsc_gdim_t, bulk_out_t, NULL);
     }
 
     return (dspaces_SUCCESS);
@@ -1813,8 +1813,8 @@ static int transpose_data(dspaces_client_t client, int num_odscs, obj_descriptor
 {
     hg_handle_t *hndl;
     margo_request *serv_req;
-    bulk_gdim_t *in;
-    in = (bulk_gdim_t *) malloc(sizeof(bulk_gdim_t) * num_odscs);
+    odsc_gdim_t *in;
+    in = (odsc_gdim_t *) malloc(sizeof(odsc_gdim_t) * num_odscs);
     
     hndl = (hg_handle_t *)malloc(sizeof(hg_handle_t) * num_odscs);
     serv_req = (margo_request *)malloc(sizeof(margo_request) * num_odscs);
