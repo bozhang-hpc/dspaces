@@ -1895,6 +1895,7 @@ void obj_desc_transpose(obj_descriptor* dst_odsc, obj_descriptor* src_odsc)
 
 static void debug_print(char* ptr) {
     double * pt = (double*) ptr;
+    printf("+++++++++++++++++++++++++++++\n");
     for(int i = 0 ; i < 2; i++) {
         for(int j = 0; j < 8; j++) {
             printf("%lf ", pt[i*8+j]);

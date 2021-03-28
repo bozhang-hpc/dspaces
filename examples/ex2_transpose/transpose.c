@@ -30,6 +30,7 @@ int main(int argc, char** argv)
 
     int dim0 = 2;
     int dim1 = 8;
+    int dim2 = 4;
 
     double *data = (double*) malloc(dim0*dim1*sizeof(double));
     double *recv_data = (double*) malloc(dim0*dim1*sizeof(double));
@@ -37,21 +38,26 @@ int main(int argc, char** argv)
     printf("=================PUT================\n");
     for(int i = 0 ; i < dim0; i++) {
         for(int j = 0; j < dim1; j++) {
-            data[i*dim1+j] = i*dim1+j;
-            printf("%lf ", data[i*dim1+j]);
+            for(int k = 0; k < dim2; k++) {
+                data[i*dim1*dim2+j*dim2+k] = i*dim1*dim2+j*dim2+k;
+                printf("%lf ", data[i*dim1*dim2+j*dim2+k]);
+            }
+            printf("\n");
         }
-        printf("\n");
+        printf("**************\n");
     }
 
 
-    int ndim = 2;
+    int ndim = 3;
 
-    uint64_t lb[2] = {0}, ub[2] = {0};
+    uint64_t lb[3] = {0}, ub[3] = {0};
 
     lb[0] = 0;
     lb[1] = 0;
-    ub[0] = 7;
-    ub[1] = 1;
+    lb[2] = 0;
+    ub[0] = 3;
+    ub[1] = 7;
+    ub[2] = 1;
 
     
     err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, lb, ub, data);
@@ -68,9 +74,12 @@ int main(int argc, char** argv)
     printf("=================GET================\n");
     for(int i = 0 ; i < dim0; i++) {
         for(int j = 0; j < dim1; j++) {
-            printf("%lf ", recv_data[i*dim1+j]);
+            for(int k = 0; k < dim2; k++) {
+                printf("%lf ", data[i*dim1*dim2+j*dim2+k]);
+            }
+            printf("\n");
         }
-        printf("\n");
+        printf("**************\n");
     }
 
     
