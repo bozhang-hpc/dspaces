@@ -1826,10 +1826,10 @@ static int transpose_data(dspaces_client_t client, int num_odscs, obj_descriptor
         set_global_dimension(&(client->dcg->gdim_list), var_name,
                             &(client->dcg->default_gdim), &odsc_gdim);
 
-        in[i].odsc.size = sizeof(obj_descriptor);
-        in[i].odsc.raw_odsc = (char*) (&odsc_tab[i]);
-        in[i].odsc.gdim_size = sizeof(struct global_dimension);
-        in[i].odsc.raw_gdim = (char*) (&odsc_gdim);
+        in[i].odsc_gdim.size = sizeof(obj_descriptor);
+        in[i].odsc_gdim.raw_odsc = (char*) (&odsc_tab[i]);
+        in[i].odsc_gdim.gdim_size = sizeof(struct global_dimension);
+        in[i].odsc_gdim.raw_gdim = (char*) (&odsc_gdim);
 
 
         hg_addr_t server_addr;

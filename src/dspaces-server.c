@@ -1860,7 +1860,7 @@ static void transpose_rpc(hg_handle_t handle)
     }
 
     obj_descriptor in_odsc, ts_odsc;
-    memcpy(&in_odsc, in.odsc.raw_odsc, sizeof(in_odsc));
+    memcpy(&in_odsc, in.odsc_gdim.raw_odsc, sizeof(in_odsc));
 
     DEBUG_OUT("received transposed request\n");
 
@@ -1885,6 +1885,7 @@ static void transpose_rpc(hg_handle_t handle)
     ssd_copy(src_od, from_obj);
 
     ts_od = obj_data_alloc(&ts_odsc);
+    memcpy(&ts_od->gdim, in.odsc_gdim.raw_gdim, sizeof(struct global_dimension));
 
     int ret = od_transpose(ts_od, src_od);
     if(ret != bbox_volume(&src_od->obj_desc.bb)) {
