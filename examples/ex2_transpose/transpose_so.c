@@ -77,7 +77,7 @@ int main(int argc, char** argv)
     
     MPI_Barrier(gcomm);
 
-    err = dspaces_transpose(ndcl, var_name, 0, sizeof(double), ndim, recv_lb, recv_ub);
+    err = dspaces_transpose(ndcl, var_name, 0, sizeof(double), ndim, lb, ub);
 
     err = dspaces_get_layout(ndcl, var_name, 0, sizeof(double), ndim, recv_lb, recv_ub, dspaces_LAYOUT_RIGHT, recv_data, -1);
 
@@ -85,10 +85,10 @@ int main(int argc, char** argv)
         goto free;
 
     printf("=================GET================\n");
-    for(int i = 0 ; i < dim0; i++) {
-        for(int j = 0; j < dim1; j++) {
-            for(int k = 0; k < dim2; k++) {
-                printf("%lf ", recv_data[i*dim1*dim2+j*dim2+k]);
+    for(int i = 0 ; i < sub_dim0; i++) {
+        for(int j = 0; j < sub_dim1; j++) {
+            for(int k = 0; k < sub_dim2; k++) {
+                printf("%lf ", recv_data[i+j*sub_dim0+k*sub_dim0*sub_dim1]);
             }
             printf("\n");
         }
