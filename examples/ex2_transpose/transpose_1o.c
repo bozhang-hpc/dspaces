@@ -72,10 +72,10 @@ int main(int argc, char** argv)
         goto free;
 
     printf("=================GET================\n");
-    for(int k = 0 ; k < dim2; k++) {
+    for(int i = 0 ; i < dim0; i++) {
         for(int j = 0; j < dim1; j++) {
-            for(int i = 0; i < dim0; i++) {
-                printf("%lf ", recv_data[k*dim1*dim0+j*dim0+i]);
+            for(int k = 0; k < dim2; k++) {
+                printf("%lf ", recv_data[i+j*dim0+k*dim1*dim0]);
             }
             printf("\n");
         }
