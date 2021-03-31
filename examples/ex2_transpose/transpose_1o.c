@@ -23,7 +23,8 @@ int main(int argc, char** argv)
     dspaces_init(rank, &ndcl);
 
     char var_name[128];
-    sprintf(var_name, "example1_data");
+    /*----------------------------------TestCase1-----------------------*/
+    sprintf(var_name, "example1_data1");
 
     int err = 0;
 
@@ -71,6 +72,7 @@ int main(int argc, char** argv)
     if(err != 0 )
         goto free;
 
+    // opposite-major check
     printf("=================GET================\n");
     for(int i = 0 ; i < dim0; i++) {
         for(int j = 0; j < dim1; j++) {

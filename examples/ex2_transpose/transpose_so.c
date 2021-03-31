@@ -77,6 +77,8 @@ int main(int argc, char** argv)
     
     MPI_Barrier(gcomm);
 
+    // if you only want a subset of a data object, just transpose the subset bbox 
+
     err = dspaces_transpose(ndcl, var_name, 0, sizeof(double), ndim, recv_lb, recv_ub);
 
     err = dspaces_get_layout(ndcl, var_name, 0, sizeof(double), ndim, recv_lb, recv_ub, dspaces_LAYOUT_RIGHT, recv_data, -1);
