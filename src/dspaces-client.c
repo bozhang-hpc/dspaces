@@ -878,6 +878,7 @@ static int get_data(dspaces_client_t client, int num_odscs,
         margo_get_output(hndl[i], &resp);
         margo_free_output(hndl[i], &resp);
         margo_destroy(hndl[i]);
+        DEBUG_OUT("%s\n", obj_desc_sprint(&od[i]->obj_desc));
         debug_print(od[i]->data);
         // copy received data into user return buffer
         ssd_copy(return_od, od[i]);
