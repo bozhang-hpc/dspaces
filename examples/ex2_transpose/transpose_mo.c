@@ -152,6 +152,19 @@ int main(int argc, char** argv)
     if(err != 0 )
         goto free;
 
+
+    printf("=================Serial Mem check================\n");
+    // serial mem check
+    for(int i = 0 ; i < dim0; i++) {
+        for(int j = 0; j < dim1; j++) {
+            for(int k = 0; k < dim2; k++) {
+                printf("%lf ", recv_data[i*dim1*dim2+j*dim2+k]);
+            }
+            printf("\n");
+        }
+        printf("**************\n");
+    }
+
     // opposite-major check
     for(int i = 0 ; i < dim0; i++) {
         for(int j = 0; j < dim1; j++) {
