@@ -810,6 +810,20 @@ int dspaces_put(dspaces_client_t client, const char *var_name, unsigned int ver,
     return ret;
 }
 
+static void debug_print(char* ptr) {
+    double * pt = (double*) ptr;
+    printf("+++++++++++++++++++++++++++++\n");
+    //for(int i = 0 ; i < 2; i++) {
+        for(int j = 0; j < 4; j++) {
+            for(int k=0; k <4; k++) {
+                printf("%lf ", pt[j+k*4]);
+            }
+            printf("\n");
+        }
+        printf("**************\n");
+    //}
+}
+
 static int get_data(dspaces_client_t client, int num_odscs,
                     obj_descriptor req_obj, obj_descriptor *odsc_tab,
                     void *data)
@@ -864,6 +878,7 @@ static int get_data(dspaces_client_t client, int num_odscs,
         margo_get_output(hndl[i], &resp);
         margo_free_output(hndl[i], &resp);
         margo_destroy(hndl[i]);
+        debug_print(od[i]->data);
         // copy received data into user return buffer
         ssd_copy(return_od, od[i]);
         obj_data_free(od[i]);
