@@ -2,6 +2,8 @@
  * Copyright (c) 2020, Rutgers Discovery Informatics Institute, Rutgers University
  *
  * See COPYRIGHT in top-level directory.
+ * 
+ * This is the test example for single object transposition
  */
 
 #include "stdio.h"
@@ -24,7 +26,7 @@ int main(int argc, char** argv)
 
     char var_name[128];
     /*----------------------------------TestCase1-----------------------*/
-    sprintf(var_name, "example1_data1");
+    sprintf(var_name, "example2_data");
 
     int err = 0;
 

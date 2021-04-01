@@ -2,6 +2,8 @@
  * Copyright (c) 2020, Rutgers Discovery Informatics Institute, Rutgers University
  *
  * See COPYRIGHT in top-level directory.
+ * 
+ * This is the test example for sub-region transposition in single object 
  */
 
 #include "stdio.h"
@@ -23,7 +25,7 @@ int main(int argc, char** argv)
     dspaces_init(rank, &ndcl);
 
     char var_name[128];
-    sprintf(var_name, "example1_data");
+    sprintf(var_name, "example2_data");
 
     int err = 0;
 
