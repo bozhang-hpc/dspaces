@@ -165,6 +165,7 @@ int main(int argc, char** argv)
         printf("**************\n");
     }
 
+    printf("=================Opposite-major check================\n");
     // opposite-major check
     for(int i = 0 ; i < dim0; i++) {
         for(int j = 0; j < dim1; j++) {
