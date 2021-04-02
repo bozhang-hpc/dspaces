@@ -1866,7 +1866,7 @@ static void transpose_rpc(hg_handle_t handle)
 
     // if find any obj_data that contains transposed sub obj_data, return
     struct obj_data *transposed_from_obj;
-    obj_desc_transpose(&ts_odsc, &in_odsc);
+    obj_desc_transpose_st(&ts_odsc, &in_odsc);
     transposed_from_obj = ls_find(server->dsg->ls, &ts_odsc);
     if(transposed_from_obj != NULL) {
         out.ret = dspaces_SUCCESS;

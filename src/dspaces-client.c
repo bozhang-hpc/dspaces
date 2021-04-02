@@ -1205,6 +1205,7 @@ int dspaces_get(dspaces_client_t client, const char *var_name, unsigned int ver,
     if(num_odscs != 0)
         get_data(client, num_odscs, odsc, odsc_tab, data);
 
+    free(odsc_tab);
     return (0);
 }
 
@@ -1965,6 +1966,115 @@ int dspaces_get_layout(dspaces_client_t client, const char *var_name, unsigned i
     // send request to get the obj_desc
     if(num_odscs != 0)
         get_data(client, num_odscs, odsc, odsc_tab, data);
+
+    return (0);
+}
+
+static int get_transposed_data(dspaces_client_t client, int num_odscs,
+                                obj_descriptor req_obj, obj_descriptor *odsc_tab,
+                                void *data)
+{
+    bulk_in_t *in;
+    in = (bulk_in_t *)malloc(sizeof(bulk_in_t) * num_odscs);
+
+    struct obj_data **od;
+    od = malloc(num_odscs * sizeof(struct obj_data *));
+
+    margo_request *serv_req;
+    hg_handle_t *hndl;
+    hndl = (hg_handle_t *)malloc(sizeof(hg_handle_t) * num_odscs);
+    serv_req = (margo_request *)malloc(sizeof(margo_request) * num_odscs);
+
+    for(int i = 0; i < num_odscs; ++i) {
+        od[i] = obj_data_alloc(&odsc_tab[i]);
+        in[i].odsc.size = sizeof(obj_descriptor);
+        in[i].odsc.raw_odsc = (char *)(&odsc_tab[i]);
+
+        hg_size_t rdma_size = (req_obj.size) * bbox_volume(&odsc_tab[i].bb);
+
+        margo_bulk_create(client->mid, 1, (void **)(&(od[i]->data)), &rdma_size,
+                          HG_BULK_WRITE_ONLY, &in[i].handle);
+
+        hg_addr_t server_addr;
+        margo_addr_lookup(client->mid, odsc_tab[i].owner, &server_addr);
+
+        hg_handle_t handle;
+        if(odsc_tab[i].flags & DS_CLIENT_STORAGE) {
+            DEBUG_OUT("retrieving object from client-local storage.\n");
+            margo_create(client->mid, server_addr, client->get_local_id,
+                         &handle);
+        } else {
+            DEBUG_OUT("retrieving object from server storage.\n");
+            margo_create(client->mid, server_addr, client->get_id, &handle);
+        }
+        margo_request req;
+        // forward get requests
+        margo_iforward(handle, &in[i], &req);
+        hndl[i] = handle;
+        serv_req[i] = req;
+        margo_addr_free(client->mid, server_addr);
+    }
+
+    obj_descriptor temp_odsc_ts;
+    obj_desc_transpose_bbox(&temp_odsc_ts, &req_obj);
+
+    struct obj_data *return_od = obj_data_alloc_no_data(&temp_odsc_ts, data);
+
+    // TODO: rewrite with margo_wait_any()
+    for(int i = 0; i < num_odscs; ++i) {
+        margo_wait(serv_req[i]);
+        bulk_out_t resp;
+        margo_get_output(hndl[i], &resp);
+        margo_free_output(hndl[i], &resp);
+        margo_destroy(hndl[i]);
+        DEBUG_OUT("%s\n", obj_desc_sprint(&od[i]->obj_desc));
+        debug_print(od[i]->data);
+        // copy received data into user return buffer
+        // transposing a parent vector needs both transposing each sub-vector inside and outside
+        obj_descriptor temp_odsc_entry;
+        obj_desc_transpose_bbox(&temp_odsc_entry, &od[i]->obj_desc);
+        od[i]->obj_desc = &temp_odsc_entry;
+
+        ssd_copy(return_od, od[i]);
+        obj_data_free(od[i]);
+    }
+    free(hndl);
+    free(serv_req);
+    free(in);
+    free(return_od);
+}
+
+int dspaces_get_transposed(dspaces_client_t client, const char *var_name, unsigned int ver,
+                int elem_size, int ndim, uint64_t *lb, uint64_t *ub,  enum layout_type dst_layout,
+                void *data, int timeout)
+{
+    obj_descriptor odsc;
+    obj_descriptor *odsc_tab;
+    int num_odscs;
+    int ret = dspaces_SUCCESS;
+
+    enum storage_type st;
+    if (dst_layout == dspaces_LAYOUT_RIGHT)
+        st = row_major;
+    else
+        st = column_major;
+    
+    fill_odsc_st(var_name, ver, elem_size, ndim, lb, ub, st, &odsc);
+
+    DEBUG_OUT("Querying %s with timeout %d\n", obj_desc_sprint(&odsc), timeout);
+
+    num_odscs = get_odscs(client, &odsc, timeout, &odsc_tab);
+
+    DEBUG_OUT("Finished query - need to fetch %d objects\n", num_odscs);
+    for(int i = 0; i < num_odscs; ++i) {
+        DEBUG_OUT("%s\n", obj_desc_sprint(&odsc_tab[i]));
+    }
+
+    // send request to get the obj_desc
+    if(num_odscs != 0)
+        get_transposed_data(client, num_odscs, odsc, odsc_tab, data);
+
+    free(odsc_tab);
 
     return (0);
 }

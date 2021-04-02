@@ -1883,7 +1883,20 @@ char **addr_str_buf_to_list(char *buf, int num_addrs)
     return ret;
 }
 
-void obj_desc_transpose(obj_descriptor* dst_odsc, obj_descriptor* src_odsc)
+void obj_desc_transpose_bbox(obj_descriptor* dst_odsc, obj_descriptor* src_odsc)
+{
+    memcpy(dst_odsc, src_odsc, sizeof(obj_descriptor));
+    for(int i=0; i< dst_odsc->bb.num_dims/2; i++) {
+        uint64_t temp_lb = dst_odsc->bb.lb.c[i];
+        dst_odsc->bb.lb.c[i] = dst_odsc->bb.lb.c[dst_odsc->bb.num_dims-1-i];
+        dst_odsc->bb.lb.c[dst_odsc->bb.num_dims-1-i] = temp_lb;
+        uint64_t temp_ub = dst_odsc->bb.ub.c[i];
+        dst_odsc->bb.ub.c[i] = dst_odsc->bb.ub.c[dst_odsc->bb.num_dims-1-i];
+        dst_odsc->bb.ub.c[dst_odsc->bb.num_dims-1-i] = temp_ub;
+    }
+}
+
+void obj_desc_transpose_st(obj_descriptor* dst_odsc, obj_descriptor* src_odsc)
 {
     memcpy(dst_odsc, src_odsc, sizeof(obj_descriptor));
     if(src_odsc->st == row_major)
