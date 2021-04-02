@@ -152,6 +152,35 @@ int main(int argc, char** argv)
     if(err != 0 )
         goto free;
 
+    printf("=================OLD METHOD================\n");
+
+    printf("=================Serial Mem check================\n");
+    // serial mem check
+    for(int i = 0 ; i < dim0; i++) {
+        for(int j = 0; j < dim1; j++) {
+            for(int k = 0; k < dim2; k++) {
+                printf("%lf ", recv_data[i*dim1*dim2+j*dim2+k]);
+            }
+            printf("\n");
+        }
+        printf("**************\n");
+    }
+
+    printf("=================Opposite-major check================\n");
+    // opposite-major check
+    for(int i = 0 ; i < dim0; i++) {
+        for(int j = 0; j < dim1; j++) {
+            for(int k = 0; k < dim2; k++) {
+                printf("%lf ", recv_data[i+j*dim0+k*dim1*dim0]);
+            }
+            printf("\n");
+        }
+        printf("**************\n");
+    }
+
+    err = dspaces_get_transposed(ndcl, var_name, 0, sizeof(double), ndim, recv_lb, recv_ub, dspaces_LAYOUT_RIGHT, recv_data, -1);
+
+    printf("=================NEW METHOD================\n");
 
     printf("=================Serial Mem check================\n");
     // serial mem check

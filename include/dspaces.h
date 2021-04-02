@@ -396,6 +396,10 @@ int dspaces_get_layout(dspaces_client_t client, const char *var_name, unsigned i
                 int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum layout_type layout, 
                 void *data, int timeout);
 
+int dspaces_get_transposed(dspaces_client_t client, const char *var_name, unsigned int ver,
+                int elem_size, int ndim, uint64_t *lb, uint64_t *ub,  enum layout_type dst_layout,
+                void *data, int timeout);
+
 #if defined(__cplusplus)
 }
 #endif
