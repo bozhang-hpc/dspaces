@@ -29,18 +29,18 @@ int main(int argc, char** argv)
 
     int err = 0;
 
-    int dim0 = 2;
-    int dim1 = 8;
-    int dim2 = 4;
+    int sub_dim0 = 2;
+    int sub_dim1 = 4;
+    int sub_dim2 = 2;
 
 
     int loc_dim0 = 1;
     int loc_dim1 = 4;
     int loc_dim2 = 4;
 
-
+    
     double *data = (double*) malloc(loc_dim0*loc_dim1*loc_dim2*sizeof(double));
-    double *recv_data = (double*) malloc(dim0*dim1*dim2*sizeof(double));
+    double *recv_data = (double*) malloc(sub_dim0*sub_dim1*sub_dim2*sizeof(double));
 
     int ndim = 3;
     uint64_t lb[3] = {0}, ub[3] = {0};
@@ -156,10 +156,10 @@ int main(int argc, char** argv)
 
     printf("=================Serial Mem check================\n");
     // serial mem check
-    for(int i = 0 ; i < dim0; i++) {
-        for(int j = 0; j < dim1; j++) {
-            for(int k = 0; k < dim2; k++) {
-                printf("%lf ", recv_data[i*dim1*dim2+j*dim2+k]);
+    for(int i = 0 ; i < sub_dim0; i++) {
+        for(int j = 0; j < sub_dim1; j++) {
+            for(int k = 0; k < sub_dim2; k++) {
+                printf("%lf ", recv_data[i*sub_dim1*sub_dim2+j*sub_dim2+k]);
             }
             printf("\n");
         }
@@ -168,10 +168,10 @@ int main(int argc, char** argv)
 
     printf("=================Opposite-major check================\n");
     // opposite-major check
-    for(int i = 0 ; i < dim0; i++) {
-        for(int j = 0; j < dim1; j++) {
-            for(int k = 0; k < dim2; k++) {
-                printf("%lf ", recv_data[i+j*dim0+k*dim1*dim0]);
+    for(int i = 0 ; i < sub_dim0; i++) {
+        for(int j = 0; j < sub_dim1; j++) {
+            for(int k = 0; k < sub_dim2; k++) {
+                printf("%lf ", recv_data[i+j*sub_dim0+k*sub_dim1*sub_dim0]);
             }
             printf("\n");
         }
@@ -184,10 +184,10 @@ int main(int argc, char** argv)
 
     printf("=================Serial Mem check================\n");
     // serial mem check
-    for(int i = 0 ; i < dim0; i++) {
-        for(int j = 0; j < dim1; j++) {
-            for(int k = 0; k < dim2; k++) {
-                printf("%lf ", recv_data[i*dim1*dim2+j*dim2+k]);
+    for(int i = 0 ; i < sub_dim0; i++) {
+        for(int j = 0; j < sub_dim1; j++) {
+            for(int k = 0; k < sub_dim2; k++) {
+                printf("%lf ", recv_data[i*sub_dim1*sub_dim2+j*sub_dim2+k]);
             }
             printf("\n");
         }
@@ -199,7 +199,7 @@ int main(int argc, char** argv)
     for(int i = 0 ; i < dim0; i++) {
         for(int j = 0; j < dim1; j++) {
             for(int k = 0; k < dim2; k++) {
-                printf("%lf ", recv_data[i+j*dim0+k*dim1*dim0]);
+                printf("%lf ", recv_data[i+j*sub_dim0+k*sub_dim1*sub_dim0]);
             }
             printf("\n");
         }
