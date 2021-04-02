@@ -2033,7 +2033,7 @@ static int get_transposed_data(dspaces_client_t client, int num_odscs,
         // transposing a parent vector needs both transposing each sub-vector inside and outside
         obj_descriptor temp_odsc_entry;
         obj_desc_transpose_bbox(&temp_odsc_entry, &od[i]->obj_desc);
-        od[i]->obj_desc = &temp_odsc_entry;
+        od[i]->obj_desc = temp_odsc_entry;
 
         ssd_copy(return_od, od[i]);
         obj_data_free(od[i]);
