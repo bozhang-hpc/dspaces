@@ -196,9 +196,9 @@ int main(int argc, char** argv)
 
     printf("=================Opposite-major check================\n");
     // opposite-major check
-    for(int i = 0 ; i < dim0; i++) {
-        for(int j = 0; j < dim1; j++) {
-            for(int k = 0; k < dim2; k++) {
+    for(int i = 0 ; i < sub_dim0; i++) {
+        for(int j = 0; j < sub_dim1; j++) {
+            for(int k = 0; k < sub_dim2; k++) {
                 printf("%lf ", recv_data[i+j*sub_dim0+k*sub_dim1*sub_dim0]);
             }
             printf("\n");
