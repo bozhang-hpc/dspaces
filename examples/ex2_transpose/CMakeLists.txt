@@ -6,3 +6,6 @@ target_link_libraries(transpose_so dspaces)
 
 add_executable(transpose_mo transpose_mo.c)
 target_link_libraries(transpose_mo dspaces)
+
+add_executable(transpose_mso transpose_mso.c)
+target_link_libraries(transpose_mso dspaces)
