@@ -99,6 +99,20 @@ int main(int argc, char** argv)
         printf("**************\n");
     }
 
+    err = dspaces_get_transposed(ndcl, var_name, 0, sizeof(double), ndim, recv_lb, recv_ub, dspaces_LAYOUT_RIGHT, recv_data, -1);
+
+    printf("=================NEW METHOD================\n");
+
+    for(int i = 0 ; i < sub_dim0; i++) {
+        for(int j = 0; j < sub_dim1; j++) {
+            for(int k = 0; k < sub_dim2; k++) {
+                printf("%lf ", recv_data[i+j*sub_dim0+k*sub_dim0*sub_dim1]);
+            }
+            printf("\n");
+        }
+        printf("**************\n");
+    }
+
     
 free:
 
