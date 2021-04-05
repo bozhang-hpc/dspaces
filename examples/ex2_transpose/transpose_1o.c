@@ -27,7 +27,7 @@ int main(int argc, char** argv)
     char var_name[128];
 
     /*----------------------------------TestCase1-----------------------*/
-    printf("================TESTCASE1: PUT ROW-MAJOR GET COLUMN-MAJOR")
+    printf("================TESTCASE1: PUT ROW-MAJOR GET COLUMN-MAJOR");
     sprintf(var_name, "example2_test1_data");
 
     int err = 0;
@@ -90,7 +90,7 @@ int main(int argc, char** argv)
     }
 
     /*----------------------------------TestCase2-----------------------*/
-    printf("================TESTCASE2: PUT COLUMN-MAJOR GET ROW-MAJOR")
+    printf("================TESTCASE2: PUT COLUMN-MAJOR GET ROW-MAJOR");
     sprintf(var_name, "example2_test2_data");
 
     //column-major put
