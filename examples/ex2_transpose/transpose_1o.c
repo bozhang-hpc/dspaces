@@ -25,8 +25,10 @@ int main(int argc, char** argv)
     dspaces_init(rank, &ndcl);
 
     char var_name[128];
+
     /*----------------------------------TestCase1-----------------------*/
-    sprintf(var_name, "example2_data");
+    printf("================TESTCASE1: PUT ROW-MAJOR GET COLUMN-MAJOR")
+    sprintf(var_name, "example2_test1_data");
 
     int err = 0;
 
@@ -38,6 +40,7 @@ int main(int argc, char** argv)
     double *data = (double*) malloc(dim0*dim1*dim2*sizeof(double));
     double *recv_data = (double*) malloc(dim0*dim1*dim2*sizeof(double));
 
+    //row-major put
     printf("=================PUT================\n");
     for(int i = 0 ; i < dim0; i++) {
         for(int j = 0; j < dim1; j++) {
@@ -63,18 +66,18 @@ int main(int argc, char** argv)
     ub[2] = 1;
 
     
-    err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, lb, ub, data);
+    err = dspaces_put_layout(ndcl, var_name, 0, sizeof(double), ndim, lb, ub, dspaces_LAYOUT_RIGHT, data);
     
     MPI_Barrier(gcomm);
 
     err = dspaces_transpose(ndcl, var_name, 0, sizeof(double), ndim, lb, ub);
 
-    err = dspaces_get_layout(ndcl, var_name, 0, sizeof(double), ndim, lb, ub, dspaces_LAYOUT_RIGHT, recv_data, -1);
+    err = dspaces_get_transposed(ndcl, var_name, 0, sizeof(double), ndim, lb, ub, dspaces_LAYOUT_LEFT, recv_data, -1);
 
     if(err != 0 )
         goto free;
 
-    // opposite-major check
+    // column-major check
     printf("=================GET================\n");
     for(int i = 0 ; i < dim0; i++) {
         for(int j = 0; j < dim1; j++) {
@@ -86,14 +89,40 @@ int main(int argc, char** argv)
         printf("**************\n");
     }
 
-    err = dspaces_get_transposed(ndcl, var_name, 0, sizeof(double), ndim, lb, ub, dspaces_LAYOUT_RIGHT, recv_data, -1);
+    /*----------------------------------TestCase2-----------------------*/
+    printf("================TESTCASE2: PUT COLUMN-MAJOR GET ROW-MAJOR")
+    sprintf(var_name, "example2_test2_data");
 
-    printf("=================NEW METHOD================\n");
-
+    //column-major put
+    printf("=================PUT================\n");
     for(int i = 0 ; i < dim0; i++) {
         for(int j = 0; j < dim1; j++) {
             for(int k = 0; k < dim2; k++) {
-                printf("%lf ", recv_data[i+j*dim0+k*dim1*dim0]);
+                data[i+j*dim0+k*dim1*dim0] = i+j*dim0+k*dim1*dim0;
+                printf("%lf ", data[i+j*dim0+k*dim1*dim0]);
+            }
+            printf("\n");
+        }
+        printf("**************\n");
+    }
+
+    err = dspaces_put_layout(ndcl, var_name, 0, sizeof(double), ndim, lb, ub, dspaces_LAYOUT_LEFT, data);
+
+    MPI_Barrier(gcomm);
+
+    err = dspaces_transpose(ndcl, var_name, 0, sizeof(double), ndim, lb, ub);
+
+    err = dspaces_get_transposed(ndcl, var_name, 0, sizeof(double), ndim, lb, ub, dspaces_LAYOUT_RIGHT, recv_data, -1);
+
+    if(err != 0 )
+        goto free;
+
+    // row-major check
+    printf("=================GET================\n");
+    for(int i = 0 ; i < dim0; i++) {
+        for(int j = 0; j < dim1; j++) {
+            for(int k = 0; k < dim2; k++) {
+                printf("%lf ", recv_data[i*dim1*dim2+j*dim2+k]);
             }
             printf("\n");
         }
