@@ -33,7 +33,7 @@
 
 static int g_is_initialized = 0;
 
-static enum storage_type st = column_major;
+static enum storage_type st = row_major;
 
 struct dspaces_sub_handle {
     struct dspaces_req *req;

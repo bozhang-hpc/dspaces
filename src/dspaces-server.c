@@ -30,7 +30,7 @@
 
 #define DSPACES_DEFAULT_NUM_HANDLERS 4
 
-static enum storage_type st = column_major;
+static enum storage_type st = row_major;
 
 typedef enum obj_update_type { DS_OBJ_NEW, DS_OBJ_OWNER } obj_update_t;
 
