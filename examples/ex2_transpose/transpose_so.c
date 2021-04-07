@@ -134,6 +134,13 @@ int main(int argc, char** argv)
 
     MPI_Barrier(gcomm);
 
+    recv_lb[0] = 0;
+    recv_lb[1] = 2;
+    recv_lb[2] = 1;
+    recv_ub[0] = 1;
+    recv_ub[1] = 5;
+    recv_ub[2] = 2;
+
     err = dspaces_get_layout(ndcl, var_name, 0, sizeof(double), ndim, recv_lb, recv_ub, dspaces_LAYOUT_RIGHT, recv_data, -1);
 
     // row-major check
