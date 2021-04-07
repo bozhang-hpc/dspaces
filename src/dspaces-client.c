@@ -882,7 +882,7 @@ static int get_data(dspaces_client_t client, int num_odscs,
         margo_free_output(hndl[i], &resp);
         margo_destroy(hndl[i]);
         DEBUG_OUT("%s\n", obj_desc_sprint(&od[i]->obj_desc));
-        debug_print(od[i]->data);
+        // debug_print(od[i]->data);
         // copy received data into user return buffer
         ssd_copy(return_od, od[i]);
         obj_data_free(od[i]);
@@ -2192,15 +2192,20 @@ int dspaces_put_layout(dspaces_client_t client, const char *var_name, unsigned i
     hg_return_t hret;
     int ret = dspaces_SUCCESS;
 
-    enum storage_type st;
+    enum storage_type src_st;
     if (src_layout == dspaces_LAYOUT_RIGHT)
-        st = row_major;
+        src_st = row_major;
     else
-        st = column_major;
+        src_st = column_major;
 
-    obj_descriptor odsc;
+    obj_descriptor temp_odsc, odsc;
 
-    fill_odsc_src_st(var_name, ver, elem_size, ndim, lb, ub, st, &odsc);
+    fill_odsc_src_st(var_name, ver, elem_size, ndim, lb, ub, src_st, &temp_odsc);
+
+    if(src_st != st)
+        obj_desc_transpose_bbox(&odsc, &temp_odsc);
+    else
+        memcpy(&odsc, &temp_odsc, sizeof(obj_descriptor));
 
     bulk_gdim_t in;
     bulk_out_t out;
@@ -2315,7 +2320,7 @@ static int get_data_rcmc(dspaces_client_t client, int num_odscs,
         margo_free_output(hndl[i], &resp);
         margo_destroy(hndl[i]);
         DEBUG_OUT("%s\n", obj_desc_sprint(&od[i]->obj_desc));
-        debug_print(od[i]->data);
+        // debug_print(od[i]->data);
         // copy received data into user return buffer
         ssd_copy(temp_od, od[i]);
         obj_data_free(od[i]);
@@ -2363,7 +2368,7 @@ static int get_layout_v1(dspaces_client_t client, const char *var_name, unsigned
                 int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum layout_type dst_layout, 
                 void *data, int timeout)
 {
-    obj_descriptor odsc;
+    obj_descriptor temp_odsc, odsc;
     obj_descriptor *odsc_tab;
     int num_odscs;
     int ret = dspaces_SUCCESS;
@@ -2385,7 +2390,12 @@ static int get_layout_v1(dspaces_client_t client, const char *var_name, unsigned
     }
     
     // Get all odscs no matter what st it is
-    fill_odsc_st(var_name, ver, elem_size, ndim, lb, ub, dst_st, &odsc);
+    fill_odsc_st(var_name, ver, elem_size, ndim, lb, ub, dst_st, &temp_odsc);
+
+    if(dst_st != st)
+        obj_desc_transpose_bbox(&odsc, &temp_odsc);
+    else
+        memcpy(&odsc, &temp_odsc, sizeof(obj_descriptor));
 
     DEBUG_OUT("Querying %s with timeout %d\n", obj_desc_sprint(&odsc), timeout);
 
