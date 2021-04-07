@@ -138,6 +138,16 @@ int main(int argc, char** argv)
         }
         printf("**************\n");
     }
+    printf("=================SERIAL MEM CHECK================\n");
+    for(int i = 0 ; i < dim0; i++) {
+        for(int j = 0; j < dim1; j++) {
+            for(int k = 0; k < dim2; k++) {
+                printf("%lf ", recv_data[i*dim1*dim2+j*dim2+k]);
+            }
+            printf("\n");
+        }
+        printf("**************\n");
+    }
     
 free:
 
