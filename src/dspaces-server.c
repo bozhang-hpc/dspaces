@@ -1492,7 +1492,7 @@ static void od_print(struct obj_data *od)
     for(i[2]=0; i[2]<bbox_dist(bb, 2); i[2]++) {
         for(i[1]=0; i[1]<bbox_dist(bb, 1); i[1]++) {
             for(i[0]=0; i[0]<bbox_dist(bb, 0); i[0]++) {
-                printf("%lf ", pt[i[2]*bbox_dist(bb, 1)*bbox_dist(bb, 0)+i[1]*bbox_dist(bb, 0)+i[0]])
+                printf("%lf ", pt[i[2]*bbox_dist(bb, 1)*bbox_dist(bb, 0)+i[1]*bbox_dist(bb, 0)+i[0]]);
             }
             printf("\n");
         }
