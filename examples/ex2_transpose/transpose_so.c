@@ -82,7 +82,7 @@ int main(int argc, char** argv)
     get_ub[1] = 5;
     get_ub[2] = 1;
 
-    err = dspaces_get_layout(ndcl, var_name, 0, sizeof(double), ndim, recv_lb, recv_ub, dspaces_LAYOUT_RIGHT, recv_data, -1);
+    err = dspaces_get_layout(ndcl, var_name, 0, sizeof(double), ndim, get_lb, get_ub, dspaces_LAYOUT_RIGHT, recv_data, -1);
 
     if(err != 0 )
         goto free;
