@@ -2393,7 +2393,7 @@ static int get_layout_v1(dspaces_client_t client, const char *var_name, unsigned
         if(odsc_tab[0].src_st == dst_st)
             get_data(client, num_odscs, odsc, odsc_tab, data);
         else
-            get_data_rcmc(client, num_odscs, odsc, odsc_tab, data)
+            get_data_rcmc(client, num_odscs, odsc, odsc_tab, data);
         
     }
 
