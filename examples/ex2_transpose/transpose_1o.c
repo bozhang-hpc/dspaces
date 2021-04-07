@@ -27,7 +27,7 @@ int main(int argc, char** argv)
     char var_name[128];
 
     /*----------------------------------TestCase1-----------------------*/
-    printf("================TESTCASE1: PUT ROW-MAJOR GET COLUMN-MAJOR");
+    printf("================TESTCASE1: PUT ROW-MAJOR GET COLUMN-MAJOR\n");
     sprintf(var_name, "example2_test1_data");
 
     int err = 0;
@@ -90,7 +90,7 @@ int main(int argc, char** argv)
     }
 
     /*----------------------------------TestCase2-----------------------*/
-    printf("================TESTCASE2: PUT COLUMN-MAJOR GET ROW-MAJOR");
+    printf("================TESTCASE2: PUT COLUMN-MAJOR GET ROW-MAJOR\n");
     sprintf(var_name, "example2_test2_data");
 
     //column-major put
@@ -100,6 +100,16 @@ int main(int argc, char** argv)
             for(int k = 0; k < dim2; k++) {
                 data[i+j*dim0+k*dim1*dim0] = i+j*dim0+k*dim1*dim0;
                 printf("%lf ", data[i+j*dim0+k*dim1*dim0]);
+            }
+            printf("\n");
+        }
+        printf("**************\n");
+    }
+    printf("=================SERIAL MEM CHECK================\n");
+    for(int i = 0 ; i < dim0; i++) {
+        for(int j = 0; j < dim1; j++) {
+            for(int k = 0; k < dim2; k++) {
+                printf("%lf ", recv_data[i*dim1*dim2+j*dim2+k]);
             }
             printf("\n");
         }
