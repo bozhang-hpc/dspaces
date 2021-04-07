@@ -2354,7 +2354,7 @@ static int get_layout_v1(dspaces_client_t client, const char *var_name, unsigned
     int ret = dspaces_SUCCESS;
     //enum storage_type src_st;
     enum storage_type dst_st;
-    switch (layout_type)
+    switch (dst_layout)
     {
     case dspaces_LAYOUT_RIGHT:
         dst_st = row_major;
