@@ -2009,7 +2009,7 @@ dim1:
         }
         dst_loc += j[bb->num_dims-1];
         memcpy(&dst[dst_loc*elem_size], &src[src_loc*elem_size], elem_size);
-        debug_print(dst); 
+        //debug_print(dst); 
         num_transposed_elem++;
     }
     if(bb->num_dims == 1)
