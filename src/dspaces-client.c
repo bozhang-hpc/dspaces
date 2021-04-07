@@ -2385,7 +2385,7 @@ static int get_layout_v1(dspaces_client_t client, const char *var_name, unsigned
     }
     
     // Get all odscs no matter what st it is
-    fill_odsc_st(var_name, ver, elem_size, ndim, lb, ub, st, &odsc);
+    fill_odsc_st(var_name, ver, elem_size, ndim, lb, ub, dst_st, &odsc);
 
     DEBUG_OUT("Querying %s with timeout %d\n", obj_desc_sprint(&odsc), timeout);
 
