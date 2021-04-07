@@ -98,7 +98,7 @@ int main(int argc, char** argv)
     printf("================TESTCASE2: PUT COLUMN-MAJOR GET COLUMN-MAJOR\n");
     sprintf(var_name, "example2_test2_data");
 
-    //row-major put
+    //column-major put
     printf("=================PUT================\n");
     for(int i = 0 ; i < dim0; i++) {
         for(int j = 0; j < dim1; j++) {
@@ -141,7 +141,7 @@ int main(int argc, char** argv)
     for(int i = 0 ; i < dim0; i++) {
         for(int j = 0; j < dim1; j++) {
             for(int k = 0; k < dim2; k++) {
-                printf("%lf ", recv_data[i*dim1*dim2+j*dim2+k]);
+                printf("%lf ", recv_data[i+j*dim0+k*dim0*dim1]);
             }
             printf("\n");
         }
@@ -201,9 +201,9 @@ int main(int argc, char** argv)
         printf("**************\n");
     }
 
-    /*----------------------------------TestCase2-----------------------*/
-    printf("================TESTCASE2: PUT COLUMN-MAJOR GET ROW-MAJOR\n");
-    sprintf(var_name, "example2_test2_data");
+    /*----------------------------------TestCase4-----------------------*/
+    printf("================TESTCASE4: PUT COLUMN-MAJOR GET ROW-MAJOR\n");
+    sprintf(var_name, "example2_test4_data");
 
     //column-major put
     printf("=================PUT================\n");
