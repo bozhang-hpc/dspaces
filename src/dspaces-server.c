@@ -1482,6 +1482,24 @@ static void query_meta_rpc(hg_handle_t handle)
 }
 DEFINE_MARGO_RPC_HANDLER(query_meta_rpc)
 
+static void od_print(struct obj_data *od)
+{
+    struct bbox* bb = &od->obj_desc.bb;
+    uint64_t i[3]; //index in dst layout
+    double *pt = (double*) od->data;
+
+    printf("%s\n", bbox_sprint(bb));
+    for(i[2]=0; i[2]<bbox_dist(bb, 2); i[2]++) {
+        for(i[1]=0; i[1]<bbox_dist(bb, 1); i[1]++) {
+            for(i[0]=0; i[0]<bbox_dist(bb, 0); i[0]++) {
+                printf("%lf ", pt[i[2]*bbox_dist(bb, 1)*bbox_dist(bb, 0)+i[1]*bbox_dist(bb, 0)+i[0]])
+            }
+            printf("\n");
+        }
+        printf("**************\n");
+    }
+}
+
 static void get_rpc(hg_handle_t handle)
 {
     hg_return_t hret;
@@ -1516,6 +1534,8 @@ static void get_rpc(hg_handle_t handle)
 
     od = obj_data_alloc(&in_odsc);
     ssd_copy(od, from_obj);
+
+    od_print(od);
 
     hg_size_t size = (in_odsc.size) * bbox_volume(&(in_odsc.bb));
     void *buffer = (void *)od->data;
