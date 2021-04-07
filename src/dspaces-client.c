@@ -2385,10 +2385,11 @@ static int get_layout_v1(dspaces_client_t client, const char *var_name, unsigned
     }
     
     // Get all odscs no matter what st it is
-    fill_odsc(var_name, ver, elem_size, ndim, lb, ub, &odsc);
+    fill_odsc_st(var_name, ver, elem_size, ndim, lb, ub, st, &odsc);
 
     DEBUG_OUT("Querying %s with timeout %d\n", obj_desc_sprint(&odsc), timeout);
 
+    // Get all odscs no matter what st it is, dht_find_all() here does not check st
     num_odscs = get_odscs(client, &odsc, timeout, &odsc_tab);
 
     //  Assume put side only puts one st.
