@@ -41,6 +41,10 @@ int main(int argc, char** argv)
     double *data = (double*) malloc(dim0*dim1*dim2*sizeof(double));
     double *recv_data = (double*) malloc(sub_dim0*sub_dim1*sub_dim2*sizeof(double));
 
+    /*----------------------------------TestCase1-----------------------*/
+    printf("================TESTCASE1: PUT ROW-MAJOR GET COLUMN-MAJOR\n");
+    sprintf(var_name, "example2_test1_data");
+
     printf("=================PUT================\n");
     for(int i = 0 ; i < dim0; i++) {
         for(int j = 0; j < dim1; j++) {
@@ -75,13 +79,13 @@ int main(int argc, char** argv)
     recv_ub[2] = 1;
 
     
-    err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, lb, ub, data);
+    err = dspaces_put_layout(ndcl, var_name, 0, sizeof(double), ndim, lb, ub, dspaces_LAYOUT_RIGHT, data);
     
     MPI_Barrier(gcomm);
 
     // if you only want a subset of a data object, just transpose the subset bbox 
 
-    err = dspaces_transpose(ndcl, var_name, 0, sizeof(double), ndim, recv_lb, recv_ub);
+    //err = dspaces_transpose(ndcl, var_name, 0, sizeof(double), ndim, recv_lb, recv_ub);
 
     err = dspaces_get_layout(ndcl, var_name, 0, sizeof(double), ndim, recv_lb, recv_ub, dspaces_LAYOUT_RIGHT, recv_data, -1);
 
@@ -99,20 +103,40 @@ int main(int argc, char** argv)
         printf("**************\n");
     }
 
-    err = dspaces_get_transposed(ndcl, var_name, 0, sizeof(double), ndim, recv_lb, recv_ub, dspaces_LAYOUT_RIGHT, recv_data, -1);
-
-    printf("=================NEW METHOD================\n");
-
-    for(int i = 0 ; i < sub_dim0; i++) {
-        for(int j = 0; j < sub_dim1; j++) {
-            for(int k = 0; k < sub_dim2; k++) {
-                printf("%lf ", recv_data[i+j*sub_dim0+k*sub_dim0*sub_dim1]);
+    
+    /*----------------------------------TestCase2-----------------------*/
+    printf("================TESTCASE2: PUT COLUMN-MAJOR GET ROW-MAJOR\n");
+    sprintf(var_name, "example2_test2_data");
+    //column-major put
+    printf("=================PUT================\n");
+    for(int i = 0 ; i < dim0; i++) {
+        for(int j = 0; j < dim1; j++) {
+            for(int k = 0; k < dim2; k++) {
+                data[i+j*dim0+k*dim1*dim0] = i+j*dim0+k*dim1*dim0;
+                printf("%lf ", data[i+j*dim0+k*dim1*dim0]);
             }
             printf("\n");
         }
         printf("**************\n");
     }
 
+    err = dspaces_put_layout(ndcl, var_name, 0, sizeof(double), ndim, lb, ub, dspaces_LAYOUT_LEFT, data);
+
+    MPI_Barrier(gcomm);
+
+    err = dspaces_get_layout(ndcl, var_name, 0, sizeof(double), ndim, recv_lb, recv_ub, dspaces_LAYOUT_LEFT, recv_data, -1);
+
+    // row-major check
+    printf("=================GET================\n");
+    for(int i = 0 ; i < dim0; i++) {
+        for(int j = 0; j < dim1; j++) {
+            for(int k = 0; k < dim2; k++) {
+                printf("%lf ", recv_data[i*dim1*dim2+j*dim2+k]);
+            }
+            printf("\n");
+        }
+        printf("**************\n");
+    }
     
 free:
 
