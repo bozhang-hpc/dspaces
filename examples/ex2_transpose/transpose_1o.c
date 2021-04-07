@@ -116,6 +116,13 @@ int main(int argc, char** argv)
         printf("**************\n");
     }
 
+    lb[0] = 0;
+    lb[1] = 0;
+    lb[2] = 0;
+    ub[0] = 1;
+    ub[1] = 7;
+    ub[2] = 3;
+
     err = dspaces_put_layout(ndcl, var_name, 0, sizeof(double), ndim, lb, ub, dspaces_LAYOUT_LEFT, data);
 
     MPI_Barrier(gcomm);
