@@ -2327,6 +2327,7 @@ static int get_data_rcmc(dspaces_client_t client, int num_odscs,
     struct obj_data *return_od = obj_data_alloc_no_data(&req_obj, data);
 
     //int func_ret = od_transpose(return_od, temp_od);
+    int func_ret;
     switch (req_obj.st)
     {
     case column_major:
