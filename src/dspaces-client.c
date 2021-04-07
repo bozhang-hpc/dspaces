@@ -2326,14 +2326,28 @@ static int get_data_rcmc(dspaces_client_t client, int num_odscs,
 
     struct obj_data *return_od = obj_data_alloc_no_data(&req_obj, data);
 
-    int func_ret = od_transpose(return_od, temp_od);
+    //int func_ret = od_transpose(return_od, temp_od);
+    switch (req_obj.st)
+    {
+    case column_major:
+        func_ret = od_rm2cm(return_od, temp_od);
+        break;
+
+    case row_major:
+        func_ret = od_cm2rm(return_od, temp_od);
+        break;
+    
+    default:
+        func_ret = 0;
+        break;
+    }
+
     if(func_ret != bbox_volume(&temp_od->obj_desc.bb)) {
         fprintf(stderr,
                 "DATASPACES: ERROR handling %s: od_transpose() failed with "
                 "%d.\n",
                 __func__, ret);
         ret = dspaces_ERR_LAYOUT;
-        goto free;
     }
 
 free:

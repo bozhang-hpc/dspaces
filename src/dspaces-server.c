@@ -1887,7 +1887,7 @@ static void transpose_rpc(hg_handle_t handle)
     ts_od = obj_data_alloc(&ts_odsc);
     memcpy(&ts_od->gdim, in.odsc_gdim.raw_gdim, sizeof(struct global_dimension));
 
-    int ret = od_transpose(ts_od, src_od);
+    //int ret = od_transpose(ts_od, src_od);
     if(ret != bbox_volume(&src_od->obj_desc.bb)) {
         fprintf(stderr,
                 "DATASPACES: ERROR handling %s: od_transpose() failed with "

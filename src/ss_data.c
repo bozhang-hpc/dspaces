@@ -1916,7 +1916,8 @@ static void debug_print(char* ptr) {
     }
 }
 
-int od_transpose(struct obj_data* dst_od, struct obj_data* src_od)
+// row major -> column major
+int od_rm2cm(struct obj_data* dst_od, struct obj_data* src_od)
 {
     if(dst_od->obj_desc.st == src_od->obj_desc.st ||
         dst_od->obj_desc.size != src_od->obj_desc.size ||
@@ -2008,6 +2009,134 @@ dim1:
             dst_loc = (dst_loc + j[d]) * bbox_dist(bb, d+1);
         }
         dst_loc += j[bb->num_dims-1];
+        memcpy(&dst[dst_loc*elem_size], &src[src_loc*elem_size], elem_size);
+        //debug_print(dst); 
+        num_transposed_elem++;
+    }
+    if(bb->num_dims == 1)
+        return num_transposed_elem;
+    }
+    if(bb->num_dims == 2)
+        return num_transposed_elem;
+    }
+    if(bb->num_dims == 3)
+        return num_transposed_elem;
+    }
+    if(bb->num_dims == 4)
+        return num_transposed_elem;
+    }
+    if(bb->num_dims == 5)
+        return num_transposed_elem;
+    }
+    if(bb->num_dims == 6)
+        return num_transposed_elem;
+    }
+    if(bb->num_dims == 7)
+        return num_transposed_elem;
+    }
+    if(bb->num_dims == 8)
+        return num_transposed_elem;
+    }
+    if(bb->num_dims == 9)
+        return num_transposed_elem;
+    }
+    if(bb->num_dims == 10)
+        return num_transposed_elem;
+
+}
+
+int od_cm2rm(struct obj_data* dst_od, struct obj_data* src_od)
+{
+    if(dst_od->obj_desc.st == src_od->obj_desc.st ||
+        dst_od->obj_desc.size != src_od->obj_desc.size ||
+        !bbox_equals(&dst_od->obj_desc.bb, &src_od->obj_desc.bb)) {
+        
+        fprintf(stderr, 
+                "ERROR %s: dst_od does not match src_od.\n", __func__);
+        return 0;
+    }
+
+    char* dst = dst_od->data;
+    char* src = src_od->data;
+    struct bbox* bb = &dst_od->obj_desc.bb;
+    size_t elem_size = dst_od->obj_desc.size;
+
+    uint64_t j[10]; //index in dst layout
+    uint64_t dst_loc = 0, dst_loc1 = 0, dst_loc2 = 0, dst_loc3 = 0, dst_loc4 = 0, 
+             dst_loc5 = 0, dst_loc6 =0, dst_loc7 = 0, dst_loc8 = 0, dst_loc9 = 0;
+    uint64_t d;
+    uint64_t num_transposed_elem = 0;
+
+    switch(bb->num_dims) {
+    case(1):
+        goto dim1;
+        break;
+    case(2):
+        goto dim2;
+        break;
+    case(3):
+        goto dim3;
+        break;
+    case(4):
+        goto dim4;
+        break;
+    case(5):
+        goto dim5;
+        break;
+    case(6):
+        goto dim6;
+        break;
+    case(7):
+        goto dim7;
+        break;
+    case(8):
+        goto dim8;
+        break;
+    case(9):
+        goto dim9;
+        break;
+    case(10):
+        goto dim10;
+        break;
+    default:
+        break;
+    }
+
+dim10:
+    for(j[9]=0; j[9]<bbox_dist(bb, 9); j[9]++) {
+        dst_loc9 = j[9] * bbox_dist(bb, 8);
+dim9:
+    for(j[8]=0; j[8]<bbox_dist(bb, 8); j[8]++) {
+        dst_loc8 = (dst_loc9 + j[8]) * bbox_dist(bb, 7);
+dim8:
+    for(j[7]=0; j[7]<bbox_dist(bb, 7); j[7]++) {
+        dst_loc7 = (dst_loc8 + j[7]) * bbox_dist(bb, 6);
+dim7:
+    for(j[6]=0; j[6]<bbox_dist(bb, 6); j[6]++) {
+        dst_loc6 = (dst_loc7 + j[6]) * bbox_dist(bb, 5);
+dim6:
+    for(j[5]=0; j[5]<bbox_dist(bb, 5); j[5]++) {
+        dst_loc5 = (dst_loc6 + j[5]) * bbox_dist(bb, 4);
+dim5:
+    for(j[4]=0; j[4]<bbox_dist(bb, 4); j[4]++) {
+        dst_loc4 = (dst_loc5 + j[4]) * bbox_dist(bb, 3);
+dim4:
+    for(j[3]=0; j[3]<bbox_dist(bb, 3); j[3]++) {
+        dst_loc3 = (dst_loc4 + j[3]) * bbox_dist(bb, 2);
+dim3:
+    for(j[2]=0; j[2]<bbox_dist(bb, 2); j[2]++) {
+        dst_loc2 = (dst_loc3 + j[2]) * bbox_dist(bb, 1);
+dim2:
+    for(j[1]=0; j[1]<bbox_dist(bb, 1); j[1]++) {
+        dst_loc1 = (dst_loc2 + j[1]) * bbox_dist(bb, 0);
+dim1:
+    for(j[0]=0; j[0]<bbox_dist(bb, 0); j[0]++) {
+        dst_loc = dst_loc1 + j[0];
+        uint64_t src_loc = 0;
+        for(d=0; d<bb->num_dims-1; d++) {
+            src_loc = (src_loc + j[d]) * bbox_dist(bb, d+1);
+        }
+        src_loc += j[bb->num_dims-1];
         memcpy(&dst[dst_loc*elem_size], &src[src_loc*elem_size], elem_size);
         //debug_print(dst); 
         num_transposed_elem++;
