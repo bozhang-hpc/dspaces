@@ -66,6 +66,7 @@ struct dspaces_client {
     hg_id_t kill_client_id;
     hg_id_t sub_id;
     hg_id_t notify_id;
+    hg_id_t rcm_convert_id; //row-column major conversion
     hg_id_t transpose_id;
     struct dc_gspace *dcg;
     char **server_address;
@@ -539,6 +540,7 @@ static int dspaces_init_margo(dspaces_client_t client,
         DS_HG_REGISTER(hg, client->notify_id, odsc_list_t, void, notify_rpc);
         margo_registered_name(client->mid, "query_meta_rpc",
                               &client->query_meta_id, &flag);
+        margo_registered_name(client->mid, "rcm_convert_rpc", &client->rcm_convert_id, &flag);
         margo_registered_name(client->mid, "transpose_rpc", &client->transpose_id, &flag);
     } else {
         client->put_id = MARGO_REGISTER(client->mid, "put_rpc", bulk_gdim_t,
@@ -587,7 +589,8 @@ static int dspaces_init_margo(dspaces_client_t client,
                             NULL);
         margo_registered_disable_response(client->mid, client->notify_id,
                                           HG_TRUE);
-
+        client->rcm_convert_id = MARGO_REGISTER(client->mid, "rcm_convert_rpc", odsc_gdim_t,
+                                          bulk_out_t, NULL);
         client->transpose_id =
             MARGO_REGISTER(client->mid, "transpose_rpc", odsc_gdim_t, bulk_out_t, NULL);
     }
@@ -1889,6 +1892,60 @@ static int transpose_data(dspaces_client_t client, int num_odscs, obj_descriptor
     return ret;
 }
 
+// get all the odscs which need RM-CM conversion
+static int get_odscs_st(dspaces_client_t client, obj_descriptor *odsc, int timeout,
+                     obj_descriptor **odsc_tab)
+{
+    struct global_dimension od_gdim;
+    int num_odscs;
+    hg_addr_t server_addr;
+    hg_return_t hret;
+    hg_handle_t handle;
+
+    odsc_gdim_t in;
+    odsc_list_t out;
+
+    in.odsc_gdim.size = sizeof(*odsc);
+    in.odsc_gdim.raw_odsc = (char *)odsc;
+    in.param = timeout;
+
+    set_global_dimension(&(client->dcg->gdim_list), odsc->name,
+                         &(client->dcg->default_gdim), &od_gdim);
+    in.odsc_gdim.gdim_size = sizeof(od_gdim);
+    in.odsc_gdim.raw_gdim = (char *)(&od_gdim);
+
+    get_server_address(client, &server_addr);
+
+    hret = margo_create(client->mid, server_addr, client->query_id, &handle);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: %s: margo_create() failed with %d.\n", __func__,
+                hret);
+        return (0);
+    }
+    hret = margo_forward(handle, &in);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: %s: margo_forward() failed with %d.\n",
+                __func__, hret);
+        margo_destroy(handle);
+        return (0);
+    }
+    hret = margo_get_output(handle, &out);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: %s: margo_get_output() failed with %d.\n",
+                __func__, hret);
+        margo_destroy(handle);
+        return (0);
+    }
+
+    num_odscs = (out.odsc_list.size) / sizeof(obj_descriptor);
+    *odsc_tab = malloc(out.odsc_list.size);
+    memcpy(*odsc_tab, out.odsc_list.raw_odsc, out.odsc_list.size);
+    margo_free_output(handle, &out);
+    margo_addr_free(client->mid, server_addr);
+    margo_destroy(handle);
+
+    return (num_odscs);
+}
 
 int dspaces_transpose(dspaces_client_t client, const char *var_name, unsigned int ver,
                         int elem_size, int ndim, uint64_t *lb, uint64_t *ub)
@@ -1916,7 +1973,63 @@ int dspaces_transpose(dspaces_client_t client, const char *var_name, unsigned in
 
     return (0);
 }
+/*
+// row-column major convert
+int dspaces_rcm_convert(dspaces_client_t client, const char *var_name, unsigned int ver,
+                        int elem_size, int ndim, uint64_t *lb, uint64_t *ub)
+{
+    obj_descriptor odsc;
+    hg_addr_t server_addr;
+    hg_return_t hret;
+    hg_handle_t handle;
 
+    odsc_gdim_t in;
+    bulk_out_t out;
+    int ret = dspaces_SUCCESS;
+
+    fill_odsc(var_name, ver, elem_size, ndim, lb, ub, &odsc);
+
+    struct global_dimension odsc_gdim;
+    set_global_dimension(&(client->dcg->gdim_list), var_name,
+                         &(client->dcg->default_gdim), &odsc_gdim);
+
+    in.odsc_gdim.size = sizeof(*odsc);
+    in.odsc_gdim.raw_odsc = (char *)odsc;
+    in.odsc_gdim.gdim_size = sizeof(odsc_gdim);
+    in.odsc_gdim.raw_gdim = (char *)(&odsc_gdim);
+
+    DEBUG_OUT("sending odsc: %s to be converted.\n", obj_desc_sprint(&odsc));
+
+    get_server_address(client, &server_addr);
+
+    
+    hret = margo_create(client->mid, server_addr, client->rcm_convert_id, &handle);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_create() failed\n", __func__);
+        return dspaces_ERR_MERCURY;
+    }
+
+    hret = margo_forward(handle, &in);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_forward() failed\n", __func__);
+        margo_destroy(handle);
+        return dspaces_ERR_MERCURY;
+    }
+
+    hret = margo_get_output(handle, &out);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_get_output() failed\n", __func__);
+        margo_destroy(handle);
+        return dspaces_ERR_MERCURY;
+    }
+
+    ret = out.ret;
+    margo_free_output(handle, &out);
+    margo_destroy(handle);
+    margo_addr_free(client->mid, server_addr);
+    return ret;
+}
+*/
 static void fill_odsc_st(const char *var_name, unsigned int ver, int elem_size,
                       int ndim, uint64_t *lb, uint64_t *ub, enum storage_type st_,
                       obj_descriptor *odsc)
@@ -1937,38 +2050,28 @@ static void fill_odsc_st(const char *var_name, unsigned int ver, int elem_size,
     odsc->name[sizeof(odsc->name) - 1] = '\0';
 }
 
-int dspaces_get_layout(dspaces_client_t client, const char *var_name, unsigned int ver,
-                int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum layout_type dst_layout, 
-                void *data, int timeout)
+static void fill_odsc_src_st(const char *var_name, unsigned int ver, int elem_size,
+                      int ndim, uint64_t *lb, uint64_t *ub, enum storage_type st_,
+                      obj_descriptor *odsc)
 {
-    obj_descriptor odsc;
-    obj_descriptor *odsc_tab;
-    int num_odscs;
-    int ret = dspaces_SUCCESS;
+    odsc->version = ver;
+    memset(odsc->owner, 0, sizeof(odsc->owner));
+    odsc->src_st = st_;
+    odsc->st = st_;
+    odsc->size = elem_size;
+    odsc->bb.num_dims = ndim;
 
-    enum storage_type st;
-    if (dst_layout == dspaces_LAYOUT_RIGHT)
-        st = row_major;
-    else
-        st = column_major;
-    
-    fill_odsc_st(var_name, ver, elem_size, ndim, lb, ub, st, &odsc);
+    memset(odsc->bb.lb.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+    memset(odsc->bb.ub.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
 
-    DEBUG_OUT("Querying %s with timeout %d\n", obj_desc_sprint(&odsc), timeout);
+    memcpy(odsc->bb.lb.c, lb, sizeof(uint64_t) * ndim);
+    memcpy(odsc->bb.ub.c, ub, sizeof(uint64_t) * ndim);
 
-    num_odscs = get_odscs(client, &odsc, timeout, &odsc_tab);
-
-    DEBUG_OUT("Finished query - need to fetch %d objects\n", num_odscs);
-    for(int i = 0; i < num_odscs; ++i) {
-        DEBUG_OUT("%s\n", obj_desc_sprint(&odsc_tab[i]));
-    }
-
-    // send request to get the obj_desc
-    if(num_odscs != 0)
-        get_data(client, num_odscs, odsc, odsc_tab, data);
-
-    return (0);
+    strncpy(odsc->name, var_name, sizeof(odsc->name) - 1);
+    odsc->name[sizeof(odsc->name) - 1] = '\0';
 }
+
+
 
 static int get_transposed_data(dspaces_client_t client, int num_odscs,
                                 obj_descriptor req_obj, obj_descriptor *odsc_tab,
@@ -2097,7 +2200,7 @@ int dspaces_put_layout(dspaces_client_t client, const char *var_name, unsigned i
 
     obj_descriptor odsc;
 
-    fill_odsc_st(var_name, ver, elem_size, ndim, lb, ub, st, &odsc);
+    fill_odsc_src_st(var_name, ver, elem_size, ndim, lb, ub, st, &odsc);
 
     bulk_gdim_t in;
     bulk_out_t out;
@@ -2151,4 +2254,168 @@ int dspaces_put_layout(dspaces_client_t client, const char *var_name, unsigned i
     margo_destroy(handle);
     margo_addr_free(client->mid, server_addr);
     return ret;
+}
+
+static int get_data_rcmc(dspaces_client_t client, int num_odscs,
+                    obj_descriptor req_obj, obj_descriptor *odsc_tab,
+                    void *data)
+{
+    int ret = dspaces_SUCCESS;
+    bulk_in_t *in;
+    in = (bulk_in_t *)malloc(sizeof(bulk_in_t) * num_odscs);
+
+    struct obj_data **od;
+    od = malloc(num_odscs * sizeof(struct obj_data *));
+
+    margo_request *serv_req;
+    hg_handle_t *hndl;
+    hndl = (hg_handle_t *)malloc(sizeof(hg_handle_t) * num_odscs);
+    serv_req = (margo_request *)malloc(sizeof(margo_request) * num_odscs);
+
+    for(int i = 0; i < num_odscs; ++i) {
+        od[i] = obj_data_alloc(&odsc_tab[i]);
+        in[i].odsc.size = sizeof(obj_descriptor);
+        in[i].odsc.raw_odsc = (char *)(&odsc_tab[i]);
+
+        hg_size_t rdma_size = (req_obj.size) * bbox_volume(&odsc_tab[i].bb);
+
+        margo_bulk_create(client->mid, 1, (void **)(&(od[i]->data)), &rdma_size,
+                          HG_BULK_WRITE_ONLY, &in[i].handle);
+
+        hg_addr_t server_addr;
+        margo_addr_lookup(client->mid, odsc_tab[i].owner, &server_addr);
+
+        hg_handle_t handle;
+        if(odsc_tab[i].flags & DS_CLIENT_STORAGE) {
+            DEBUG_OUT("retrieving object from client-local storage.\n");
+            margo_create(client->mid, server_addr, client->get_local_id,
+                         &handle);
+        } else {
+            DEBUG_OUT("retrieving object from server storage.\n");
+            margo_create(client->mid, server_addr, client->get_id, &handle);
+        }
+        margo_request req;
+        // forward get requests
+        margo_iforward(handle, &in[i], &req);
+        hndl[i] = handle;
+        serv_req[i] = req;
+        margo_addr_free(client->mid, server_addr);
+    }
+
+    obj_descriptor temp_odsc;
+    obj_desc_transpose_st(&temp_odsc, &req_obj);
+
+    struct obj_data *temp_od = obj_data_alloc(&temp_odsc);
+
+    // TODO: rewrite with margo_wait_any()
+    for(int i = 0; i < num_odscs; ++i) {
+        margo_wait(serv_req[i]);
+        bulk_out_t resp;
+        margo_get_output(hndl[i], &resp);
+        margo_free_output(hndl[i], &resp);
+        margo_destroy(hndl[i]);
+        DEBUG_OUT("%s\n", obj_desc_sprint(&od[i]->obj_desc));
+        debug_print(od[i]->data);
+        // copy received data into user return buffer
+        ssd_copy(temp_od, od[i]);
+        obj_data_free(od[i]);
+    }
+    free(hndl);
+    free(serv_req);
+    free(in);
+
+    struct obj_data *return_od = obj_data_alloc_no_data(&req_obj, data);
+
+    int func_ret = od_transpose(return_od, temp_od);
+    if(func_ret != bbox_volume(&temp_od->obj_desc.bb)) {
+        fprintf(stderr,
+                "DATASPACES: ERROR handling %s: od_transpose() failed with "
+                "%d.\n",
+                __func__, ret);
+        ret = dspaces_ERR_LAYOUT;
+        goto free;
+    }
+
+free:
+    obj_data_free(temp_od);
+    free(return_od);
+    return ret;
+}
+
+
+// v1:RCMC at client side
+static int get_layout_v1(dspaces_client_t client, const char *var_name, unsigned int ver,
+                int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum layout_type dst_layout, 
+                void *data, int timeout)
+{
+    obj_descriptor odsc;
+    obj_descriptor *odsc_tab;
+    int num_odscs;
+    int ret = dspaces_SUCCESS;
+    //enum storage_type src_st;
+    enum storage_type dst_st;
+    switch (layout_type)
+    {
+    case dspaces_LAYOUT_RIGHT:
+        dst_st = row_major;
+        break;
+
+    case dspaces_LAYOUT_LEFT:
+        dst_st = column_major;
+        break;
+    
+    default:
+        dst_st = st;
+        break;
+    }
+    
+    // Get all odscs no matter what st it is
+    fill_odsc(var_name, ver, elem_size, ndim, lb, ub, &odsc);
+
+    DEBUG_OUT("Querying %s with timeout %d\n", obj_desc_sprint(&odsc), timeout);
+
+    num_odscs = get_odscs(client, &odsc, timeout, &odsc_tab);
+
+    //  Assume put side only puts one st.
+    //  TODO:
+    /*  Avoid both storage type is put into server. If odsc_tab contains any odsc 
+        in dst_st, no conversion is need, since no converted replica stored at 
+        server side. Remove all odscs who do not have dst_st.
+    */
+
+    DEBUG_OUT("Finished query - need to fetch %d objects\n", num_odscs);
+    for(int i = 0; i < num_odscs; ++i) {
+        DEBUG_OUT("%s\n", obj_desc_sprint(&odsc_tab[i]));
+    }
+   
+    // send request to get the obj_desc
+    if(num_odscs != 0) {
+        if(odsc_tab[0].src_st == dst_st)
+            get_data(client, num_odscs, odsc, odsc_tab, data);
+        else
+            get_data_rcmc(client, num_odscs, odsc, odsc_tab, data)
+        
+    }
+
+    free(odsc_tab);
+    return (0);
+}
+
+int dspaces_get_layout(dspaces_client_t client, const char *var_name, unsigned int ver,
+                int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum layout_type dst_layout, 
+                void *data, int timeout)
+{
+    int option = 1;
+    switch (option)
+    {
+    case 1:
+        get_layout_v1(client, var_name, ver, elem_size, ndim, lb, ub, 
+                        dst_layout, data, timeout);
+        break;
+    
+    default:
+        break;
+    }
+
+    return (0);
 }

@@ -35,6 +35,7 @@ enum storage_type { row_major, column_major };
 typedef struct {
     char name[150];
 
+    enum storage_type src_st;
     enum storage_type st;
     uint32_t flags;
 

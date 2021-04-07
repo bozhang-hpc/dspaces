@@ -1182,7 +1182,6 @@ int obj_desc_equals_no_owner(const obj_descriptor *odsc1,
 {
     if(odsc1->version == odsc2->version &&
        strcmp(odsc1->name, odsc2->name) == 0 &&
-       odsc1->st == odsc2->st &&
        bbox_equals(&odsc1->bb, &odsc2->bb))
         return 1;
     return 0;
@@ -1191,7 +1190,6 @@ int obj_desc_equals_no_owner(const obj_descriptor *odsc1,
 int obj_desc_equals(obj_descriptor *odsc1, obj_descriptor *odsc2)
 {
     if(odsc1->owner == odsc2->owner &&
-        odsc1->st == odsc2->st &&
         bbox_equals(&odsc1->bb, &odsc2->bb))
         return 1;
     else
@@ -1206,7 +1204,6 @@ int obj_desc_equals_intersect(obj_descriptor *odsc1, obj_descriptor *odsc2)
 {
     if(strcmp(odsc1->name, odsc2->name) == 0 &&
        odsc1->version == odsc2->version &&
-       odsc1->st == odsc2->st &&
        bbox_does_intersect(&odsc1->bb, &odsc2->bb))
         return 1;
     return 0;
@@ -1220,7 +1217,6 @@ int obj_desc_by_name_intersect(const obj_descriptor *odsc1,
                                const obj_descriptor *odsc2)
 {
     if(strcmp(odsc1->name, odsc2->name) == 0 &&
-        odsc1->st == odsc2->st &&
         bbox_does_intersect(&odsc1->bb, &odsc2->bb))
         return 1;
     return 0;

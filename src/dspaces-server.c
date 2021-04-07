@@ -1910,3 +1910,50 @@ static void transpose_rpc(hg_handle_t handle)
     DEBUG_OUT("Finished obj_transpose_update from put_rpc\n");
 }
 DEFINE_MARGO_RPC_HANDLER(transpose_rpc)
+
+/*
+static int get_rcmc_odscs(dspaces_provider_t server, obj_descriptor *odsc, obj_descriptor **odsc_tab)
+
+static void rcm_convert_rpc(hg_handle_t handle)
+{
+    hg_return_t hret;
+    odsc_gdim_t in;
+    bulk_out_t out;
+    obj_descriptor in_odsc;
+    struct global_dimension in_gdim;
+    obj_descriptor *odsc_tab;
+    int num_odscs;
+
+    margo_instance_id mid = margo_hg_handle_get_instance(handle);
+
+    const struct hg_info *info = margo_get_info(handle);
+    dspaces_provider_t server =
+        (dspaces_provider_t)margo_registered_data(mid, info->id);
+
+    hret = margo_get_input(handle, &in);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr,
+                "DATASPACES: ERROR handling %s: margo_get_input() failed with "
+                "%d.\n",
+                __func__, hret);
+        margo_destroy(handle);
+        return;
+    }
+
+    memcpy(&in_odsc, in.odsc_gdim.raw_odsc, sizeof(in_odsc));
+    memcpy(&in_gdim, in.odsc_gdim.raw_gdim, sizeof(struct global_dimension));
+    DEBUG_OUT("Received RCM Convert request for %s",
+              obj_desc_sprint(&in_odsc), timeout);
+    // return first
+    out.ret = dspaces_SUCCESS;
+    margo_respond(handle, &out);
+    margo_free_input(handle, &in);
+    margo_destroy(handle);
+    //getting odscs and convert
+    DEBUG_OUT("Querying %s with timeout %d\n", obj_desc_sprint(&odsc), -1);
+
+    num_odscs = get_rcmc_odscs(client, &odsc, -1, &odsc_tab);
+
+}
+DEFINE_MARGO_RPC_HANDLER(rcm_convert_rpc)
+*/
