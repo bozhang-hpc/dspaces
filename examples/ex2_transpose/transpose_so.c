@@ -87,7 +87,7 @@ int main(int argc, char** argv)
 
     //err = dspaces_transpose(ndcl, var_name, 0, sizeof(double), ndim, recv_lb, recv_ub);
 
-    err = dspaces_get_layout(ndcl, var_name, 0, sizeof(double), ndim, recv_lb, recv_ub, dspaces_LAYOUT_RIGHT, recv_data, -1);
+    err = dspaces_get_layout(ndcl, var_name, 0, sizeof(double), ndim, recv_lb, recv_ub, dspaces_LAYOUT_LEFT, recv_data, -1);
 
     if(err != 0 )
         goto free;
@@ -124,7 +124,7 @@ int main(int argc, char** argv)
 
     MPI_Barrier(gcomm);
 
-    err = dspaces_get_layout(ndcl, var_name, 0, sizeof(double), ndim, recv_lb, recv_ub, dspaces_LAYOUT_LEFT, recv_data, -1);
+    err = dspaces_get_layout(ndcl, var_name, 0, sizeof(double), ndim, recv_lb, recv_ub, dspaces_LAYOUT_RIGHT, recv_data, -1);
 
     // row-major check
     printf("=================GET================\n");
