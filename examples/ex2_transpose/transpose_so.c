@@ -128,10 +128,10 @@ int main(int argc, char** argv)
 
     // row-major check
     printf("=================GET================\n");
-    for(int i = 0 ; i < dim0; i++) {
-        for(int j = 0; j < dim1; j++) {
-            for(int k = 0; k < dim2; k++) {
-                printf("%lf ", recv_data[i*dim1*dim2+j*dim2+k]);
+    for(int i = 0 ; i < sub_dim0; i++) {
+        for(int j = 0; j < sub_dim1; j++) {
+            for(int k = 0; k < sub_dim2; k++) {
+                printf("%lf ", recv_data[i*sub_dim1*sub_dim2+j*sub_dim2+k]);
             }
             printf("\n");
         }
