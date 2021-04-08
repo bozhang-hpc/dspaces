@@ -872,7 +872,18 @@ static int get_data(dspaces_client_t client, int num_odscs,
         margo_addr_free(client->mid, server_addr);
     }
 
-    struct obj_data *return_od = obj_data_alloc_no_data(&req_obj, data);
+    obj_descriptor temp_odsc;
+
+    struct obj_data *return_od;
+
+    if(odsc_tab[0].src_st == column_major) {
+        obj_desc_transpose_bbox(&temp_odsc, &req_obj);
+        return_od = obj_data_alloc_no_data(&temp_odsc, data);
+    } else {
+        return_od = obj_data_alloc_no_data(&req_obj, data);
+    }
+
+    //struct obj_data *return_od = obj_data_alloc_no_data(&req_obj, data);
 
     // TODO: rewrite with margo_wait_any()
     for(int i = 0; i < num_odscs; ++i) {
@@ -884,6 +895,11 @@ static int get_data(dspaces_client_t client, int num_odscs,
         DEBUG_OUT("%s\n", obj_desc_sprint(&od[i]->obj_desc));
         // debug_print(od[i]->data);
         // copy received data into user return buffer
+        if(odsc_tab[0].src_st == column_major) {
+            obj_descriptor temp_odsc_entry;
+            obj_desc_transpose_bbox(&temp_odsc_entry, &od[i]->obj_desc);
+            od[i]->obj_desc = temp_odsc_entry;
+        }
         ssd_copy(return_od, od[i]);
         obj_data_free(od[i]);
     }
@@ -2394,7 +2410,6 @@ static int get_layout_v1(dspaces_client_t client, const char *var_name, unsigned
         break;
     }
     
-    // Get all odscs no matter what st it is
     fill_odsc_st(var_name, ver, elem_size, ndim, lb, ub, dst_st, &temp_odsc);
 
     if(dst_st != st)
