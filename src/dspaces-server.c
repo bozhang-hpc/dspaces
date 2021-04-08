@@ -1523,17 +1523,29 @@ static void get_rpc(hg_handle_t handle)
         return;
     }
 
-    obj_descriptor in_odsc;
+    obj_descriptor in_odsc, temp_odsc, temp_from_odsc;
     memcpy(&in_odsc, in.odsc.raw_odsc, sizeof(in_odsc));
 
     DEBUG_OUT("received get request\n");
 
-    struct obj_data *od, *from_obj;
+    struct obj_data *od, *from_obj, *temp_from_obj;
 
     from_obj = ls_find(server->dsg->ls, &in_odsc);
 
-    od = obj_data_alloc(&in_odsc);
-    ssd_copy(od, from_obj);
+    //ssd_copy is inplemented in row-major
+    if(in_odsc.st == column_major)
+        obj_desc_transpose_bbox(&temp_odsc, &in_odsc);
+        obj_desc_transpose_bbox(&temp_from_odsc, &from_obj->obj_desc);
+        temp_from_obj = obj_data_alloc_no_data(&temp_from_odsc, from_obj->data);
+        od = obj_data_alloc(&temp_odsc);
+        ssd_copy(od, temp_from_obj);
+        free(temp_from_obj);
+    else
+        od = obj_data_alloc(&in_odsc);
+        ssd_copy(od, from_obj);
+
+    //od = obj_data_alloc(&temp_odsc);
+    //ssd_copy(od, from_obj);
 
     od_print(od);
 
