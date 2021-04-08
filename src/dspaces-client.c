@@ -2325,7 +2325,7 @@ static int get_data_rcmc(dspaces_client_t client, int num_odscs,
 
     obj_descriptor temp_odsc1, temp_odsc2;
     obj_desc_transpose_st(&temp_odsc1, &req_obj);
-    obj_desc_transpose_bbox(&temp_odsc2, &temp_odsc1);
+    //obj_desc_transpose_bbox(&temp_odsc2, &temp_odsc1);
 
     struct obj_data *temp_od = obj_data_alloc(&temp_odsc2);
 
@@ -2340,9 +2340,9 @@ static int get_data_rcmc(dspaces_client_t client, int num_odscs,
         // debug_print(od[i]->data);
         // copy received data into user return buffer
         // transposing a parent vector needs both transposing each sub-vector inside and outside
-        obj_descriptor temp_odsc_entry;
-        obj_desc_transpose_bbox(&temp_odsc_entry, &od[i]->obj_desc);
-        od[i]->obj_desc = temp_odsc_entry;
+        //obj_descriptor temp_odsc_entry;
+        //obj_desc_transpose_bbox(&temp_odsc_entry, &od[i]->obj_desc);
+        //od[i]->obj_desc = temp_odsc_entry;
         ssd_copy(temp_od, od[i]);
         obj_data_free(od[i]);
     }
