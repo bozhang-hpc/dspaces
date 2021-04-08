@@ -2324,10 +2324,21 @@ static int get_data_rcmc(dspaces_client_t client, int num_odscs,
     }
 
     obj_descriptor temp_odsc1, temp_odsc2;
+    // st convert for rm2cm/cm2rm st check
     obj_desc_transpose_st(&temp_odsc1, &req_obj);
     //obj_desc_transpose_bbox(&temp_odsc2, &temp_odsc1);
 
-    struct obj_data *temp_od = obj_data_alloc(&temp_odsc1);
+    struct obj_data *temp_od;
+
+    if(odsc_tab[0].src_st == column_major) {
+        obj_desc_transpose_bbox(&temp_odsc2, &temp_odsc1);
+        temp_od = obj_data_alloc(&temp_odsc2, data);
+    } else {
+        temp_od = obj_data_alloc(&temp_odsc1);
+    }
+
+
+    //struct obj_data *temp_od = obj_data_alloc(&temp_odsc1);
 
     // TODO: rewrite with margo_wait_any()
     for(int i = 0; i < num_odscs; ++i) {
@@ -2340,9 +2351,11 @@ static int get_data_rcmc(dspaces_client_t client, int num_odscs,
         // debug_print(od[i]->data);
         // copy received data into user return buffer
         // transposing a parent vector needs both transposing each sub-vector inside and outside
-        //obj_descriptor temp_odsc_entry;
-        //obj_desc_transpose_bbox(&temp_odsc_entry, &od[i]->obj_desc);
-        //od[i]->obj_desc = temp_odsc_entry;
+        if(odsc_tab[0].src_st == column_major) {
+            obj_descriptor temp_odsc_entry;
+            obj_desc_transpose_bbox(&temp_odsc_entry, &od[i]->obj_desc);
+            od[i]->obj_desc = temp_odsc_entry;
+        }
         ssd_copy(temp_od, od[i]);
         obj_data_free(od[i]);
     }
@@ -2351,6 +2364,11 @@ static int get_data_rcmc(dspaces_client_t client, int num_odscs,
     free(in);
 
     struct obj_data *return_od = obj_data_alloc_no_data(&req_obj, data);
+
+    // odsc roll back for rm2cm/cm2rm st check
+    if(odsc_tab[0].src_st == column_major) {
+        temp_od->obj_desc = temp_odsc1;
+    }
 
     //int func_ret = od_transpose(return_od, temp_od);
     int func_ret;
