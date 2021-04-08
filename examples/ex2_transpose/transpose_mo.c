@@ -284,20 +284,8 @@ int main(int argc, char** argv)
         printf("**************\n");
     }
 
-    printf("=================Serial Mem check================\n");
-    // serial mem check
-    for(int i = 0 ; i < dim0; i++) {
-        for(int j = 0; j < dim1; j++) {
-            for(int k = 0; k < dim2; k++) {
-                printf("%lf ", recv_data[i*dim1*dim2+j*dim2+k]);
-            }
-            printf("\n");
-        }
-        printf("**************\n");
-    }
-
     /*----------------------------------TestCase3-----------------------*/
-    printf("================TESTCASE1: PUT ROW-MAJOR GET COLUMN-MAJOR\n");
+    printf("================TESTCASE3: PUT ROW-MAJOR GET COLUMN-MAJOR\n");
     sprintf(var_name, "example2_test3_data");
     printf("=================PUT 1st OBJ================\n");
     for(int i = 0 ; i < loc_dim0; i++) {
@@ -408,6 +396,125 @@ int main(int argc, char** argv)
         for(int j = 0; j < dim1; j++) {
             for(int k = 0; k < dim2; k++) {
                 printf("%lf ", recv_data[i+j*dim0+k*dim0*dim1]);
+            }
+            printf("\n");
+        }
+        printf("**************\n");
+    }
+
+    /*----------------------------------TestCase4-----------------------*/
+    printf("================TESTCASE2: PUT COLUMN-MAJOR GET ROW-MAJOR\n");
+    sprintf(var_name, "example2_test2_data");
+    printf("=================PUT 1st OBJ================\n");
+    for(int i = 0 ; i < loc_dim0; i++) {
+        for(int j = 0; j < loc_dim1; j++) {
+            for(int k = 0; k < loc_dim2; k++) {
+                data[i+j*loc_dim0+k*loc_dim0*loc_dim1] = i+j*2+k*16;
+                printf("%lf ", data[i+j*loc_dim0+k*loc_dim0*loc_dim1]);
+            }
+            printf("\n");
+        }
+        printf("**************\n");
+    }
+
+    put_lb[0] = 0;
+    put_lb[1] = 0;
+    put_lb[2] = 0;
+    put_ub[0] = 0;
+    put_ub[1] = 3;
+    put_ub[2] = 3;
+
+    err = dspaces_put_layout(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_LEFT, data);
+
+
+    printf("=================PUT 2nd OBJ================\n");
+    for(int i = 0 ; i < loc_dim0; i++) {
+        for(int j = 0; j < loc_dim1; j++) {
+            for(int k = 0; k < loc_dim2; k++) {
+                data[i+j*loc_dim0+k*loc_dim0*loc_dim1] = 8+i+j*2+k*16;
+                printf("%lf ", data[i+j*loc_dim0+k*loc_dim0*loc_dim1]);
+            }
+            printf("\n");
+        }
+        printf("**************\n");
+    }
+
+    put_lb[0] = 0;
+    put_lb[1] = 4;
+    put_lb[2] = 0;
+    put_ub[0] = 0;
+    put_ub[1] = 7;
+    put_ub[2] = 3;
+
+    err = dspaces_put_layout(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_LEFT, data);
+
+
+    printf("=================PUT 3rd OBJ================\n");
+    for(int i = 0 ; i < loc_dim0; i++) {
+        for(int j = 0; j < loc_dim1; j++) {
+            for(int k = 0; k < loc_dim2; k++) {
+                data[i+j*loc_dim0+k*loc_dim0*loc_dim1] = 1+i+j*2+k*16;
+                printf("%lf ", data[i+j*loc_dim0+k*loc_dim0*loc_dim1]);
+            }
+            printf("\n");
+        }
+        printf("**************\n");
+    }
+
+    put_lb[0] = 1;
+    put_lb[1] = 0;
+    put_lb[2] = 0;
+    put_ub[0] = 1;
+    put_ub[1] = 3;
+    put_ub[2] = 3;
+
+    err = dspaces_put_layout(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_LEFT, data);
+
+
+    printf("=================PUT 4th OBJ================\n");
+    for(int i = 0 ; i < loc_dim0; i++) {
+        for(int j = 0; j < loc_dim1; j++) {
+            for(int k = 0; k < loc_dim2; k++) {
+                data[i+j*loc_dim0+k*loc_dim0*loc_dim1] = 9+i+j*2+k*16;
+                printf("%lf ", data[i+j*loc_dim0+k*loc_dim0*loc_dim1]);
+            }
+            printf("\n");
+        }
+        printf("**************\n");
+    }
+
+    put_lb[0] = 1;
+    put_lb[1] = 4;
+    put_lb[2] = 0;
+    put_ub[0] = 1;
+    put_ub[1] = 7;
+    put_ub[2] = 3;
+
+    err = dspaces_put_layout(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_LEFT, data);
+
+    MPI_Barrier(gcomm);
+
+
+    printf("=================GET ENTIRE OBJ================\n");
+
+
+    get_lb[0] = 0;
+    get_lb[1] = 0;
+    get_lb[2] = 0;
+    get_ub[0] = 3;
+    get_ub[1] = 7;
+    get_ub[2] = 1;
+
+    err = dspaces_get_layout(ndcl, var_name, 0, sizeof(double), ndim, get_lb, get_ub, dspaces_LAYOUT_RIGHT, recv_data, -1);
+
+    if(err != 0 )
+        goto free;
+
+    // row-major check
+    for(int i = 0 ; i < dim0; i++) {
+        for(int j = 0; j < dim1; j++) {
+            for(int k = 0; k < dim2; k++) {
+                printf("%lf ", recv_data[i*dim1*dim2+j*dim2+k]);
             }
             printf("\n");
         }
