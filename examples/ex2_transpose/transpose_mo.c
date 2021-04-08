@@ -90,7 +90,7 @@ int main(int argc, char** argv)
     put_ub[1] = 7;
     put_ub[2] = 0;
 
-    err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_RIGHT, data);
+    err = dspaces_put_layout(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_RIGHT, data);
 
 
     printf("=================PUT 3rd OBJ================\n");
@@ -112,7 +112,7 @@ int main(int argc, char** argv)
     put_ub[1] = 3;
     put_ub[2] = 1;
 
-    err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_RIGHT, data);
+    err = dspaces_put_layout(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_RIGHT, data);
 
 
     printf("=================PUT 4th OBJ================\n");
@@ -134,7 +134,7 @@ int main(int argc, char** argv)
     put_ub[1] = 7;
     put_ub[2] = 1;
 
-    err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_RIGHT, data);
+    err = dspaces_put_layout(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_RIGHT, data);
 
     MPI_Barrier(gcomm);
 
@@ -187,7 +187,7 @@ int main(int argc, char** argv)
     put_ub[1] = 3;
     put_ub[2] = 3;
 
-    err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_LEFT, data);
+    err = dspaces_put_layout(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_LEFT, data);
 
 
     printf("=================PUT 2nd OBJ================\n");
@@ -209,7 +209,7 @@ int main(int argc, char** argv)
     put_ub[1] = 7;
     put_ub[2] = 3;
 
-    err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_LEFT, data);
+    err = dspaces_put_layout(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_LEFT, data);
 
 
     printf("=================PUT 3rd OBJ================\n");
@@ -231,7 +231,7 @@ int main(int argc, char** argv)
     put_ub[1] = 3;
     put_ub[2] = 3;
 
-    err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_LEFT, data);
+    err = dspaces_put_layout(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_LEFT, data);
 
 
     printf("=================PUT 4th OBJ================\n");
@@ -253,7 +253,7 @@ int main(int argc, char** argv)
     put_ub[1] = 7;
     put_ub[2] = 3;
 
-    err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_LEFT, data);
+    err = dspaces_put_layout(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_LEFT, data);
 
     MPI_Barrier(gcomm);
 
@@ -306,7 +306,7 @@ int main(int argc, char** argv)
     put_ub[1] = 3;
     put_ub[2] = 0;
 
-    err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_RIGHT, data);
+    err = dspaces_put_layout(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_RIGHT, data);
 
 
     printf("=================PUT 2nd OBJ================\n");
@@ -328,7 +328,7 @@ int main(int argc, char** argv)
     put_ub[1] = 7;
     put_ub[2] = 0;
 
-    err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_RIGHT, data);
+    err = dspaces_put_layout(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_RIGHT, data);
 
 
     printf("=================PUT 3rd OBJ================\n");
@@ -350,7 +350,7 @@ int main(int argc, char** argv)
     put_ub[1] = 3;
     put_ub[2] = 1;
 
-    err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_RIGHT, data);
+    err = dspaces_put_layout(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_RIGHT, data);
 
 
     printf("=================PUT 4th OBJ================\n");
@@ -372,7 +372,7 @@ int main(int argc, char** argv)
     put_ub[1] = 7;
     put_ub[2] = 1;
 
-    err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_RIGHT, data);
+    err = dspaces_put_layout(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_RIGHT, data);
 
     MPI_Barrier(gcomm);
 
