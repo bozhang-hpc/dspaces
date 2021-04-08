@@ -273,11 +273,11 @@ int main(int argc, char** argv)
     if(err != 0 )
         goto free;
 
-    // row-major check
+    // column-major check
     for(int i = 0 ; i < dim0; i++) {
         for(int j = 0; j < dim1; j++) {
             for(int k = 0; k < dim2; k++) {
-                printf("%lf ", recv_data[i*dim1*dim2+j*dim2+k]);
+                printf("%lf ", recv_data[i+j*dim0+k*dim0*dim1]);
             }
             printf("\n");
         }
