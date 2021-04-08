@@ -166,14 +166,14 @@ int main(int argc, char** argv)
 
 
     /*----------------------------------TestCase2-----------------------*/
-    printf("================TESTCASE1: PUT COLUMN-MAJOR GET COLUMN-MAJOR\n");
+    printf("================TESTCASE2: PUT COLUMN-MAJOR GET COLUMN-MAJOR\n");
     sprintf(var_name, "example2_test2_data");
     printf("=================PUT 1st OBJ================\n");
     for(int i = 0 ; i < loc_dim0; i++) {
         for(int j = 0; j < loc_dim1; j++) {
             for(int k = 0; k < loc_dim2; k++) {
                 data[i+j*loc_dim0+k*loc_dim0*loc_dim1] = i+j*2+k*16;
-                printf("%lf ", data[i*loc_dim1*loc_dim2+j*loc_dim2+k]);
+                printf("%lf ", data[i+j*loc_dim0+k*loc_dim0*loc_dim1]);
             }
             printf("\n");
         }
