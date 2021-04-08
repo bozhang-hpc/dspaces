@@ -45,7 +45,7 @@ int main(int argc, char** argv)
     double *data = (double*) malloc(dim0*dim1*dim2*sizeof(double));
     double *recv_data = (double*) malloc(sub_dim0*sub_dim1*sub_dim2*sizeof(double));
 
-     /*----------------------------------TestCase1-----------------------*/
+    /*----------------------------------TestCase1-----------------------*/
     printf("================TESTCASE1: PUT ROW-MAJOR GET ROW-MAJOR\n");
     sprintf(var_name, "example2_test1_data");
 

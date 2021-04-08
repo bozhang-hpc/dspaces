@@ -179,13 +179,13 @@ int main(int argc, char** argv)
         }
         printf("**************\n");
     }
-/*
+
     put_lb[0] = 0;
     put_lb[1] = 0;
     put_lb[2] = 0;
-    put_ub[0] = 3;
+    put_ub[0] = 0;
     put_ub[1] = 3;
-    put_ub[2] = 0;
+    put_ub[2] = 3;
 
     err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, data);
 
@@ -194,8 +194,8 @@ int main(int argc, char** argv)
     for(int i = 0 ; i < loc_dim0; i++) {
         for(int j = 0; j < loc_dim1; j++) {
             for(int k = 0; k < loc_dim2; k++) {
-                data[i*loc_dim1*loc_dim2+j*loc_dim2+k] = 16+i*loc_dim1*loc_dim2+j*loc_dim2+k;
-                printf("%lf ", data[i*loc_dim1*loc_dim2+j*loc_dim2+k]);
+                data[i+j*loc_dim0+k*loc_dim0*loc_dim1] = 8+i+j*2+k*16;
+                printf("%lf ", data[i+j*loc_dim0+k*loc_dim0*loc_dim1]);
             }
             printf("\n");
         }
@@ -205,9 +205,9 @@ int main(int argc, char** argv)
     put_lb[0] = 0;
     put_lb[1] = 4;
     put_lb[2] = 0;
-    put_ub[0] = 3;
+    put_ub[0] = 0;
     put_ub[1] = 7;
-    put_ub[2] = 0;
+    put_ub[2] = 3;
 
     err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, data);
 
@@ -216,20 +216,20 @@ int main(int argc, char** argv)
     for(int i = 0 ; i < loc_dim0; i++) {
         for(int j = 0; j < loc_dim1; j++) {
             for(int k = 0; k < loc_dim2; k++) {
-                data[i*loc_dim1*loc_dim2+j*loc_dim2+k] = 32+i*loc_dim1*loc_dim2+j*loc_dim2+k;
-                printf("%lf ", data[i*loc_dim1*loc_dim2+j*loc_dim2+k]);
+                data[i+j*loc_dim0+k*loc_dim0*loc_dim1] = 1+i+j*2+k*16;
+                printf("%lf ", data[i+j*loc_dim0+k*loc_dim0*loc_dim1]);
             }
             printf("\n");
         }
         printf("**************\n");
     }
 
-    put_lb[0] = 0;
+    put_lb[0] = 1;
     put_lb[1] = 0;
-    put_lb[2] = 1;
-    put_ub[0] = 3;
+    put_lb[2] = 0;
+    put_ub[0] = 1;
     put_ub[1] = 3;
-    put_ub[2] = 1;
+    put_ub[2] = 3;
 
     err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, data);
 
@@ -238,24 +238,25 @@ int main(int argc, char** argv)
     for(int i = 0 ; i < loc_dim0; i++) {
         for(int j = 0; j < loc_dim1; j++) {
             for(int k = 0; k < loc_dim2; k++) {
-                data[i*loc_dim1*loc_dim2+j*loc_dim2+k] = 48+i*loc_dim1*loc_dim2+j*loc_dim2+k;
-                printf("%lf ", data[i*loc_dim1*loc_dim2+j*loc_dim2+k]);
+                data[i+j*loc_dim0+k*loc_dim0*loc_dim1] = 9+i+j*2+k*16;
+                printf("%lf ", data[i+j*loc_dim0+k*loc_dim0*loc_dim1]);
             }
             printf("\n");
         }
         printf("**************\n");
     }
 
-    put_lb[0] = 0;
+    put_lb[0] = 1;
     put_lb[1] = 4;
-    put_lb[2] = 1;
-    put_ub[0] = 3;
+    put_lb[2] = 0;
+    put_ub[0] = 1;
     put_ub[1] = 7;
-    put_ub[2] = 1;
+    put_ub[2] = 3;
 
     err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, data);
 
     MPI_Barrier(gcomm);
+
 
     printf("=================GET ENTIRE OBJ================\n");
 
@@ -263,9 +264,9 @@ int main(int argc, char** argv)
     get_lb[0] = 0;
     get_lb[1] = 0;
     get_lb[2] = 0;
-    get_ub[0] = 3;
+    get_ub[0] = 1;
     get_ub[1] = 7;
-    get_ub[2] = 1;
+    get_ub[2] = 3;
 
     err = dspaces_get_layout(ndcl, var_name, 0, sizeof(double), ndim, get_lb, get_ub, dspaces_LAYOUT_RIGHT, recv_data, -1);
 
@@ -282,7 +283,7 @@ int main(int argc, char** argv)
         }
         printf("**************\n");
     }
-*/
+
     
 
 free:
