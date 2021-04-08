@@ -2332,7 +2332,7 @@ static int get_data_rcmc(dspaces_client_t client, int num_odscs,
 
     if(odsc_tab[0].src_st == column_major) {
         obj_desc_transpose_bbox(&temp_odsc2, &temp_odsc1);
-        temp_od = obj_data_alloc(&temp_odsc2, data);
+        temp_od = obj_data_alloc(&temp_odsc2);
     } else {
         temp_od = obj_data_alloc(&temp_odsc1);
     }
