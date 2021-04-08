@@ -2327,7 +2327,7 @@ static int get_data_rcmc(dspaces_client_t client, int num_odscs,
     obj_desc_transpose_st(&temp_odsc1, &req_obj);
     //obj_desc_transpose_bbox(&temp_odsc2, &temp_odsc1);
 
-    struct obj_data *temp_od = obj_data_alloc(&temp_odsc2);
+    struct obj_data *temp_od = obj_data_alloc(&temp_odsc1);
 
     // TODO: rewrite with margo_wait_any()
     for(int i = 0; i < num_odscs; ++i) {
