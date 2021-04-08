@@ -2307,10 +2307,11 @@ static int get_data_rcmc(dspaces_client_t client, int num_odscs,
         margo_addr_free(client->mid, server_addr);
     }
 
-    obj_descriptor temp_odsc;
-    obj_desc_transpose_st(&temp_odsc, &req_obj);
+    obj_descriptor temp_odsc1, temp_odsc2;
+    obj_desc_transpose_st(&temp_odsc1, &req_obj);
+    obj_desc_transpose_bbox(&temp_odsc2, &temp_odsc1);
 
-    struct obj_data *temp_od = obj_data_alloc(&temp_odsc);
+    struct obj_data *temp_od = obj_data_alloc(&temp_odsc2);
 
     // TODO: rewrite with margo_wait_any()
     for(int i = 0; i < num_odscs; ++i) {
@@ -2322,6 +2323,10 @@ static int get_data_rcmc(dspaces_client_t client, int num_odscs,
         DEBUG_OUT("%s\n", obj_desc_sprint(&od[i]->obj_desc));
         // debug_print(od[i]->data);
         // copy received data into user return buffer
+        // transposing a parent vector needs both transposing each sub-vector inside and outside
+        obj_descriptor temp_odsc_entry;
+        obj_desc_transpose_bbox(&temp_odsc_entry, &od[i]->obj_desc);
+        od[i]->obj_desc = temp_odsc_entry;
         ssd_copy(temp_od, od[i]);
         obj_data_free(od[i]);
     }
