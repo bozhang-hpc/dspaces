@@ -1533,16 +1533,17 @@ static void get_rpc(hg_handle_t handle)
     from_obj = ls_find(server->dsg->ls, &in_odsc);
 
     //ssd_copy is inplemented in row-major
-    if(in_odsc.st == column_major)
+    if(in_odsc.st == column_major) {
         obj_desc_transpose_bbox(&temp_odsc, &in_odsc);
         obj_desc_transpose_bbox(&temp_from_odsc, &from_obj->obj_desc);
         temp_from_obj = obj_data_alloc_no_data(&temp_from_odsc, from_obj->data);
         od = obj_data_alloc(&temp_odsc);
         ssd_copy(od, temp_from_obj);
         free(temp_from_obj);
-    else
+    } else {
         od = obj_data_alloc(&in_odsc);
         ssd_copy(od, from_obj);
+    }
 
     //od = obj_data_alloc(&temp_odsc);
     //ssd_copy(od, from_obj);
