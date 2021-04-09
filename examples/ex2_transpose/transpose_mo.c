@@ -403,7 +403,7 @@ int main(int argc, char** argv)
     }
 
     /*----------------------------------TestCase4-----------------------*/
-    printf("================TESTCASE2: PUT COLUMN-MAJOR GET ROW-MAJOR\n");
+    printf("================TESTCASE4: PUT COLUMN-MAJOR GET ROW-MAJOR\n");
     sprintf(var_name, "example2_test2_data");
     printf("=================PUT 1st OBJ================\n");
     for(int i = 0 ; i < loc_dim0; i++) {

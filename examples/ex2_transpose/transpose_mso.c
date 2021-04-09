@@ -38,13 +38,17 @@ int main(int argc, char** argv)
     int loc_dim1 = 4;
     int loc_dim2 = 4;
 
+    int ndim = 3;
+
+    uint64_t put_lb[3] = {0}, put_ub[3] = {0}, get_lb[3] = {0}, get_ub[3] = {0};
+
     
     double *data = (double*) malloc(loc_dim0*loc_dim1*loc_dim2*sizeof(double));
     double *recv_data = (double*) malloc(sub_dim0*sub_dim1*sub_dim2*sizeof(double));
 
-    int ndim = 3;
-    uint64_t lb[3] = {0}, ub[3] = {0};
-
+    /*----------------------------------TestCase1-----------------------*/
+    printf("================TESTCASE1: PUT ROW-MAJOR GET ROW-MAJOR\n");
+    sprintf(var_name, "example2_test1_data");
     printf("=================PUT 1st OBJ================\n");
     for(int i = 0 ; i < loc_dim0; i++) {
         for(int j = 0; j < loc_dim1; j++) {
@@ -57,16 +61,16 @@ int main(int argc, char** argv)
         printf("**************\n");
     }
 
-    lb[0] = 0;
-    lb[1] = 0;
-    lb[2] = 0;
-    ub[0] = 3;
-    ub[1] = 3;
-    ub[2] = 0;
+    put_lb[0] = 0;
+    put_lb[1] = 0;
+    put_lb[2] = 0;
+    put_ub[0] = 3;
+    put_ub[1] = 3;
+    put_ub[2] = 0;
 
-    err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, lb, ub, data);
+    err = dspaces_put_layout(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_RIGHT, data);
 
-
+    
     printf("=================PUT 2nd OBJ================\n");
     for(int i = 0 ; i < loc_dim0; i++) {
         for(int j = 0; j < loc_dim1; j++) {
@@ -79,14 +83,14 @@ int main(int argc, char** argv)
         printf("**************\n");
     }
 
-    lb[0] = 0;
-    lb[1] = 4;
-    lb[2] = 0;
-    ub[0] = 3;
-    ub[1] = 7;
-    ub[2] = 0;
+    put_lb[0] = 0;
+    put_lb[1] = 4;
+    put_lb[2] = 0;
+    put_ub[0] = 3;
+    put_ub[1] = 7;
+    put_ub[2] = 0;
 
-    err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, lb, ub, data);
+    err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_RIGHT, data);
 
 
     printf("=================PUT 3rd OBJ================\n");
@@ -108,7 +112,7 @@ int main(int argc, char** argv)
     ub[1] = 3;
     ub[2] = 1;
 
-    err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, lb, ub, data);
+    err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_RIGHT, data);
 
 
     printf("=================PUT 4th OBJ================\n");
@@ -130,76 +134,30 @@ int main(int argc, char** argv)
     ub[1] = 7;
     ub[2] = 1;
 
-    err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, lb, ub, data);
+    err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_RIGHT, data);
 
     MPI_Barrier(gcomm);
 
-    printf("=================GET ENTIRE TRANSPOSED OBJ================\n");
+    printf("=================GET OBJ================\n");
 
-    uint64_t recv_lb[3] = {0}, recv_ub[3] = {0};
 
-    recv_lb[0] = 1;
-    recv_lb[1] = 2;
-    recv_lb[2] = 0;
-    recv_ub[0] = 2;
-    recv_ub[1] = 5;
-    recv_ub[2] = 1;
+    get_lb[0] = 1;
+    get_lb[1] = 2;
+    get_lb[2] = 0;
+    get_ub[0] = 2;
+    get_ub[1] = 5;
+    get_ub[2] = 1;
 
-    err = dspaces_transpose(ndcl, var_name, 0, sizeof(double), ndim, recv_lb, recv_ub);
-
-    err = dspaces_get_layout(ndcl, var_name, 0, sizeof(double), ndim, recv_lb, recv_ub, dspaces_LAYOUT_RIGHT, recv_data, -1);
+    err = dspaces_get_layout(ndcl, var_name, 0, sizeof(double), ndim, get_lb, get_ub, dspaces_LAYOUT_RIGHT, recv_data, -1);
 
     if(err != 0 )
         goto free;
 
-    printf("=================OLD METHOD================\n");
-
-    printf("=================Serial Mem check================\n");
-    // serial mem check
+    // row-major check
     for(int i = 0 ; i < sub_dim0; i++) {
         for(int j = 0; j < sub_dim1; j++) {
             for(int k = 0; k < sub_dim2; k++) {
                 printf("%lf ", recv_data[i*sub_dim1*sub_dim2+j*sub_dim2+k]);
-            }
-            printf("\n");
-        }
-        printf("**************\n");
-    }
-
-    printf("=================Opposite-major check================\n");
-    // opposite-major check
-    for(int i = 0 ; i < sub_dim0; i++) {
-        for(int j = 0; j < sub_dim1; j++) {
-            for(int k = 0; k < sub_dim2; k++) {
-                printf("%lf ", recv_data[i+j*sub_dim0+k*sub_dim1*sub_dim0]);
-            }
-            printf("\n");
-        }
-        printf("**************\n");
-    }
-
-    err = dspaces_get_transposed(ndcl, var_name, 0, sizeof(double), ndim, recv_lb, recv_ub, dspaces_LAYOUT_RIGHT, recv_data, -1);
-
-    printf("=================NEW METHOD================\n");
-
-    printf("=================Serial Mem check================\n");
-    // serial mem check
-    for(int i = 0 ; i < sub_dim0; i++) {
-        for(int j = 0; j < sub_dim1; j++) {
-            for(int k = 0; k < sub_dim2; k++) {
-                printf("%lf ", recv_data[i*sub_dim1*sub_dim2+j*sub_dim2+k]);
-            }
-            printf("\n");
-        }
-        printf("**************\n");
-    }
-
-    printf("=================Opposite-major check================\n");
-    // opposite-major check
-    for(int i = 0 ; i < sub_dim0; i++) {
-        for(int j = 0; j < sub_dim1; j++) {
-            for(int k = 0; k < sub_dim2; k++) {
-                printf("%lf ", recv_data[i+j*sub_dim0+k*sub_dim1*sub_dim0]);
             }
             printf("\n");
         }
