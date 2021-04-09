@@ -90,7 +90,7 @@ int main(int argc, char** argv)
     put_ub[1] = 7;
     put_ub[2] = 0;
 
-    err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_RIGHT, data);
+    err = dspaces_put_layout(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_RIGHT, data);
 
 
     printf("=================PUT 3rd OBJ================\n");
@@ -105,14 +105,14 @@ int main(int argc, char** argv)
         printf("**************\n");
     }
 
-    lb[0] = 0;
-    lb[1] = 0;
-    lb[2] = 1;
-    ub[0] = 3;
-    ub[1] = 3;
-    ub[2] = 1;
+    put_lb[0] = 0;
+    put_lb[1] = 0;
+    put_lb[2] = 1;
+    put_ub[0] = 3;
+    put_ub[1] = 3;
+    put_ub[2] = 1;
 
-    err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_RIGHT, data);
+    err = dspaces_put_layout(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_RIGHT, data);
 
 
     printf("=================PUT 4th OBJ================\n");
@@ -127,14 +127,14 @@ int main(int argc, char** argv)
         printf("**************\n");
     }
 
-    lb[0] = 0;
-    lb[1] = 4;
-    lb[2] = 1;
-    ub[0] = 3;
-    ub[1] = 7;
-    ub[2] = 1;
+    put_lb[0] = 0;
+    put_lb[1] = 4;
+    put_lb[2] = 1;
+    put_ub[0] = 3;
+    put_ub[1] = 7;
+    put_ub[2] = 1;
 
-    err = dspaces_put(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_RIGHT, data);
+    err = dspaces_put_layout(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_RIGHT, data);
 
     MPI_Barrier(gcomm);
 
