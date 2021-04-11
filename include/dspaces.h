@@ -23,7 +23,7 @@ typedef struct dspaces_client *dspaces_client_t;
 #define META_MODE_NEXT 2
 #define META_MODE_LAST 3
 
-enum layout_type { dspaces_LAYOUT_RIGHT, dspaces_LAYOUT_LEFT };
+enum ds_layout_type { dspaces_LAYOUT_RIGHT, dspaces_LAYOUT_LEFT };
 
 /**
  * @brief Creates a dspaces client.
@@ -393,15 +393,15 @@ int dspaces_transpose(dspaces_client_t client, const char *var_name, unsigned in
  * @return  0 indicates success.
  */
 int dspaces_get_layout(dspaces_client_t client, const char *var_name, unsigned int ver,
-                int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum layout_type layout, 
+                int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum ds_layout_type layout, 
                 void *data, int timeout);
 
 int dspaces_get_transposed(dspaces_client_t client, const char *var_name, unsigned int ver,
-                int elem_size, int ndim, uint64_t *lb, uint64_t *ub,  enum layout_type dst_layout,
+                int elem_size, int ndim, uint64_t *lb, uint64_t *ub,  enum ds_layout_type dst_layout,
                 void *data, int timeout);
 
 int dspaces_put_layout(dspaces_client_t client, const char *var_name, unsigned int ver,
-                int size, int ndim, uint64_t *lb, uint64_t *ub, enum layout_type src_layout,
+                int size, int ndim, uint64_t *lb, uint64_t *ub, enum ds_layout_type src_layout,
                 const void *data);
 
 #if defined(__cplusplus)

@@ -2165,7 +2165,7 @@ static int get_transposed_data(dspaces_client_t client, int num_odscs,
 
 //works
 int dspaces_get_transposed(dspaces_client_t client, const char *var_name, unsigned int ver,
-                int elem_size, int ndim, uint64_t *lb, uint64_t *ub,  enum layout_type dst_layout,
+                int elem_size, int ndim, uint64_t *lb, uint64_t *ub,  enum ds_layout_type dst_layout,
                 void *data, int timeout)
 {
     obj_descriptor odsc;
@@ -2200,7 +2200,7 @@ int dspaces_get_transposed(dspaces_client_t client, const char *var_name, unsign
 }
 
 int dspaces_put_layout(dspaces_client_t client, const char *var_name, unsigned int ver,
-                int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum layout_type src_layout,
+                int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum ds_layout_type src_layout,
                 const void *data)
 {
     hg_addr_t server_addr;
@@ -2404,7 +2404,7 @@ free:
 
 // v1:RCMC at client side
 static int get_layout_v1(dspaces_client_t client, const char *var_name, unsigned int ver,
-                int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum layout_type dst_layout, 
+                int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum ds_layout_type dst_layout, 
                 void *data, int timeout)
 {
     obj_descriptor temp_odsc, odsc;
@@ -2466,7 +2466,7 @@ static int get_layout_v1(dspaces_client_t client, const char *var_name, unsigned
 }
 
 int dspaces_get_layout(dspaces_client_t client, const char *var_name, unsigned int ver,
-                int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum layout_type dst_layout, 
+                int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum ds_layout_type dst_layout, 
                 void *data, int timeout)
 {
     int option = 1;
