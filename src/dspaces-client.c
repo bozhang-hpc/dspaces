@@ -918,6 +918,7 @@ static int get_data(dspaces_client_t client, int num_odscs,
             obj_desc_transpose_bbox(&temp_odsc_entry, &od[i]->obj_desc);
             od[i]->obj_desc = temp_odsc_entry;
         }
+        od_print(od[i]);
         ssd_copy(return_od, od[i]);
         obj_data_free(od[i]);
     }
