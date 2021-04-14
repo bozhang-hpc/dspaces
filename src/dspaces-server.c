@@ -992,6 +992,24 @@ static int server_destroy(dspaces_provider_t server)
     margo_finalize(server->mid);
 }
 
+static void od_print(struct obj_data *od)
+{
+    struct bbox* bb = &od->obj_desc.bb;
+    uint64_t i[3]; //index in dst layout
+    double *pt = (double*) od->data;
+
+    printf("%s\n", bbox_sprint(bb));
+    for(i[2]=0; i[2]<bbox_dist(bb, 2); i[2]++) {
+        for(i[1]=0; i[1]<bbox_dist(bb, 1); i[1]++) {
+            for(i[0]=0; i[0]<bbox_dist(bb, 0); i[0]++) {
+                printf("%lf ", pt[i[2]*bbox_dist(bb, 1)*bbox_dist(bb, 0)+i[1]*bbox_dist(bb, 0)+i[0]]);
+            }
+            printf("\n");
+        }
+        printf("**************\n");
+    }
+}
+
 static void put_rpc(hg_handle_t handle)
 {
     hg_return_t hret;
@@ -1079,6 +1097,8 @@ static void put_rpc(hg_handle_t handle)
     margo_respond(handle, &out);
     margo_free_input(handle, &in);
     margo_destroy(handle);
+
+    od_print(od);
 
     obj_update_dht(server, od, DS_OBJ_NEW);
     DEBUG_OUT("Finished obj_put_update from put_rpc\n");
