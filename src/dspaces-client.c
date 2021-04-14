@@ -827,6 +827,24 @@ static void debug_print(char* ptr) {
     //}
 }
 
+static void od_print(struct obj_data *od)
+{
+    struct bbox* bb = &od->obj_desc.bb;
+    uint64_t i[3]; //index in dst layout
+    double *pt = (double*) od->data;
+
+    printf("%s\n", bbox_sprint(bb));
+    for(i[2]=0; i[2]<bbox_dist(bb, 2); i[2]++) {
+        for(i[1]=0; i[1]<bbox_dist(bb, 1); i[1]++) {
+            for(i[0]=0; i[0]<bbox_dist(bb, 0); i[0]++) {
+                printf("%lf ", pt[i[2]*bbox_dist(bb, 1)*bbox_dist(bb, 0)+i[1]*bbox_dist(bb, 0)+i[0]]);
+            }
+            printf("\n");
+        }
+        printf("**************\n");
+    }
+}
+
 static int get_data(dspaces_client_t client, int num_odscs,
                     obj_descriptor req_obj, obj_descriptor *odsc_tab,
                     void *data)
@@ -903,6 +921,7 @@ static int get_data(dspaces_client_t client, int num_odscs,
         ssd_copy(return_od, od[i]);
         obj_data_free(od[i]);
     }
+    od_print(return_od);
     free(hndl);
     free(serv_req);
     free(in);
