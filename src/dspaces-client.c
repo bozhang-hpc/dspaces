@@ -874,14 +874,14 @@ static int get_data(dspaces_client_t client, int num_odscs,
         margo_addr_lookup(client->mid, odsc_tab[i].owner, &server_addr);
 
         hg_handle_t handle;
-        if(odsc_tab[i].flags & DS_CLIENT_STORAGE) {
-            DEBUG_OUT("retrieving object from client-local storage.\n");
-            margo_create(client->mid, server_addr, client->get_local_id,
-                         &handle);
-        } else {
+        //if(odsc_tab[i].flags & DS_CLIENT_STORAGE) {
+        //    DEBUG_OUT("retrieving object from client-local storage.\n");
+        //    margo_create(client->mid, server_addr, client->get_local_id,
+        //                 &handle);
+        //} else {
             DEBUG_OUT("retrieving object from server storage.\n");
             margo_create(client->mid, server_addr, client->get_id, &handle);
-        }
+        //}
         margo_request req;
         // forward get requests
         margo_iforward(handle, &in[i], &req);
@@ -2327,14 +2327,14 @@ static int get_data_rcmc(dspaces_client_t client, int num_odscs,
         margo_addr_lookup(client->mid, odsc_tab[i].owner, &server_addr);
 
         hg_handle_t handle;
-        if(odsc_tab[i].flags & DS_CLIENT_STORAGE) {
-            DEBUG_OUT("retrieving object from client-local storage.\n");
-            margo_create(client->mid, server_addr, client->get_local_id,
-                         &handle);
-        } else {
+        //if(odsc_tab[i].flags & DS_CLIENT_STORAGE) {
+        //    DEBUG_OUT("retrieving object from client-local storage.\n");
+        //    margo_create(client->mid, server_addr, client->get_local_id,
+        //                 &handle);
+        //} else {
             DEBUG_OUT("retrieving object from server storage.\n");
             margo_create(client->mid, server_addr, client->get_id, &handle);
-        }
+        //}
         margo_request req;
         // forward get requests
         margo_iforward(handle, &in[i], &req);
