@@ -1501,7 +1501,7 @@ static void query_meta_rpc(hg_handle_t handle)
     margo_destroy(handle);
 }
 DEFINE_MARGO_RPC_HANDLER(query_meta_rpc)
-
+/*
 static void od_print(struct obj_data *od)
 {
     struct bbox* bb = &od->obj_desc.bb;
@@ -1519,7 +1519,7 @@ static void od_print(struct obj_data *od)
         printf("**************\n");
     }
 }
-
+*/
 static void get_rpc(hg_handle_t handle)
 {
     hg_return_t hret;
