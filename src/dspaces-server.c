@@ -96,6 +96,8 @@ DECLARE_MARGO_RPC_HANDLER(ss_rpc);
 DECLARE_MARGO_RPC_HANDLER(kill_rpc);
 DECLARE_MARGO_RPC_HANDLER(sub_rpc);
 DECLARE_MARGO_RPC_HANDLER(transpose_rpc);
+DECLARE_MARGO_RPC_HANDLER(query_layout_rpc);
+DECLARE_MARGO_RPC_HANDLER(odsc_layout_internal_rpc);
 
 static void put_rpc(hg_handle_t h);
 static void put_local_rpc(hg_handle_t h);
@@ -2358,11 +2360,11 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
             break;
         }
 
-        if(func_ret != bbox_volume(&temp_od->obj_desc.bb)) {
+        if(func_ret != bbox_volume(&od->obj_desc.bb)) {
         fprintf(stderr,
                 "DATASPACES: ERROR handling %s: od_transpose() failed with "
                 "%d.\n",
-                __func__, ret);
+                __func__, func_ret);
         ret = dspaces_ERR_LAYOUT;
         }
     }
