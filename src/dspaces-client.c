@@ -69,6 +69,7 @@ struct dspaces_client {
     hg_id_t rcm_convert_id; //row-column major conversion
     hg_id_t transpose_id;
     hg_id_t query_layout_id;
+    hg_id_t get_server_rcmc_id;
     struct dc_gspace *dcg;
     char **server_address;
     char **node_names;
@@ -545,6 +546,8 @@ static int dspaces_init_margo(dspaces_client_t client,
         margo_registered_name(client->mid, "transpose_rpc", &client->transpose_id, &flag);
         margo_registered_name(client->mid, "query_layout_rpc", &client->query_layout_id,
                               &flag);
+        margo_registered_name(client->mid, "get_server_rcmc_rpc", &client->get_server_rcmc_id,
+                              &flag);
     } else {
         client->put_id = MARGO_REGISTER(client->mid, "put_rpc", bulk_gdim_t,
                                         bulk_out_t, NULL);
@@ -598,6 +601,9 @@ static int dspaces_init_margo(dspaces_client_t client,
             MARGO_REGISTER(client->mid, "transpose_rpc", odsc_gdim_t, bulk_out_t, NULL);
         client->query_layout_id = MARGO_REGISTER(client->mid, "query_layout_rpc", odsc_gdim_t,
                                           odsc_list_t, NULL);
+        client->get_server_rcmc_id =
+            MARGO_REGISTER(client->mid, "get_server_rcmc_rpc", bulk_in_t, bulk_out_t, NULL);
+        margo_register_data(client->mid, client->get_server_rcmc_id, (void *)client, NULL);                                  
     }
 
     return (dspaces_SUCCESS);

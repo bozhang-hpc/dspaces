@@ -60,6 +60,7 @@ struct dspaces_provider {
     hg_id_t notify_id;
     hg_id_t transpose_id;
     hg_id_t query_layout_id;
+    hg_id_t get_server_rcmc_id;
     hg_id_t odsc_layout_internal_id;
     struct ds_gspace *dsg;
     char **server_address;
@@ -97,6 +98,7 @@ DECLARE_MARGO_RPC_HANDLER(kill_rpc);
 DECLARE_MARGO_RPC_HANDLER(sub_rpc);
 DECLARE_MARGO_RPC_HANDLER(transpose_rpc);
 DECLARE_MARGO_RPC_HANDLER(query_layout_rpc);
+DECLARE_MARGO_RPC_HANDLER(get_server_rcmc_rpc);
 DECLARE_MARGO_RPC_HANDLER(odsc_layout_internal_rpc);
 
 static void put_rpc(hg_handle_t h);
@@ -113,6 +115,7 @@ static void sub_rpc(hg_handle_t h);
 static void transpose_rpc(hg_handle_t h);
 static void query_layout_rpc(hg_handle_t h);
 static void odsc_layout_internal_rpc(hg_handle_t h);
+static void get_server_rcmc_rpc(hg_handle_t handle);
 // static void write_lock_rpc(hg_handle_t h);
 // static void read_lock_rpc(hg_handle_t h);
 
@@ -818,6 +821,8 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm,
                               &server->odsc_layout_internal_id, &flag);
         DS_HG_REGISTER(hg, server->odsc_layout_internal_id, odsc_gdim_t, odsc_list_t,
                        odsc_layout_internal_rpc);
+        margo_registered_name(server->mid, "get_server_rcmc_rpc", &server->get_server_rcmc_id, &flag);
+        DS_HG_REGISTER(hg, server->get_server_rcmc_id, bulk_in_t, bulk_out_t, get_server_rcmc_rpc);
     } else {
         server->put_id = MARGO_REGISTER(server->mid, "put_rpc", bulk_gdim_t,
                                         bulk_out_t, put_rpc);
@@ -892,7 +897,10 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm,
             MARGO_REGISTER(server->mid, "odsc_layout_internal_rpc", odsc_gdim_t,
                            odsc_list_t, odsc_layout_internal_rpc);
         margo_register_data(server->mid, server->odsc_layout_internal_id,
-                            (void *)server, NULL);                                  
+                            (void *)server, NULL);
+        server->get_server_rcmc_id = MARGO_REGISTER(server->mid, "get_server_rcmc_rpc", bulk_in_t,
+                                        bulk_out_t, get_server_rcmc_rpc);
+        margo_register_data(server->mid, server->get_server_rcmc_id, (void *)server, NULL);                                  
     }
     int size_sp = 1;
     int err = dsg_alloc(server, "dataspaces.conf", comm);
@@ -2409,3 +2417,4 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     DEBUG_OUT("Finished transposed_obj_put_update from get_server_rcmc_rpc\n");
     }
 }
+DEFINE_MARGO_RPC_HANDLER(get_server_rcmc_rpc)
