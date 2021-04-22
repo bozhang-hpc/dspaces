@@ -761,13 +761,28 @@ char *obj_desc_sprint(obj_descriptor *odsc)
 {
     char *str;
     int nb;
+    char st[16];
+    switch (odsc->st)
+    {
+    case column_major:
+        st = "column-major";
+        break;
+
+    case row_major:
+        st = "row-major";
+        break;
+    
+    default:
+        break;
+    }
 
     str = alloc_sprintf("obj_descriptor = {\n"
                         "\t.name = %s,\n"
                         "\t.owner = %s,\n"
                         "\t.version = %d,\n"
+                        "\t.st = %s,\n"
                         "\t.bb = ",
-                        odsc->name, odsc->owner, odsc->version);
+                        odsc->name, odsc->owner, odsc->version, st);
     str = str_append_const(str_append(str, bbox_sprint(&odsc->bb)), "}\n");
 
     return str;
@@ -2171,4 +2186,125 @@ dim1:
     if(bb->num_dims == 10)
         return num_transposed_elem;
 
+}
+
+/*
+ *   Test if two object descriptors have the same name and versions and
+ *   and storage type and their bounding boxes intersect.
+ */
+int obj_desc_layout_equals_intersect(obj_descriptor *odsc1, obj_descriptor *odsc2)
+{
+    if(odsc1->st == odsc2->st &&
+       strcmp(odsc1->name, odsc2->name) == 0 &&
+       odsc1->version == odsc2->version &&
+       bbox_does_intersect(&odsc1->bb, &odsc2->bb))
+        return 1;
+    return 0;
+}
+/*
+ *   Test if two object descriptors have the same name and versions and
+ *   and storage type and odsc1's bounding boxes is included in odsc2.
+ */
+
+int obj_desc_layout_equals_include(obj_descriptor *odsc1, obj_descriptor *odsc2)
+{
+    if(odsc1->st == odsc2->st &&
+       strcmp(odsc1->name, odsc2->name) == 0 &&
+       odsc1->version == odsc2->version &&
+       bbox_include(&odsc1->bb, &odsc2->bb))
+        return 1;
+    return 0;
+}
+
+/*
+    Object descriptor 'q_odsc' can intersect multiple object descriptors
+    from dht entry 'de' in any layout at first; find the first odsc to 
+    make sure the src_layout; If equals dst_layout, do it as before; If not,
+    then, find the intersected multiple object  descriptors from dht entry 
+    'de' in exact src_layout; Finally, replace the odsc_tab entry which 
+    is included by object descriptors in dst_layout. 
+*/
+int dht_find_entry_all_layout(struct dht_entry *de, obj_descriptor *q_odsc,
+                       obj_descriptor **odsc_tab[], int timeout)
+{
+    int n, num_odsc = 0;
+    long num_elem;
+    struct obj_desc_list *odscl;
+    struct bbox isect;
+    int sub = timeout != 0 && de == de->ss->ent_self;
+    int layout_flag = -1; // uninitialized
+    enum storage_type src_st;
+    obj_descriptor odsc_src_layout, odsc_entry_dst_layout;
+    int i;
+
+    n = q_odsc->version % de->odsc_size;
+    if(sub) {
+        num_elem = ssh_hash_elem_count(de->ss, &q_odsc->bb);
+        ABT_mutex_lock(de->hash_mutex[n]);
+    }
+    list_for_each_entry(odscl, &de->odsc_hash[n], struct obj_desc_list,
+                        odsc_entry)
+    {
+        // check the first odsc found to make sure the src_layout
+        if(layout_flag == -1) {
+            if(obj_desc_equals_intersect(&odscl->odsc, q_odsc)) {
+                src_st = odscl->odsc.src_st;
+                layout_flag = 1;
+                if(odscl->odsc.src_st == q_odsc->st) {
+                    (*odsc_tab)[num_odsc++] = &odscl->odsc;
+                    if(sub) {
+                        bbox_intersect(&q_odsc->bb, &odscl->odsc.bb, &isect);
+                        num_elem -= bbox_volume(&isect);
+                    }
+                }
+            }
+        } else {
+            if(src_st == q_odsc->st) {
+                if(obj_desc_layout_equals_intersect(&odscl->odsc, q_odsc)) {
+                    (*odsc_tab)[num_odsc++] = &odscl->odsc;
+                    if(sub) {
+                        bbox_intersect(&q_odsc->bb, &odscl->odsc.bb, &isect);
+                        num_elem -= bbox_volume(&isect);
+                    }
+                }
+            } else {
+                obj_desc_transpose_st(&odsc_src_layout, q_odsc);
+                if(obj_desc_layout_equals_intersect(&odscl->odsc, &odsc_src_layout)) {
+                    (*odsc_tab)[num_odsc++] = &odscl->odsc;
+                    if(sub) {
+                        bbox_intersect(&odsc_src_layout->bb, &odscl->odsc.bb, &isect);
+                        num_elem -= bbox_volume(&isect);
+                    }
+                }
+            }
+            
+        }
+    }
+    if(sub) {
+        if(num_elem > 0) {
+            if(src_st == q_odsc->st) {
+                dht_local_subscribe(de, q_odsc, odsc_tab, &num_odsc, num_elem,
+                                    timeout);
+            } else {
+                dht_local_subscribe(de, &odsc_src_layout, odsc_tab, &num_odsc, num_elem,
+                                    timeout);
+            }
+        }
+        ABT_mutex_unlock(de->hash_mutex[n]);
+    }
+
+    // traverse the odsc_tab to replace entries who is included in odsc in dst_layout
+    if(src_st != q_odsc->st)
+    for(i=0; i<num_odsc; i++) {
+        obj_desc_transpose_st(&odsc_entry_dst_layout, &(*odsc_tab)[i]);
+        list_for_each_entry(odscl, &de->odsc_hash[n], struct obj_desc_list,
+                        odsc_entry)
+        {
+            if(obj_desc_layout_equals_include(&odsc_entry_dst_layout, &odscl->odsc)) {
+                (*odsc_tab)[i] = &odscl->odsc;
+            }
+        }
+    }
+
+    return num_odsc;
 }
