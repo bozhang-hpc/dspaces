@@ -68,6 +68,7 @@ struct dspaces_client {
     hg_id_t notify_id;
     hg_id_t rcm_convert_id; //row-column major conversion
     hg_id_t transpose_id;
+    hg_id_t query_layout_id;
     struct dc_gspace *dcg;
     char **server_address;
     char **node_names;
@@ -542,6 +543,8 @@ static int dspaces_init_margo(dspaces_client_t client,
                               &client->query_meta_id, &flag);
         margo_registered_name(client->mid, "rcm_convert_rpc", &client->rcm_convert_id, &flag);
         margo_registered_name(client->mid, "transpose_rpc", &client->transpose_id, &flag);
+        margo_registered_name(client->mid, "query_layout_rpc", &client->query_layout_id,
+                              &flag);
     } else {
         client->put_id = MARGO_REGISTER(client->mid, "put_rpc", bulk_gdim_t,
                                         bulk_out_t, NULL);
@@ -593,6 +596,8 @@ static int dspaces_init_margo(dspaces_client_t client,
                                           bulk_out_t, NULL);
         client->transpose_id =
             MARGO_REGISTER(client->mid, "transpose_rpc", odsc_gdim_t, bulk_out_t, NULL);
+        client->query_layout_id = MARGO_REGISTER(client->mid, "query_layout_rpc", odsc_gdim_t,
+                                          odsc_list_t, NULL);
     }
 
     return (dspaces_SUCCESS);
@@ -1929,7 +1934,7 @@ static int transpose_data(dspaces_client_t client, int num_odscs, obj_descriptor
 }
 
 // get all the odscs which need RM-CM conversion
-static int get_odscs_st(dspaces_client_t client, obj_descriptor *odsc, int timeout,
+static int get_odscs_layout(dspaces_client_t client, obj_descriptor *odsc, int timeout,
                      obj_descriptor **odsc_tab)
 {
     struct global_dimension od_gdim;
@@ -1952,7 +1957,7 @@ static int get_odscs_st(dspaces_client_t client, obj_descriptor *odsc, int timeo
 
     get_server_address(client, &server_addr);
 
-    hret = margo_create(client->mid, server_addr, client->query_id, &handle);
+    hret = margo_create(client->mid, server_addr, client->query_layout_id, &handle);
     if(hret != HG_SUCCESS) {
         fprintf(stderr, "ERROR: %s: margo_create() failed with %d.\n", __func__,
                 hret);
@@ -2421,6 +2426,80 @@ free:
     return ret;
 }
 
+static int get_data_rcmc_at_server(dspaces_client_t client, int num_odscs,
+                    obj_descriptor req_obj, obj_descriptor *odsc_tab,
+                    void *data)
+
+{
+    bulk_in_t *in;
+    in = (bulk_in_t *)malloc(sizeof(bulk_in_t) * num_odscs);
+
+    struct obj_data **od;
+    od = malloc(num_odscs * sizeof(struct obj_data *));
+
+    margo_request *serv_req;
+    hg_handle_t *hndl;
+    hndl = (hg_handle_t *)malloc(sizeof(hg_handle_t) * num_odscs);
+    serv_req = (margo_request *)malloc(sizeof(margo_request) * num_odscs);
+
+    for(int i = 0; i < num_odscs; ++i) {
+        od[i] = obj_data_alloc(&odsc_tab[i]);
+        in[i].odsc.size = sizeof(obj_descriptor);
+        in[i].odsc.raw_odsc = (char *)(&odsc_tab[i]);
+
+        hg_size_t rdma_size = (req_obj.size) * bbox_volume(&odsc_tab[i].bb);
+
+        margo_bulk_create(client->mid, 1, (void **)(&(od[i]->data)), &rdma_size,
+                          HG_BULK_WRITE_ONLY, &in[i].handle);
+
+        hg_addr_t server_addr;
+        margo_addr_lookup(client->mid, odsc_tab[i].owner, &server_addr);
+
+        hg_handle_t handle;
+        //if(odsc_tab[i].flags & DS_CLIENT_STORAGE) {
+        //    DEBUG_OUT("retrieving object from client-local storage.\n");
+        //    margo_create(client->mid, server_addr, client->get_local_id,
+        //                 &handle);
+        //} else {
+            DEBUG_OUT("retrieving object from server storage.\n");
+            margo_create(client->mid, server_addr, client->get_server_rcmc_id, &handle);
+        //}
+        margo_request req;
+        // forward get requests
+        margo_iforward(handle, &in[i], &req);
+        hndl[i] = handle;
+        serv_req[i] = req;
+        margo_addr_free(client->mid, server_addr);
+    }
+
+    obj_descriptor temp_odsc_ts;
+    obj_desc_transpose_bbox(&temp_odsc_ts, &req_obj);
+
+    struct obj_data *return_od = obj_data_alloc_no_data(&temp_odsc_ts, data);
+
+    // TODO: rewrite with margo_wait_any()
+    for(int i = 0; i < num_odscs; ++i) {
+        margo_wait(serv_req[i]);
+        bulk_out_t resp;
+        margo_get_output(hndl[i], &resp);
+        margo_free_output(hndl[i], &resp);
+        margo_destroy(hndl[i]);
+        DEBUG_OUT("%s\n", obj_desc_sprint(&od[i]->obj_desc));
+        debug_print(od[i]->data);
+        // copy received data into user return buffer
+        // transposing a parent vector needs both transposing each sub-vector inside and outside
+        obj_descriptor temp_odsc_entry;
+        obj_desc_transpose_bbox(&temp_odsc_entry, &od[i]->obj_desc);
+        od[i]->obj_desc = temp_odsc_entry;
+
+        ssd_copy(return_od, od[i]);
+        obj_data_free(od[i]);
+    }
+    free(hndl);
+    free(serv_req);
+    free(in);
+    free(return_od);
+}
 
 // v1:RCMC at client side
 static int get_layout_v1(dspaces_client_t client, const char *var_name, unsigned int ver,
@@ -2479,6 +2558,60 @@ static int get_layout_v1(dspaces_client_t client, const char *var_name, unsigned
         else
             get_data_rcmc(client, num_odscs, odsc, odsc_tab, data);
         
+    }
+
+    free(odsc_tab);
+    return (0);
+}
+
+//v2:RCMC at server side as requested
+static int get_layout_v2(dspaces_client_t client, const char *var_name, unsigned int ver,
+                int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum ds_layout_type dst_layout, 
+                void *data, int timeout)
+{
+    obj_descriptor temp_odsc, odsc;
+    obj_descriptor *odsc_tab;
+    int num_odscs;
+    int ret = dspaces_SUCCESS;
+    //enum storage_type src_st;
+    enum storage_type dst_st;
+    switch (dst_layout)
+    {
+    case dspaces_LAYOUT_RIGHT:
+        dst_st = row_major;
+        break;
+
+    case dspaces_LAYOUT_LEFT:
+        dst_st = column_major;
+        break;
+    
+    default:
+        dst_st = st;
+        break;
+    }
+    
+    fill_odsc_st(var_name, ver, elem_size, ndim, lb, ub, dst_st, &temp_odsc);
+
+    if(dst_st != st)
+        obj_desc_transpose_bbox(&odsc, &temp_odsc);
+    else
+        memcpy(&odsc, &temp_odsc, sizeof(obj_descriptor));
+
+    DEBUG_OUT("Querying %s with timeout %d\n", obj_desc_sprint(&odsc), timeout);
+
+    // try my best to get odscs for existing dst_layout data, if cannot hit, fetch odscs in src_layout 
+    num_odscs = get_odscs_layout(client, &odsc, timeout, &odsc_tab);
+
+    DEBUG_OUT("Finished query - need to fetch %d objects\n", num_odscs);
+    for(int i = 0; i < num_odscs; ++i) {
+        DEBUG_OUT("%s\n", obj_desc_sprint(&odsc_tab[i]));
+    }
+
+    if(num_odscs != 0) {
+        if(odsc_tab[0].src_st == dst_st) 
+            get_data(client, num_odscs, odsc, odsc_tab, data);
+        else
+            get_data_rcmc_at_server(client, num_odscs, odsc, odsc_tab, data);
     }
 
     free(odsc_tab);
