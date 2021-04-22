@@ -2293,7 +2293,7 @@ int dht_find_entry_all_layout(struct dht_entry *de, obj_descriptor *q_odsc,
         ABT_mutex_unlock(de->hash_mutex[n]);
     }
 
-    // traverse the odsc_tab to replace entries who is included in odsc in dst_layout
+    /*
     if(src_st != q_odsc->st)
     for(i=0; i<num_odsc; i++) {
         obj_desc_transpose_st(&odsc_entry_dst_layout, (*odsc_tab)[i]);
@@ -2305,6 +2305,21 @@ int dht_find_entry_all_layout(struct dht_entry *de, obj_descriptor *q_odsc,
             }
         }
     }
+    */
 
     return num_odsc;
+}
+
+// search in dht to replace odsc who is included in odsc in dst_layout
+void dht_find_other_st_entry_to_replace(struct dht_entry *de, obj_descriptor *odsc)
+{
+    obj_descriptor odsc_dst_layout;
+    obj_desc_transpose_st(&odsc_dst_layout, odsc);
+    list_for_each_entry(odscl, &de->odsc_hash[n], struct obj_desc_list,
+                        odsc_entry)
+    {
+        if(obj_desc_layout_equals_include(&odsc_dst_layout, &odscl->odsc)) {
+            memcpy(odsc, &odsc_dst_layout, sizeof(obj_descriptor));
+        }
+    }
 }

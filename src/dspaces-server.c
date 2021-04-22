@@ -2033,6 +2033,7 @@ static void odsc_layout_internal_rpc(hg_handle_t handle)
     int timeout;
     odsc_list_t out;
     obj_descriptor **podsc;
+    enum storage_type src_st;
     margo_instance_id mid = margo_hg_handle_get_instance(handle);
 
     const struct hg_info *info = margo_get_info(handle);
@@ -2077,15 +2078,30 @@ static void odsc_layout_internal_rpc(hg_handle_t handle)
 
     } else {
         odsc_tab = malloc(sizeof(*odsc_tab) * num_odsc);
-        for(int j = 0; j < num_odsc; j++) {
-            obj_descriptor odsc;
-            odsc = *podsc[j];
-            DEBUG_OUT("including %s\n", obj_desc_sprint(&odsc));
-            /* Preserve storage type at the destination. */
-            odsc.st = in_odsc.st;
-            bbox_intersect(&in_odsc.bb, &odsc.bb, &odsc.bb);
-            odsc_tab[j] = odsc;
+        src_st = podsc[0]->src_st;
+        if(src_st == q_odsc->st) {
+            for(int j = 0; j < num_odsc; j++) {
+                obj_descriptor odsc;
+                odsc = *podsc[j];
+                DEBUG_OUT("including %s\n", obj_desc_sprint(&odsc));
+                /* Preserve storage type at the destination. */
+                odsc.st = in_odsc.st;
+                bbox_intersect(&in_odsc.bb, &odsc.bb, &odsc.bb);
+                odsc_tab[j] = odsc;
+            }
+        } else {
+            for(int j = 0; j < num_odsc; j++) {
+                obj_descriptor odsc;
+                odsc = *podsc[j];
+                DEBUG_OUT("including %s\n", obj_desc_sprint(&odsc));
+                /* Preserve storage type at the destination. */
+                odsc.st = in_odsc.st;
+                bbox_intersect(&in_odsc.bb, &odsc.bb, &odsc.bb);
+                dht_find_other_st_entry_to_replace(ssd->ent_self, &odsc);
+                odsc_tab[j] = odsc;
+            }
         }
+        
         out.odsc_list.size = num_odsc * sizeof(obj_descriptor);
         out.odsc_list.raw_odsc = (char *)odsc_tab;
         margo_respond(handle, &out);
@@ -2117,6 +2133,7 @@ static int get_query_layout_odscs(dspaces_provider_t server, odsc_gdim_t *query,
     odsc_list_t dht_resp;
     obj_descriptor *q_odsc;
     struct global_dimension *q_gdim;
+    enum storage_type src_st;
     int i, j;
 
     q_odsc = (obj_descriptor *)query->odsc_gdim.raw_odsc;
@@ -2167,14 +2184,27 @@ static int get_query_layout_odscs(dspaces_provider_t server, odsc_gdim_t *query,
         if(odsc_nums[self_id_num]) {
             odsc_tabs[self_id_num] =
                 malloc(sizeof(**odsc_tabs) * odsc_nums[self_id_num]);
-            for(i = 0; i < odsc_nums[self_id_num]; i++) {
-                obj_descriptor *odsc =
-                    &odsc_tabs[self_id_num][i]; // readability
-                *odsc = *podsc[i];
-                odsc->st = q_odsc->st;
-                bbox_intersect(&q_odsc->bb, &odsc->bb, &odsc->bb);
-                DEBUG_OUT("%s\n", obj_desc_sprint(&odsc_tabs[self_id_num][i]));
+            
+            src_st = podsc[0]->src_st;
+            if(src_st == q_odsc->st) {
+                for(i = 0; i < odsc_nums[self_id_num]; i++) {
+                    obj_descriptor *odsc =
+                        &odsc_tabs[self_id_num][i]; // readability
+                    *odsc = *podsc[i];
+                    bbox_intersect(&q_odsc->bb, &odsc->bb, &odsc->bb);
+                    DEBUG_OUT("%s\n", obj_desc_sprint(&odsc_tabs[self_id_num][i]));
+                }
+            } else {
+                for(i = 0; i < odsc_nums[self_id_num]; i++) {
+                    obj_descriptor *odsc =
+                        &odsc_tabs[self_id_num][i]; // readability
+                    *odsc = *podsc[i];
+                    bbox_intersect(&q_odsc->bb, &odsc->bb, &odsc->bb);
+                    dht_find_other_st_entry_to_replace(ssd->ent_self, odsc);
+                    DEBUG_OUT("%s\n", obj_desc_sprint(&odsc_tabs[self_id_num][i]));
+                }
             }
+            
         }
 
         free(podsc);
@@ -2413,6 +2443,7 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     margo_destroy(handle);
 
     if(in_odsc.st != req_st) {
+    // Maybe add a check for new od here, if does not exist then add it to dht.
     obj_update_dht(server, new_od, DS_OBJ_NEW);
     DEBUG_OUT("Finished transposed_obj_put_update from get_server_rcmc_rpc\n");
     }
