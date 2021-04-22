@@ -2365,7 +2365,7 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
                 "DATASPACES: ERROR handling %s: od_transpose() failed with "
                 "%d.\n",
                 __func__, func_ret);
-        ret = dspaces_ERR_LAYOUT;
+        return;
         }
     }
 
