@@ -765,11 +765,11 @@ char *obj_desc_sprint(obj_descriptor *odsc)
     switch (odsc->st)
     {
     case column_major:
-        st = "column-major";
+        sprintf(st, "column-major");
         break;
 
     case row_major:
-        st = "row-major";
+        sprintf(st, "row-major");
         break;
     
     default:
@@ -2272,7 +2272,7 @@ int dht_find_entry_all_layout(struct dht_entry *de, obj_descriptor *q_odsc,
                 if(obj_desc_layout_equals_intersect(&odscl->odsc, &odsc_src_layout)) {
                     (*odsc_tab)[num_odsc++] = &odscl->odsc;
                     if(sub) {
-                        bbox_intersect(&odsc_src_layout->bb, &odscl->odsc.bb, &isect);
+                        bbox_intersect(&odsc_src_layout.bb, &odscl->odsc.bb, &isect);
                         num_elem -= bbox_volume(&isect);
                     }
                 }
