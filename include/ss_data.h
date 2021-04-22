@@ -378,6 +378,6 @@ int od_cm2rm(struct obj_data* dst_od, struct obj_data* src_od);
 int obj_desc_layout_equals_intersect(obj_descriptor *odsc1, obj_descriptor *odsc2);
 int obj_desc_layout_equals_include(obj_descriptor *odsc1, obj_descriptor *odsc2);
 int dht_find_entry_all_layout(struct dht_entry *de, obj_descriptor *q_odsc,
-                       obj_descriptor **odsc_tab[], int timeout)
+                       obj_descriptor **odsc_tab[], int timeout);
 
 #endif /* __SS_DATA_H_ */
