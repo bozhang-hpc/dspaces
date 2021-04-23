@@ -2319,6 +2319,9 @@ void dht_find_other_st_entry_to_replace(struct dht_entry *de, obj_descriptor *od
     struct obj_desc_list *odscl;
     obj_descriptor odsc_dst_layout;
     obj_desc_transpose_st(&odsc_dst_layout, odsc);
+
+    n = odsc->version % de->odsc_size;
+
     list_for_each_entry(odscl, &de->odsc_hash[n], struct obj_desc_list,
                         odsc_entry)
     {
