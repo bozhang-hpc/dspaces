@@ -124,7 +124,7 @@ int main(int argc, char** argv)
     err = dspaces_put_layout(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_LEFT, data);
     
     MPI_Barrier(gcomm);
-    sleep(1);
+    //sleep(1);
 
     get_lb[0] = 0;
     get_lb[1] = 0;
@@ -178,7 +178,7 @@ int main(int argc, char** argv)
     err = dspaces_put_layout(ndcl, var_name, 0, sizeof(double), ndim, put_lb, put_ub, dspaces_LAYOUT_RIGHT, data);
     
     MPI_Barrier(gcomm);
-    sleep(1);
+    //sleep(1);
 
     get_lb[0] = 0;
     get_lb[1] = 0;
@@ -233,7 +233,7 @@ int main(int argc, char** argv)
 
     MPI_Barrier(gcomm);
 
-    sleep(1);
+    //sleep(1);
 
     get_lb[0] = 0;
     get_lb[1] = 0;
