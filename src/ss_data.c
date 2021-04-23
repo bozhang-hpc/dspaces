@@ -2313,6 +2313,8 @@ int dht_find_entry_all_layout(struct dht_entry *de, obj_descriptor *q_odsc,
 // search in dht to replace odsc who is included in odsc in dst_layout
 void dht_find_other_st_entry_to_replace(struct dht_entry *de, obj_descriptor *odsc)
 {
+    int n;
+    struct obj_desc_list *odscl;
     obj_descriptor odsc_dst_layout;
     obj_desc_transpose_st(&odsc_dst_layout, odsc);
     list_for_each_entry(odscl, &de->odsc_hash[n], struct obj_desc_list,
