@@ -2250,7 +2250,9 @@ int dht_find_entry_all_layout(struct dht_entry *de, obj_descriptor *q_odsc,
             if(obj_desc_equals_intersect(&odscl->odsc, q_odsc)) {
                 src_st = odscl->odsc.src_st;
                 layout_flag = 1;
-                if(odscl->odsc.src_st == q_odsc->st) {
+                // Don't ignore the first entry even if its src_st is different from the our request
+                // As long as its st and src_st are same, we need it
+                if(odscl->odsc.src_st == src_st) {
                     (*odsc_tab)[num_odsc++] = &odscl->odsc;
                     if(sub) {
                         bbox_intersect(&q_odsc->bb, &odscl->odsc.bb, &isect);
