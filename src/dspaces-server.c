@@ -2079,7 +2079,7 @@ static void odsc_layout_internal_rpc(hg_handle_t handle)
     } else {
         odsc_tab = malloc(sizeof(*odsc_tab) * num_odsc);
         src_st = podsc[0]->src_st;
-        if(src_st == q_odsc->st) {
+        if(src_st == in_odsc.st) {
             for(int j = 0; j < num_odsc; j++) {
                 obj_descriptor odsc;
                 odsc = *podsc[j];
