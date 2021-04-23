@@ -379,5 +379,6 @@ int obj_desc_layout_equals_intersect(obj_descriptor *odsc1, obj_descriptor *odsc
 int obj_desc_layout_equals_include(obj_descriptor *odsc1, obj_descriptor *odsc2);
 int dht_find_entry_all_layout(struct dht_entry *de, obj_descriptor *q_odsc,
                        obj_descriptor **odsc_tab[], int timeout);
+void dht_find_other_st_entry_to_replace(struct dht_entry *de, obj_descriptor *odsc)
 
 #endif /* __SS_DATA_H_ */
