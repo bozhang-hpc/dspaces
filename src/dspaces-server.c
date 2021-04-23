@@ -2390,7 +2390,7 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
             break;
 
         case row_major:
-            func_ret = od_rm2cm(new_od, od);
+            func_ret = od_cm2rm(new_od, od);
             break;
         
         default:
