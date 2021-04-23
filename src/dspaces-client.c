@@ -2628,11 +2628,16 @@ int dspaces_get_layout(dspaces_client_t client, const char *var_name, unsigned i
                 int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum ds_layout_type dst_layout, 
                 void *data, int timeout)
 {
-    int option = 1;
+    int option = 2;
     switch (option)
     {
     case 1:
         get_layout_v1(client, var_name, ver, elem_size, ndim, lb, ub, 
+                        dst_layout, data, timeout);
+        break;
+
+    case 2:
+        get_layout_v2(client, var_name, ver, elem_size, ndim, lb, ub, 
                         dst_layout, data, timeout);
         break;
     
