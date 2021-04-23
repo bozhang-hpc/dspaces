@@ -233,6 +233,8 @@ int main(int argc, char** argv)
 
     MPI_Barrier(gcomm);
 
+    sleep(1);
+
     get_lb[0] = 0;
     get_lb[1] = 0;
     get_lb[2] = 0;
