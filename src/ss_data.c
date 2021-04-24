@@ -2320,6 +2320,7 @@ int dht_find_entry_all_layout(struct dht_entry *de, obj_descriptor *q_odsc,
                                     timeout);
             } else {
                 fprintf(stderr, "DEBUG 4\n");
+                fprintf(stderr, "q_odsc: %s\n", obj_desc_sprint(&odsc_src_layout));
                 dht_local_subscribe(de, &odsc_src_layout, odsc_tab, &num_odsc, num_elem,
                                     timeout);
             }
