@@ -2188,6 +2188,28 @@ dim1:
 
 }
 
+char *st_sprint(enum storage_type st)
+{
+    char *str;
+    switch (odsc->st)
+    {
+    case column_major:
+        sprintf(st, "column-major");
+        break;
+
+    case row_major:
+        sprintf(st, "row-major");
+        break;
+    
+    default:
+        break;
+    }
+
+    str = alloc_sprintf("storage_type = %s", st);
+
+    return str;
+}
+
 /*
  *   Test if two object descriptors have the same name and versions and
  *   and storage type and their bounding boxes intersect.
@@ -2289,6 +2311,8 @@ int dht_find_entry_all_layout(struct dht_entry *de, obj_descriptor *q_odsc,
     fprintf(stderr, "DEBUG 2\n");
     if(sub) {
         if(num_elem > 0) {
+            fprintf(stderr, "src_st: %s\n", st_sprintf(src_st));
+            fprintf(stderr, "q_odsc: %s\n", obj_desc_sprint(q_odsc));
             if(src_st == q_odsc->st) {
                 fprintf(stderr, "DEBUG 3\n");
                 dht_local_subscribe(de, q_odsc, odsc_tab, &num_odsc, num_elem,
