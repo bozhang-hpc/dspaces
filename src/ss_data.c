@@ -2312,7 +2312,7 @@ int dht_find_entry_all_layout(struct dht_entry *de, obj_descriptor *q_odsc,
     fprintf(stderr, "DEBUG 2\n");
     if(sub) {
         if(num_elem > 0) {
-            fprintf(stderr, "src_st: %s\n", st_sprintf(src_st));
+            fprintf(stderr, "src_st: %s\n", st_sprint(src_st));
             fprintf(stderr, "q_odsc: %s\n", obj_desc_sprint(q_odsc));
             if(src_st == q_odsc->st) {
                 fprintf(stderr, "DEBUG 3\n");
