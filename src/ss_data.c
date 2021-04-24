@@ -2188,10 +2188,11 @@ dim1:
 
 }
 
-char *st_sprint(enum storage_type st)
+char *st_sprint(enum storage_type st_)
 {
     char *str;
-    switch (odsc->st)
+    char st[16];
+    switch (st_)
     {
     case column_major:
         sprintf(st, "column-major");
