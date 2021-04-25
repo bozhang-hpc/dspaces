@@ -2679,8 +2679,8 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
         }
     }
 
-    fprintf(stderr, "%s\n", obj_desc_sprint(&new_od->obj_desc));
-    debug_print(new_od->data);
+    //fprintf(stderr, "%s\n", obj_desc_sprint(&new_od->obj_desc));
+    //debug_print(new_od->data);
 
     hg_size_t size = (in_odsc.size) * bbox_volume(&(in_odsc.bb));
     void *buffer = (in_odsc.st == req_st) ? (void *)od->data : (void *)new_od->data;
