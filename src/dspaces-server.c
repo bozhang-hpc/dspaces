@@ -2369,6 +2369,20 @@ static void odsc_layout_internal_rpc(hg_handle_t handle)
 }
 DEFINE_MARGO_RPC_HANDLER(odsc_layout_internal_rpc)
 
+static void debug_print(char* ptr) {
+    double * pt = (double*) ptr;
+    printf("+++++++++++++++++++++++++++++\n");
+    //for(int i = 0 ; i < 2; i++) {
+        for(int j = 0; j < 4; j++) {
+            for(int k=0; k <4; k++) {
+                printf("%lf ", pt[j+k*4]);
+            }
+            printf("\n");
+        }
+        printf("**************\n");
+    //}
+}
+
 static int get_query_layout_odscs(dspaces_provider_t server, odsc_gdim_t *query,
                            int timeout, obj_descriptor **results)
 {
@@ -2664,6 +2678,9 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
         return;
         }
     }
+
+    fprintf(stderr, "%s\n", bbox_sprint(new_od));
+    debug_print(new_od->data);
 
     hg_size_t size = (in_odsc.size) * bbox_volume(&(in_odsc.bb));
     void *buffer = (in_odsc.st == req_st) ? (void *)od->data : (void *)new_od->data;
