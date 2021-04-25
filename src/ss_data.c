@@ -1518,6 +1518,7 @@ void dht_local_subscribe(struct dht_entry *de, obj_descriptor *q_odsc,
     sub.odsc = q_odsc;
     sub.remaining = remaining;
     sub.pub_count = 0;
+    sub.st_init_flag = 1; // add for st support
     INIT_LIST_HEAD(&sub.recv_odsc);
 
     list_add(&sub.entry, &de->dht_subs[n]);
@@ -1948,7 +1949,7 @@ int od_rm2cm(struct obj_data* dst_od, struct obj_data* src_od)
     struct bbox* bb = &dst_od->obj_desc.bb;
     size_t elem_size = dst_od->obj_desc.size;
 
-    uint64_t j[10]; //index in src layout
+    uint64_t j[10]; //index in src st
     uint64_t src_loc = 0, src_loc1 = 0, src_loc2 = 0, src_loc3 = 0, src_loc4 = 0, 
              src_loc5 = 0, src_loc6 =0, src_loc7 = 0, src_loc8 = 0, src_loc9 = 0;
     uint64_t d;
@@ -2076,7 +2077,7 @@ int od_cm2rm(struct obj_data* dst_od, struct obj_data* src_od)
     struct bbox* bb = &dst_od->obj_desc.bb;
     size_t elem_size = dst_od->obj_desc.size;
 
-    uint64_t j[10]; //index in dst layout
+    uint64_t j[10]; //index in dst st
     uint64_t dst_loc = 0, dst_loc1 = 0, dst_loc2 = 0, dst_loc3 = 0, dst_loc4 = 0, 
              dst_loc5 = 0, dst_loc6 =0, dst_loc7 = 0, dst_loc8 = 0, dst_loc9 = 0;
     uint64_t d;
@@ -2215,7 +2216,7 @@ char *st_sprint(enum storage_type st_)
  *   Test if two object descriptors have the same name and versions and
  *   and storage type and their bounding boxes intersect.
  */
-int obj_desc_layout_equals_intersect(obj_descriptor *odsc1, obj_descriptor *odsc2)
+int obj_desc_st_equals_intersect(obj_descriptor *odsc1, obj_descriptor *odsc2)
 {
     if(odsc1->st == odsc2->st &&
        strcmp(odsc1->name, odsc2->name) == 0 &&
@@ -2229,7 +2230,7 @@ int obj_desc_layout_equals_intersect(obj_descriptor *odsc1, obj_descriptor *odsc
  *   and storage type and odsc1's bounding boxes is included in odsc2.
  */
 
-int obj_desc_layout_equals_include(obj_descriptor *odsc1, obj_descriptor *odsc2)
+int obj_desc_st_equals_include(obj_descriptor *odsc1, obj_descriptor *odsc2)
 {
     if(odsc1->st == odsc2->st &&
        strcmp(odsc1->name, odsc2->name) == 0 &&
@@ -2239,15 +2240,194 @@ int obj_desc_layout_equals_include(obj_descriptor *odsc1, obj_descriptor *odsc2)
     return 0;
 }
 
+// search in dht to replace odsc who is included in odsc in dst_st
+void dht_find_other_st_entry_to_replace(struct dht_entry *de, obj_descriptor *odsc)
+{
+    int n;
+    struct obj_desc_list *odscl;
+    obj_descriptor odsc_dst_st;
+    obj_desc_transpose_st(&odsc_dst_st, odsc);
+
+    n = odsc->version % de->odsc_size;
+
+    list_for_each_entry(odscl, &de->odsc_hash[n], struct obj_desc_list,
+                        odsc_entry)
+    {
+        if(obj_desc_st_equals_include(&odsc_dst_st, &odscl->odsc)) {
+            memcpy(odsc, &odsc_dst_st, sizeof(obj_descriptor));
+        }
+    }
+}
+
+/*
+ *   Test if two object descriptors have the same name and storage type and their bounding
+ *     boxes intersect.
+ *     */
+int obj_desc_by_name_intersect_st(const obj_descriptor *odsc1,
+                               const obj_descriptor *odsc2)
+{
+    if(strcmp(odsc1->name, odsc2->name) == 0 &&
+        odsc1->st == odsc2->st &&
+        bbox_does_intersect(&odsc1->bb, &odsc2->bb))
+        return 1;
+    return 0;
+}
+
+/*
+  Test if the  'odsc' matches any object descriptor in  a DHT entry by
+  name and coordinates and st, but not version, and return the matching index.
+*/
+static struct obj_desc_list *dht_find_match_st(const struct dht_entry *de,
+                                            const obj_descriptor *odsc)
+{
+    struct obj_desc_list *odscl;
+    int n;
+
+    // TODO: delete this (just an assertion for proper behaviour).
+    if(odsc->version == (unsigned int)-1) {
+        fprintf(stderr, "'%s()': version on object descriptor is not set!!!\n",
+                __func__);
+        return 0;
+    }
+
+    n = odsc->version % de->odsc_size;
+    list_for_each_entry(odscl, &de->odsc_hash[n], struct obj_desc_list,
+                        odsc_entry)
+    {
+        if(obj_desc_by_name_intersect_st(odsc, &odscl->odsc))
+            return odscl;
+    }
+
+    return 0;
+}
+
+void dht_local_subscribe_no_st(struct dht_entry *de, obj_descriptor *q_odsc,
+                         obj_descriptor ***odsc_tab, int *tab_entries,
+                         long remaining, int timeout)
+{
+    struct dht_sub_list_entry sub;
+    obj_descriptor **odsc_tab_pos;
+    struct obj_desc_ptr_list *odscl, *tmp;
+    int n = q_odsc->version % de->odsc_size;
+
+    sub.odsc = q_odsc;
+    sub.remaining = remaining;
+    sub.pub_count = 0;
+    sub.st_init_flag = 0; // add for st support
+    INIT_LIST_HEAD(&sub.recv_odsc);
+
+    list_add(&sub.entry, &de->dht_subs[n]);
+
+    do {
+        ABT_cond_wait(de->hash_cond[n], de->hash_mutex[n]);
+    } while(sub.remaining > 0);
+
+    *odsc_tab =
+        realloc(*odsc_tab, sizeof(**odsc_tab) * (*tab_entries + sub.pub_count));
+    odsc_tab_pos = &(*odsc_tab)[*tab_entries];
+    list_for_each_entry_safe(odscl, tmp, &sub.recv_odsc,
+                             struct obj_desc_ptr_list, odsc_entry)
+    {
+        *odsc_tab_pos = odscl->odsc;
+        odsc_tab_pos++;
+        list_del(&odscl->odsc_entry);
+        free(odscl);
+    }
+    *tab_entries += sub.pub_count;
+}
+
+int dht_add_entry_st(struct dht_entry *de, obj_descriptor *odsc)
+{
+    struct obj_desc_list *odscl;
+    struct obj_desc_ptr_list *sub_odscl;
+    struct dht_sub_list_entry *sub, *tmp;
+    struct bbox isect;
+    int sub_complete = 0;
+    int n, err = -ENOMEM;
+
+    odscl = dht_find_match_st(de, odsc);
+    if(odscl) {
+        /* There  is allready  a descriptor  with  a different
+           version in the DHT, so I will overwrite it. */
+        if(odscl->odsc.version == odsc->version) {
+            fprintf(stderr, "WARNING: the server has detected an overlapping "
+                            "put (same version and some common elements with a "
+                            "previous put. DataSpaces storage is intended to "
+                            "be immutable, and the behavior of updates is "
+                            "undefined. Proceed at your own risk...\n");
+            fprintf(stderr, " New put is: \n%s\n", obj_desc_sprint(odsc));
+            fprintf(stderr, " But found existing: \n%s\n",
+                    obj_desc_sprint(&odscl->odsc));
+        }
+        memcpy(&odscl->odsc, odsc, sizeof(*odsc));
+        return 0;
+    }
+
+    n = odsc->version % de->odsc_size;
+    odscl = malloc(sizeof(*odscl));
+    if(!odscl)
+        return err;
+    memcpy(&odscl->odsc, odsc, sizeof(*odsc));
+
+    ABT_mutex_lock(de->hash_mutex[n]);
+    list_add(&odscl->odsc_entry, &de->odsc_hash[n]);
+    de->odsc_num++;
+
+    list_for_each_entry_safe(sub, tmp, &de->dht_subs[n],
+                             struct dht_sub_list_entry, entry)
+    {
+        if(!(sub->st_init_flag)) {
+            if(obj_desc_equals_intersect(odsc, sub->odsc)) {
+                sub_odscl = malloc(sizeof(*sub_odscl));
+                sub_odscl->odsc = &odscl->odsc;
+                list_add(&sub_odscl->odsc_entry, &sub->recv_odsc);
+                sub->pub_count++;
+
+                bbox_intersect(&odsc->bb, &sub->odsc->bb, &isect);
+                sub->remaining -= bbox_volume(&isect);
+                if(sub->remaining == 0) {
+                    sub_complete = 1;
+                    list_del(&sub->entry);
+                }
+                sub->odsc->src_st = odsc->src_st;
+                sub->odsc->st = odsc->src_st;
+                sub->st_init_flag = 1;
+            }
+        } else {
+            if(obj_desc_st_equals_intersect(odsc, sub->odsc)) {
+                sub_odscl = malloc(sizeof(*sub_odscl));
+                sub_odscl->odsc = &odscl->odsc;
+                list_add(&sub_odscl->odsc_entry, &sub->recv_odsc);
+                sub->pub_count++;
+
+                bbox_intersect(&odsc->bb, &sub->odsc->bb, &isect);
+                sub->remaining -= bbox_volume(&isect);
+                if(sub->remaining == 0) {
+                    sub_complete = 1;
+                    list_del(&sub->entry);
+                }
+            }
+        }
+        
+    }
+    if(sub_complete) {
+        ABT_cond_broadcast(de->hash_cond[n]);
+    }
+
+    ABT_mutex_unlock(de->hash_mutex[n]);
+
+    return 0;
+}
+
 /*
     Object descriptor 'q_odsc' can intersect multiple object descriptors
-    from dht entry 'de' in any layout at first; find the first odsc to 
-    make sure the src_layout; If equals dst_layout, do it as before; If not,
+    from dht entry 'de' in any st at first; find the first odsc to 
+    make sure the src_st; If equals dst_st, do it as before; If not,
     then, find the intersected multiple object  descriptors from dht entry 
-    'de' in exact src_layout; Finally, replace the odsc_tab entry which 
-    is included by object descriptors in dst_layout. 
+    'de' in exact src_st; Finally, replace the odsc_tab entry which 
+    is included by object descriptors in dst_st. 
 */
-int dht_find_entry_all_layout(struct dht_entry *de, obj_descriptor *q_odsc,
+int dht_find_entry_all_st(struct dht_entry *de, obj_descriptor *q_odsc,
                        obj_descriptor **odsc_tab[], int timeout)
 {
     int n, num_odsc = 0;
@@ -2255,9 +2435,9 @@ int dht_find_entry_all_layout(struct dht_entry *de, obj_descriptor *q_odsc,
     struct obj_desc_list *odscl;
     struct bbox isect;
     int sub = timeout != 0 && de == de->ss->ent_self;
-    int layout_flag = -1; // uninitialized
+    int found_flag = 0; // uninitialized
     enum storage_type src_st;
-    obj_descriptor odsc_src_layout, odsc_entry_dst_layout;
+    obj_descriptor odsc_src_st, odsc_entry_dst_st;
     int i;
 
     n = q_odsc->version % de->odsc_size;
@@ -2272,11 +2452,11 @@ int dht_find_entry_all_layout(struct dht_entry *de, obj_descriptor *q_odsc,
     list_for_each_entry(odscl, &de->odsc_hash[n], struct obj_desc_list,
                         odsc_entry)
     {
-        // check the first odsc found to make sure the src_layout
-        if(layout_flag == -1) {
+        // check the first odsc found to make sure the src_st
+        if(!find_flag) {
             if(obj_desc_equals_intersect(&odscl->odsc, q_odsc)) {
                 src_st = odscl->odsc.src_st;
-                layout_flag = 1;
+                found_flag = 1;
                 // Don't ignore the first entry even if its src_st is different from the our request
                 // As long as its st and src_st are same, we need it
                 if(odscl->odsc.src_st == src_st) {
@@ -2289,7 +2469,7 @@ int dht_find_entry_all_layout(struct dht_entry *de, obj_descriptor *q_odsc,
             }
         } else {
             if(src_st == q_odsc->st) {
-                if(obj_desc_layout_equals_intersect(&odscl->odsc, q_odsc)) {
+                if(obj_desc_st_equals_intersect(&odscl->odsc, q_odsc)) {
                     (*odsc_tab)[num_odsc++] = &odscl->odsc;
                     if(sub) {
                         bbox_intersect(&q_odsc->bb, &odscl->odsc.bb, &isect);
@@ -2297,11 +2477,11 @@ int dht_find_entry_all_layout(struct dht_entry *de, obj_descriptor *q_odsc,
                     }
                 }
             } else {
-                obj_desc_transpose_st(&odsc_src_layout, q_odsc);
-                if(obj_desc_layout_equals_intersect(&odscl->odsc, &odsc_src_layout)) {
+                obj_desc_transpose_st(&odsc_src_st, q_odsc);
+                if(obj_desc_st_equals_intersect(&odscl->odsc, &odsc_src_st)) {
                     (*odsc_tab)[num_odsc++] = &odscl->odsc;
                     if(sub) {
-                        bbox_intersect(&odsc_src_layout.bb, &odscl->odsc.bb, &isect);
+                        bbox_intersect(&odsc_src_st.bb, &odscl->odsc.bb, &isect);
                         num_elem -= bbox_volume(&isect);
                     }
                 }
@@ -2314,16 +2494,22 @@ int dht_find_entry_all_layout(struct dht_entry *de, obj_descriptor *q_odsc,
         if(num_elem > 0) {
             fprintf(stderr, "src_st: %s\n", st_sprint(src_st));
             fprintf(stderr, "q_odsc: %s\n", obj_desc_sprint(q_odsc));
-            if(src_st == q_odsc->st) {
-                fprintf(stderr, "DEBUG 3\n");
-                dht_local_subscribe(de, q_odsc, odsc_tab, &num_odsc, num_elem,
-                                    timeout);
+            if(found_flag) {
+                if(src_st == q_odsc->st) {
+                    fprintf(stderr, "DEBUG 3\n");
+                    dht_local_subscribe(de, q_odsc, odsc_tab, &num_odsc, num_elem,
+                                        timeout);
+                } else {
+                    fprintf(stderr, "DEBUG 4\n");
+                    fprintf(stderr, "q_odsc: %s\n", obj_desc_sprint(&odsc_src_stout));
+                    dht_local_subscribe(de, &odsc_src_st, odsc_tab, &num_odsc, num_elem,
+                                        timeout);
+                }
             } else {
-                fprintf(stderr, "DEBUG 4\n");
-                fprintf(stderr, "q_odsc: %s\n", obj_desc_sprint(&odsc_src_layout));
-                dht_local_subscribe(de, &odsc_src_layout, odsc_tab, &num_odsc, num_elem,
-                                    timeout);
+                dht_local_subscribe_no_st(de, q_odsc, odsc_tab, &num_odsc, num_elem,
+                                            timeout);
             }
+            
         }
         ABT_mutex_unlock(de->hash_mutex[n]);
     }
@@ -2331,11 +2517,11 @@ int dht_find_entry_all_layout(struct dht_entry *de, obj_descriptor *q_odsc,
     /*
     if(src_st != q_odsc->st)
     for(i=0; i<num_odsc; i++) {
-        obj_desc_transpose_st(&odsc_entry_dst_layout, (*odsc_tab)[i]);
+        obj_desc_transpose_st(&odsc_entry_dst_st, (*odsc_tab)[i]);
         list_for_each_entry(odscl, &de->odsc_hash[n], struct obj_desc_list,
                         odsc_entry)
         {
-            if(obj_desc_layout_equals_include(&odsc_entry_dst_layout, &odscl->odsc)) {
+            if(obj_desc_st_equals_include(&odsc_entry_dst_st, &odscl->odsc)) {
                 (*odsc_tab)[i] = &odscl->odsc;
             }
         }
@@ -2345,21 +2531,3 @@ int dht_find_entry_all_layout(struct dht_entry *de, obj_descriptor *q_odsc,
     return num_odsc;
 }
 
-// search in dht to replace odsc who is included in odsc in dst_layout
-void dht_find_other_st_entry_to_replace(struct dht_entry *de, obj_descriptor *odsc)
-{
-    int n;
-    struct obj_desc_list *odscl;
-    obj_descriptor odsc_dst_layout;
-    obj_desc_transpose_st(&odsc_dst_layout, odsc);
-
-    n = odsc->version % de->odsc_size;
-
-    list_for_each_entry(odscl, &de->odsc_hash[n], struct obj_desc_list,
-                        odsc_entry)
-    {
-        if(obj_desc_layout_equals_include(&odsc_dst_layout, &odscl->odsc)) {
-            memcpy(odsc, &odsc_dst_layout, sizeof(obj_descriptor));
-        }
-    }
-}

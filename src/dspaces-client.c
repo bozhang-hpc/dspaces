@@ -70,6 +70,7 @@ struct dspaces_client {
     hg_id_t transpose_id;
     hg_id_t query_layout_id;
     hg_id_t get_server_rcmc_id;
+    hg_id_t put_st_id;
     struct dc_gspace *dcg;
     char **server_address;
     char **node_names;
@@ -548,6 +549,7 @@ static int dspaces_init_margo(dspaces_client_t client,
                               &flag);
         margo_registered_name(client->mid, "get_server_rcmc_rpc", &client->get_server_rcmc_id,
                               &flag);
+        margo_registered_name(client->mid, "put_st_rpc", &client->put_st_id, &flag);
     } else {
         client->put_id = MARGO_REGISTER(client->mid, "put_rpc", bulk_gdim_t,
                                         bulk_out_t, NULL);
@@ -603,7 +605,9 @@ static int dspaces_init_margo(dspaces_client_t client,
                                           odsc_list_t, NULL);
         client->get_server_rcmc_id =
             MARGO_REGISTER(client->mid, "get_server_rcmc_rpc", bulk_in_t, bulk_out_t, NULL);
-        margo_register_data(client->mid, client->get_server_rcmc_id, (void *)client, NULL);                                  
+        margo_register_data(client->mid, client->get_server_rcmc_id, (void *)client, NULL);
+        client->put_st_id = MARGO_REGISTER(client->mid, "put_st_rpc", bulk_gdim_t,
+                                        bulk_out_t, NULL);                                  
     }
 
     return (dspaces_SUCCESS);
@@ -2277,7 +2281,7 @@ int dspaces_put_layout(dspaces_client_t client, const char *var_name, unsigned i
 
     get_server_address(client, &server_addr);
     /* create handle */
-    hret = margo_create(client->mid, server_addr, client->put_id, &handle);
+    hret = margo_create(client->mid, server_addr, client->put_st_id, &handle);
     if(hret != HG_SUCCESS) {
         fprintf(stderr, "ERROR: (%s): margo_create() failed\n", __func__);
         margo_bulk_free(in.handle);

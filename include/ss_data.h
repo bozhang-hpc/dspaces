@@ -130,6 +130,7 @@ typedef struct {
 } odsc_hdr_with_gdim;
 
 struct dht_sub_list_entry {
+    int st_init_flag; // added for st support
     obj_descriptor *odsc; // subbed object
     long remaining;
     int pub_count;
@@ -375,11 +376,20 @@ void obj_desc_transpose_bbox(obj_descriptor* dst_odsc, obj_descriptor* src_odsc)
 void obj_desc_transpose_st(obj_descriptor* dst_odsc, obj_descriptor* src_odsc);
 int od_rm2cm(struct obj_data* dst_od, struct obj_data* src_od);
 int od_cm2rm(struct obj_data* dst_od, struct obj_data* src_od);
-int obj_desc_layout_equals_intersect(obj_descriptor *odsc1, obj_descriptor *odsc2);
-int obj_desc_layout_equals_include(obj_descriptor *odsc1, obj_descriptor *odsc2);
-int dht_find_entry_all_layout(struct dht_entry *de, obj_descriptor *q_odsc,
+int obj_desc_st_equals_intersect(obj_descriptor *odsc1, obj_descriptor *odsc2);
+int obj_desc_st_equals_include(obj_descriptor *odsc1, obj_descriptor *odsc2);
+int dht_find_entry_all_st(struct dht_entry *de, obj_descriptor *q_odsc,
                        obj_descriptor **odsc_tab[], int timeout);
 void dht_find_other_st_entry_to_replace(struct dht_entry *de, obj_descriptor *odsc);
 char *st_sprint(enum storage_type st_);
+int obj_desc_by_name_intersect_st(const obj_descriptor *odsc1,
+                               const obj_descriptor *odsc2);
+static struct obj_desc_list *dht_find_match_st(const struct dht_entry *de,
+                                            const obj_descriptor *odsc);
+void dht_local_subscribe_no_st(struct dht_entry *de, obj_descriptor *q_odsc,
+                         obj_descriptor ***odsc_tab, int *tab_entries,
+                         long remaining, int timeout);
+
+int dht_add_entry_st(struct dht_entry *de, obj_descriptor *odsc);
 
 #endif /* __SS_DATA_H_ */
