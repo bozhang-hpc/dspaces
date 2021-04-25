@@ -2494,7 +2494,7 @@ static int get_data_rcmc_at_server(dspaces_client_t client, int num_odscs,
         margo_get_output(hndl[i], &resp);
         margo_free_output(hndl[i], &resp);
         margo_destroy(hndl[i]);
-        DEBUG_OUT("%s\n", obj_desc_sprint(&od[i]->obj_desc));
+        fprintf(stderr, "%s\n", obj_desc_sprint(&od[i]->obj_desc));
         debug_print(od[i]->data);
         // copy received data into user return buffer
         // transposing a parent vector needs both transposing each sub-vector inside and outside
