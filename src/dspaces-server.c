@@ -2717,7 +2717,6 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     margo_free_input(handle, &in);
     margo_destroy(handle);
 
-    fprintf(stderr, "in_odsc: %s\n", obj_desc_sprint(&in_odsc));
 
     if(in_odsc.st != req_st) {
     // Maybe add a check for new od here, if does not exist then add it to dht.
