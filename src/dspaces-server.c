@@ -2375,7 +2375,7 @@ static void debug_print(char* ptr) {
     //for(int i = 0 ; i < 2; i++) {
         for(int j = 0; j < 4; j++) {
             for(int k=0; k <4; k++) {
-                printf("%lf ", pt[j+k*4]);
+                printf("%lf ", pt[j*4+k]);
             }
             printf("\n");
         }
