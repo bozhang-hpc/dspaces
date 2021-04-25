@@ -2481,7 +2481,7 @@ static int get_data_rcmc_at_server(dspaces_client_t client, int num_odscs,
         serv_req[i] = req;
         margo_addr_free(client->mid, server_addr);
     }
-
+    fprintf(stderr, "req_odsc: %s\n", obj_desc_sprint(&req_obj));
     obj_descriptor temp_odsc_ts;
     obj_desc_transpose_bbox(&temp_odsc_ts, &req_obj);
 
