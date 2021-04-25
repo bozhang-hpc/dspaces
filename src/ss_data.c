@@ -2453,7 +2453,7 @@ int dht_find_entry_all_st(struct dht_entry *de, obj_descriptor *q_odsc,
                         odsc_entry)
     {
         // check the first odsc found to make sure the src_st
-        if(!find_flag) {
+        if(!found_flag) {
             if(obj_desc_equals_intersect(&odscl->odsc, q_odsc)) {
                 src_st = odscl->odsc.src_st;
                 found_flag = 1;
@@ -2501,7 +2501,7 @@ int dht_find_entry_all_st(struct dht_entry *de, obj_descriptor *q_odsc,
                                         timeout);
                 } else {
                     fprintf(stderr, "DEBUG 4\n");
-                    fprintf(stderr, "q_odsc: %s\n", obj_desc_sprint(&odsc_src_stout));
+                    fprintf(stderr, "q_odsc: %s\n", obj_desc_sprint(&odsc_src_st));
                     dht_local_subscribe(de, &odsc_src_st, odsc_tab, &num_odsc, num_elem,
                                         timeout);
                 }
