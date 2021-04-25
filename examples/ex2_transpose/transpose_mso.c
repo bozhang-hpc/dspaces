@@ -45,8 +45,8 @@ int main(int argc, char** argv)
     
     double *data = (double*) malloc(loc_dim0*loc_dim1*loc_dim2*sizeof(double));
     double *recv_data = (double*) malloc(sub_dim0*sub_dim1*sub_dim2*sizeof(double));
-
-    /*----------------------------------TestCase1-----------------------*/
+/*
+    //----------------------------------TestCase1-----------------------
     printf("================TESTCASE1: PUT ROW-MAJOR GET ROW-MAJOR\n");
     sprintf(var_name, "example2_test1_data");
     printf("=================PUT 1st OBJ================\n");
@@ -163,8 +163,8 @@ int main(int argc, char** argv)
         }
         printf("**************\n");
     }
-
-    /*----------------------------------TestCase2-----------------------*/
+*/
+    //----------------------------------TestCase2-----------------------
     printf("================TESTCASE2: PUT COLUMN-MAJOR GET COLUMN-MAJOR\n");
     sprintf(var_name, "example2_test2_data");
     printf("=================PUT 1st OBJ================\n");
@@ -281,8 +281,8 @@ int main(int argc, char** argv)
         }
         printf("**************\n");
     }
-
-    /*----------------------------------TestCase3-----------------------*/
+/*
+    //----------------------------------TestCase3-----------------------
     printf("================TESTCASE3: PUT ROW-MAJOR GET COLUMN-MAJOR\n");
     sprintf(var_name, "example2_test3_data");
     printf("=================PUT 1st OBJ================\n");
@@ -400,7 +400,7 @@ int main(int argc, char** argv)
         printf("**************\n");
     }
 
-    /*----------------------------------TestCase4-----------------------*/
+    //----------------------------------TestCase4-----------------------
     printf("================TESTCASE4: PUT COLUMN-MAJOR GET ROW-MAJOR\n");
     sprintf(var_name, "example2_test2_data");
     printf("=================PUT 1st OBJ================\n");
@@ -518,6 +518,8 @@ int main(int argc, char** argv)
         }
         printf("**************\n");
     }
+
+*/
 
 free:
 
