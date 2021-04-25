@@ -2679,7 +2679,7 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
         }
     }
 
-    fprintf(stderr, "%s\n", bbox_sprint(new_od));
+    fprintf(stderr, "%s\n", bbox_sprint(&od->obj_desc.bb));
     debug_print(new_od->data);
 
     hg_size_t size = (in_odsc.size) * bbox_volume(&(in_odsc.bb));
