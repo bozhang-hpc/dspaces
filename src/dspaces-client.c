@@ -2481,7 +2481,7 @@ static int get_data_rcmc_at_server(dspaces_client_t client, int num_odscs,
         serv_req[i] = req;
         margo_addr_free(client->mid, server_addr);
     }
-    fprintf(stderr, "req_odsc: %s\n", obj_desc_sprint(&req_obj));
+    //fprintf(stderr, "req_odsc: %s\n", obj_desc_sprint(&req_obj));
     obj_descriptor temp_odsc_ts;
     struct obj_data *return_od;
 
@@ -2500,10 +2500,9 @@ static int get_data_rcmc_at_server(dspaces_client_t client, int num_odscs,
         margo_get_output(hndl[i], &resp);
         margo_free_output(hndl[i], &resp);
         margo_destroy(hndl[i]);
-        fprintf(stderr, "%s\n", obj_desc_sprint(&od[i]->obj_desc));
-        debug_print(od[i]->data);
+        //fprintf(stderr, "%s\n", obj_desc_sprint(&od[i]->obj_desc));
+        //debug_print(od[i]->data);
         // copy received data into user return buffer
-        // transposing a parent vector needs both transposing each sub-vector inside and outside
         if(req_obj.st == column_major) {
             obj_descriptor temp_odsc_entry;
             obj_desc_transpose_bbox(&temp_odsc_entry, &od[i]->obj_desc);
