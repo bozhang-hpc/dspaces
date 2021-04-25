@@ -2442,13 +2442,11 @@ int dht_find_entry_all_st(struct dht_entry *de, obj_descriptor *q_odsc,
 
     n = q_odsc->version % de->odsc_size;
 
-    fprintf(stderr, "DEBUG 0\n");
-
     if(sub) {
         num_elem = ssh_hash_elem_count(de->ss, &q_odsc->bb);
         ABT_mutex_lock(de->hash_mutex[n]);
     }
-    fprintf(stderr, "DEBUG 1\n");
+
     list_for_each_entry(odscl, &de->odsc_hash[n], struct obj_desc_list,
                         odsc_entry)
     {
@@ -2489,19 +2487,17 @@ int dht_find_entry_all_st(struct dht_entry *de, obj_descriptor *q_odsc,
             
         }
     }
-    fprintf(stderr, "DEBUG 2\n");
+
     if(sub) {
         if(num_elem > 0) {
-            fprintf(stderr, "src_st: %s\n", st_sprint(src_st));
-            fprintf(stderr, "q_odsc: %s\n", obj_desc_sprint(q_odsc));
+            //fprintf(stderr, "src_st: %s\n", st_sprint(src_st));
+            //fprintf(stderr, "q_odsc: %s\n", obj_desc_sprint(q_odsc));
             if(found_flag) {
                 if(src_st == q_odsc->st) {
-                    fprintf(stderr, "DEBUG 3\n");
                     dht_local_subscribe(de, q_odsc, odsc_tab, &num_odsc, num_elem,
                                         timeout);
                 } else {
-                    fprintf(stderr, "DEBUG 4\n");
-                    fprintf(stderr, "q_odsc: %s\n", obj_desc_sprint(&odsc_src_st));
+                    //fprintf(stderr, "q_odsc: %s\n", obj_desc_sprint(&odsc_src_st));
                     dht_local_subscribe(de, &odsc_src_st, odsc_tab, &num_odsc, num_elem,
                                         timeout);
                 }
