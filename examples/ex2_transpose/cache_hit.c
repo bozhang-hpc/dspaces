@@ -105,7 +105,7 @@ int main(int argc, char** argv)
 free:
 
     MPI_Barrier(gcomm);
-    free(data);
+    //free(data);
     free(recv_data);
 
     dspaces_fini(ndcl);
