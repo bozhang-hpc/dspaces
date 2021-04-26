@@ -2460,7 +2460,7 @@ int dht_find_entry_all_st(struct dht_entry *de, obj_descriptor *q_odsc,
                 found_flag = 1;
                 // Don't ignore the first entry even if its src_st is different from the our request
                 // As long as its st and src_st are same, we need it
-                if(odscl->odsc.src_st == src_st) {
+                if(odscl->odsc.st == src_st) {
                     (*odsc_tab)[num_odsc++] = &odscl->odsc;
                     if(sub) {
                         bbox_intersect(&q_odsc->bb, &odscl->odsc.bb, &isect);
