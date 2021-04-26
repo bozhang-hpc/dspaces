@@ -9,3 +9,6 @@ target_link_libraries(transpose_mo dspaces)
 
 add_executable(transpose_mso transpose_mso.c)
 target_link_libraries(transpose_mso dspaces)
+
+add_executable(cache_hit cache_hit.c)
+target_link_libraries(cache_hit dspaces)

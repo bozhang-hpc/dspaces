@@ -2254,6 +2254,7 @@ void dht_find_other_st_entry_to_replace(struct dht_entry *de, obj_descriptor *od
                         odsc_entry)
     {
         if(obj_desc_st_equals_include(&odsc_dst_st, &odscl->odsc)) {
+            fprintf(stderr, "hit cache! very good!\n");
             memcpy(odsc, &odsc_dst_st, sizeof(obj_descriptor));
         }
     }
