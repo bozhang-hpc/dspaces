@@ -2862,7 +2862,7 @@ static int get_data_st(dspaces_client_t client, int num_odscs,
 
     struct obj_data *return_od;
 
-    if(odsc_tab[0].src_st == column_major) {
+    if(odsc_tab[0].st == column_major) {
         obj_desc_transpose_bbox(&temp_odsc, &req_obj);
         return_od = obj_data_alloc_no_data(&temp_odsc, data);
     } else {
@@ -2881,7 +2881,7 @@ static int get_data_st(dspaces_client_t client, int num_odscs,
         DEBUG_OUT("%s\n", obj_desc_sprint(&od[i]->obj_desc));
         // debug_print(od[i]->data);
         // copy received data into user return buffer
-        if(odsc_tab[0].src_st == column_major) {
+        if(odsc_tab[0].st == column_major) {
             obj_descriptor temp_odsc_entry;
             obj_desc_transpose_bbox(&temp_odsc_entry, &od[i]->obj_desc);
             od[i]->obj_desc = temp_odsc_entry;
