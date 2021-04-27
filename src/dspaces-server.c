@@ -2760,7 +2760,7 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     if(in_odsc.st != req_st) {
     // Maybe add a check for new od here, if does not exist then add it to dht.
     ABT_mutex_lock(server->ls_mutex);
-    ls_add_obj_st(server->dsg->ls, od);
+    ls_add_obj_st(server->dsg->ls, new_od);
     ABT_mutex_unlock(server->ls_mutex);
     obj_update_dht_st(server, new_od, DS_OBJ_NEW);
     DEBUG_OUT("Finished transposed_obj_put_update from get_server_rcmc_rpc\n");
