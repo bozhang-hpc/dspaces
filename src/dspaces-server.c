@@ -2893,7 +2893,7 @@ static void put_st_server_rcmc_rpc(hg_handle_t handle)
     }
 
     ABT_mutex_lock(server->ls_mutex);
-    ls_add_obj_st(server->dsg->ls, od);
+    ls_add_obj_st(server->dsg->ls, new_od);
     ABT_mutex_unlock(server->ls_mutex);
     obj_update_dht_st(server, new_od, DS_OBJ_NEW);
     DEBUG_OUT("Finished obj_put_update_st converted odsc from put_rpc\n");
