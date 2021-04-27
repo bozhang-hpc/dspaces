@@ -2667,7 +2667,7 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     // maybe need a 2nd level check to avoid simutaneous rcm request.
     // need a list to maintain ongoing rcm tasks and a lock to allow atomicity
 
-    from_obj = ls_find_st(server->dsg->ls, &in_odsc);
+    from_obj = ls_find(server->dsg->ls, &in_odsc);
 
     // first get the exact data no matter what layout it is
     // ssd_copy needs trick for column-major copy
