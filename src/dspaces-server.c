@@ -2300,7 +2300,7 @@ static void put_st_rpc(hg_handle_t handle)
     }
 
     ABT_mutex_lock(server->ls_mutex);
-    ls_add_obj(server->dsg->ls, od);
+    ls_add_obj_st(server->dsg->ls, od);
     ABT_mutex_unlock(server->ls_mutex);
 
     DEBUG_OUT("Received obj %s\n", obj_desc_sprint(&od->obj_desc));
@@ -2760,7 +2760,7 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     if(in_odsc.st != req_st) {
     // Maybe add a check for new od here, if does not exist then add it to dht.
     ABT_mutex_lock(server->ls_mutex);
-    ls_add_obj(server->dsg->ls, od);
+    ls_add_obj_st(server->dsg->ls, od);
     ABT_mutex_unlock(server->ls_mutex);
     obj_update_dht_st(server, new_od, DS_OBJ_NEW);
     DEBUG_OUT("Finished transposed_obj_put_update from get_server_rcmc_rpc\n");
@@ -2844,7 +2844,7 @@ static void put_st_server_rcmc_rpc(hg_handle_t handle)
     }
 
     ABT_mutex_lock(server->ls_mutex);
-    ls_add_obj(server->dsg->ls, od);
+    ls_add_obj_st(server->dsg->ls, od);
     ABT_mutex_unlock(server->ls_mutex);
 
     DEBUG_OUT("Received obj %s\n", obj_desc_sprint(&od->obj_desc));
@@ -2892,6 +2892,9 @@ static void put_st_server_rcmc_rpc(hg_handle_t handle)
         return;
     }
 
+    ABT_mutex_lock(server->ls_mutex);
+    ls_add_obj_st(server->dsg->ls, od);
+    ABT_mutex_unlock(server->ls_mutex);
     obj_update_dht_st(server, new_od, DS_OBJ_NEW);
     DEBUG_OUT("Finished obj_put_update_st converted odsc from put_rpc\n");
 }

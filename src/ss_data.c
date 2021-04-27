@@ -2594,3 +2594,56 @@ struct obj_data *ls_find_st(ss_storage *ls, obj_descriptor *odsc)
 
     return NULL;
 }
+
+/*
+  Search for an object in the local storage that is mapped to the same
+  bin, and that has the same  name and storage type and object descriptor,
+  but may have different version.
+*/
+struct obj_data *ls_find_no_version_st(ss_storage *ls, obj_descriptor *odsc)
+{
+    struct obj_data *od;
+    struct list_head *list;
+    int index;
+
+    index = odsc->version % ls->size_hash;
+    list = &ls->obj_hash[index];
+    list_for_each_entry(od, list, struct obj_data, obj_entry)
+    {
+        if(obj_desc_by_name_intersect_st(odsc, &od->obj_desc))
+            return od;
+    }
+
+    return NULL;
+}
+
+/*
+  Add an object to the local storage.
+*/
+void ls_add_obj_st(ss_storage *ls, struct obj_data *od)
+{
+    int index;
+    struct list_head *bin;
+    struct obj_data *od_existing;
+
+    // ABT_rwlock_create(&od->lock);
+    // ABT_rwlock_wrlock(&od->lock);
+
+    od_existing = ls_find_no_version_st(ls, &od->obj_desc);
+    if(od_existing) {
+        od_existing->f_free = 1;
+        if(od_existing->refcnt == 0) {
+            ls_remove(ls, od_existing);
+            obj_data_free(od_existing);
+        } else {
+            fprintf(stderr, "'%s()': object eviction delayed.\n", __func__);
+        }
+    }
+    index = od->obj_desc.version % ls->size_hash;
+    bin = &ls->obj_hash[index];
+
+    /* NOTE: new object comes first in the list. */
+    list_add(&od->obj_entry, bin);
+    ls->num_obj++;
+    // ABT_rwlock_unlock(&od->lock);
+}

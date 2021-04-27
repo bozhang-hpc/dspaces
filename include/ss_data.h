@@ -394,5 +394,7 @@ int dht_add_entry_st(struct dht_entry *de, obj_descriptor *odsc);
 int dht_find_entry_all_st_v3(struct dht_entry *de, obj_descriptor *q_odsc,
                        obj_descriptor **odsc_tab[], int timeout);
 struct obj_data *ls_find_st(ss_storage *, obj_descriptor *);
+struct obj_data *ls_find_no_version_st(ss_storage *ls, obj_descriptor *odsc);
+void ls_add_obj_st(ss_storage *ls, struct obj_data *od);
 
 #endif /* __SS_DATA_H_ */
