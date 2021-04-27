@@ -2430,7 +2430,7 @@ int dht_add_entry_st(struct dht_entry *de, obj_descriptor *odsc)
     'de' in exact src_st; Finally, replace the odsc_tab entry which 
     is included by object descriptors in dst_st. 
 */
-int dht_find_entry_all_st(struct dht_entry *de, obj_descriptor *q_odsc,
+int dht_find_entry_all_st_v2(struct dht_entry *de, obj_descriptor *q_odsc,
                        obj_descriptor **odsc_tab[], int timeout)
 {
     int n, num_odsc = 0;
@@ -2450,6 +2450,8 @@ int dht_find_entry_all_st(struct dht_entry *de, obj_descriptor *q_odsc,
         ABT_mutex_lock(de->hash_mutex[n]);
     }
 
+
+    // general idea for this loop: always add the entry whose st is same as src_st
     list_for_each_entry(odscl, &de->odsc_hash[n], struct obj_desc_list,
                         odsc_entry)
     {
@@ -2530,3 +2532,65 @@ int dht_find_entry_all_st(struct dht_entry *de, obj_descriptor *q_odsc,
     return num_odsc;
 }
 
+/*
+  Object descriptor 'q_odsc' can intersect multiple object descriptors
+  from dht entry 'de'; find all descriptor from 'de' and return their
+  number and references .
+*/
+int dht_find_entry_all_st_v3(struct dht_entry *de, obj_descriptor *q_odsc,
+                       obj_descriptor **odsc_tab[], int timeout)
+{
+    int n, num_odsc = 0;
+    long num_elem;
+    struct obj_desc_list *odscl;
+    struct bbox isect;
+    int sub = timeout != 0 && de == de->ss->ent_self;
+
+    n = q_odsc->version % de->odsc_size;
+    if(sub) {
+        num_elem = ssh_hash_elem_count(de->ss, &q_odsc->bb);
+        ABT_mutex_lock(de->hash_mutex[n]);
+    }
+    list_for_each_entry(odscl, &de->odsc_hash[n], struct obj_desc_list,
+                        odsc_entry)
+    {
+        if(obj_desc_st_equals_intersect(&odscl->odsc, q_odsc)) {
+            (*odsc_tab)[num_odsc++] = &odscl->odsc;
+            if(sub) {
+                bbox_intersect(&q_odsc->bb, &odscl->odsc.bb, &isect);
+                num_elem -= bbox_volume(&isect);
+            }
+        }
+    }
+    if(sub) {
+        if(num_elem > 0) {
+            dht_local_subscribe(de, q_odsc, odsc_tab, &num_odsc, num_elem,
+                                timeout);
+        }
+        ABT_mutex_unlock(de->hash_mutex[n]);
+    }
+
+    return num_odsc;
+}
+
+/*
+  Find  an object  in the  local storage  that has  the same  name and
+  version with the object descriptor 'odsc'.
+*/
+struct obj_data *ls_find_st(ss_storage *ls, obj_descriptor *odsc)
+{
+    struct obj_data *od;
+    struct list_head *list;
+    int index;
+
+    index = odsc->version % ls->size_hash;
+    list = &ls->obj_hash[index];
+
+    list_for_each_entry(od, list, struct obj_data, obj_entry)
+    {
+        if(obj_desc_st_equals_intersect(odsc, &od->obj_desc))
+            return od;
+    }
+
+    return NULL;
+}
