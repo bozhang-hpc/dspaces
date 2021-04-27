@@ -2868,23 +2868,23 @@ static void put_st_server_rcmc_rpc(hg_handle_t handle)
     switch (new_odsc.st)
     {
     case column_major:
-        func_ret = od_rm2cm(new_od, od);
+        rcmc_ret = od_rm2cm(new_od, od);
         break;
 
     case row_major:
-        func_ret = od_cm2rm(new_od, od);
+        rcmc_ret = od_cm2rm(new_od, od);
         break;
         
     default:
-        func_ret = 0;
+        rcmc_ret = 0;
         break;
     }
 
-    if(func_ret != bbox_volume(&od->obj_desc.bb)) {
+    if(rcmc_ret != bbox_volume(&od->obj_desc.bb)) {
         fprintf(stderr,
                 "DATASPACES: ERROR handling %s: od_transpose() failed with "
                 "%d.\n",
-                __func__, func_ret);
+                __func__, rcmc_ret);
         obj_data_free(new_od);
         return;
     }
