@@ -2407,36 +2407,6 @@ static int put_layout_v3(dspaces_client_t client, const char *var_name, unsigned
     return ret;
 }
 
-int dspaces_put_layout(dspaces_client_t client, const char *var_name, unsigned int ver,
-                int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum ds_layout_type src_layout,
-                const void *data)
-{
-    int option = 3;
-    int ret;
-    switch (option)
-    {
-    case 1:
-        ret = put_layout_v1n2(client, var_name, ver, elem_size, ndim, lb, ub, 
-                        src_layout, data);
-        break;
-
-    case 2:
-        ret = put_layout_v1n2(client, var_name, ver, elem_size, ndim, lb, ub, 
-                        src_layout, data);
-        break;
-
-    case 3:
-        ret = put_layout_v3(client, var_name, ver, elem_size, ndim, lb, ub, 
-                        src_layout, data);
-        break;
-    
-    default:
-        break;
-    }
-
-    return ret;
-}
-
 static int get_data_rcmc(dspaces_client_t client, int num_odscs,
                     obj_descriptor req_obj, obj_descriptor *odsc_tab,
                     void *data)
@@ -2948,11 +2918,41 @@ static int get_layout_v3(dspaces_client_t client, const char *var_name, unsigned
     return (0);
 }
 
+int dspaces_put_layout(dspaces_client_t client, const char *var_name, unsigned int ver,
+                int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum ds_layout_type src_layout,
+                const void *data)
+{
+    int option = 1;
+    int ret;
+    switch (option)
+    {
+    case 1:
+        ret = put_layout_v1n2(client, var_name, ver, elem_size, ndim, lb, ub, 
+                        src_layout, data);
+        break;
+
+    case 2:
+        ret = put_layout_v1n2(client, var_name, ver, elem_size, ndim, lb, ub, 
+                        src_layout, data);
+        break;
+
+    case 3:
+        ret = put_layout_v3(client, var_name, ver, elem_size, ndim, lb, ub, 
+                        src_layout, data);
+        break;
+    
+    default:
+        break;
+    }
+
+    return ret;
+}
+
 int dspaces_get_layout(dspaces_client_t client, const char *var_name, unsigned int ver,
                 int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum ds_layout_type dst_layout, 
                 void *data, int timeout)
 {
-    int option = 3;
+    int option = 1;
     switch (option)
     {
     case 1:
