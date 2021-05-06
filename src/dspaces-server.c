@@ -3202,7 +3202,7 @@ static void get_st_rpc(hg_handle_t handle)
     //od = obj_data_alloc(&temp_odsc);
     //ssd_copy(od, from_obj);
 
-    od_print(od);
+    //od_print(od);
 
     hg_size_t size = (in_odsc.size) * bbox_volume(&(in_odsc.bb));
     void *buffer = (void *)od->data;
