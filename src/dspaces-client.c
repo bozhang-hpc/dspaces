@@ -68,6 +68,7 @@ struct dspaces_client {
     hg_id_t notify_id;
     hg_id_t rcm_convert_id; //row-column major conversion
     hg_id_t transpose_id;
+    hg_id_t query_layout_v1_id;
     hg_id_t query_layout_v2_id;
     hg_id_t get_server_rcmc_id;
     hg_id_t put_st_id;
@@ -548,6 +549,8 @@ static int dspaces_init_margo(dspaces_client_t client,
                               &client->query_meta_id, &flag);
         margo_registered_name(client->mid, "rcm_convert_rpc", &client->rcm_convert_id, &flag);
         margo_registered_name(client->mid, "transpose_rpc", &client->transpose_id, &flag);
+        margo_registered_name(client->mid, "query_layout_v1_rpc", &client->query_layout_v1_id,
+                              &flag);
         margo_registered_name(client->mid, "query_layout_v2_rpc", &client->query_layout_v2_id,
                               &flag);
         margo_registered_name(client->mid, "get_server_rcmc_rpc", &client->get_server_rcmc_id,
@@ -609,6 +612,8 @@ static int dspaces_init_margo(dspaces_client_t client,
                                           bulk_out_t, NULL);
         client->transpose_id =
             MARGO_REGISTER(client->mid, "transpose_rpc", odsc_gdim_t, bulk_out_t, NULL);
+        client->query_layout_v1_id = MARGO_REGISTER(client->mid, "query_layout_v1_rpc", odsc_gdim_t,
+                                          odsc_list_t, NULL);
         client->query_layout_v2_id = MARGO_REGISTER(client->mid, "query_layout_v2_rpc", odsc_gdim_t,
                                           odsc_list_t, NULL);
         client->get_server_rcmc_id =
@@ -1958,6 +1963,60 @@ static int transpose_data(dspaces_client_t client, int num_odscs, obj_descriptor
     return ret;
 }
 
+static int get_odscs_layout_v1(dspaces_client_t client, obj_descriptor *odsc, int timeout,
+                     obj_descriptor **odsc_tab)
+{
+    struct global_dimension od_gdim;
+    int num_odscs;
+    hg_addr_t server_addr;
+    hg_return_t hret;
+    hg_handle_t handle;
+
+    odsc_gdim_t in;
+    odsc_list_t out;
+
+    in.odsc_gdim.size = sizeof(*odsc);
+    in.odsc_gdim.raw_odsc = (char *)odsc;
+    in.param = timeout;
+
+    set_global_dimension(&(client->dcg->gdim_list), odsc->name,
+                         &(client->dcg->default_gdim), &od_gdim);
+    in.odsc_gdim.gdim_size = sizeof(od_gdim);
+    in.odsc_gdim.raw_gdim = (char *)(&od_gdim);
+
+    get_server_address(client, &server_addr);
+
+    hret = margo_create(client->mid, server_addr, client->query_layout_v1_id, &handle);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: %s: margo_create() failed with %d.\n", __func__,
+                hret);
+        return (0);
+    }
+    hret = margo_forward(handle, &in);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: %s: margo_forward() failed with %d.\n",
+                __func__, hret);
+        margo_destroy(handle);
+        return (0);
+    }
+    hret = margo_get_output(handle, &out);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: %s: margo_get_output() failed with %d.\n",
+                __func__, hret);
+        margo_destroy(handle);
+        return (0);
+    }
+
+    num_odscs = (out.odsc_list.size) / sizeof(obj_descriptor);
+    *odsc_tab = malloc(out.odsc_list.size);
+    memcpy(*odsc_tab, out.odsc_list.raw_odsc, out.odsc_list.size);
+    margo_free_output(handle, &out);
+    margo_addr_free(client->mid, server_addr);
+    margo_destroy(handle);
+
+    return (num_odscs);
+}
+
 // get all the odscs which need RM-CM conversion
 static int get_odscs_layout_v2(dspaces_client_t client, obj_descriptor *odsc, int timeout,
                      obj_descriptor **odsc_tab)
@@ -2648,7 +2707,7 @@ static int get_layout_v1(dspaces_client_t client, const char *var_name, unsigned
     DEBUG_OUT("Querying %s with timeout %d\n", obj_desc_sprint(&odsc), timeout);
 
     // Get all odscs no matter what st it is, dht_find_all() here does not check st
-    num_odscs = get_odscs(client, &odsc, timeout, &odsc_tab);
+    num_odscs = get_odscs_layout_v1(client, &odsc, timeout, &odsc_tab);
 
     //  Assume put side only puts one st.
     //  TODO:

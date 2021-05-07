@@ -378,6 +378,8 @@ int od_rm2cm(struct obj_data* dst_od, struct obj_data* src_od);
 int od_cm2rm(struct obj_data* dst_od, struct obj_data* src_od);
 int obj_desc_st_equals_intersect(obj_descriptor *odsc1, obj_descriptor *odsc2);
 int obj_desc_st_equals_include(obj_descriptor *odsc1, obj_descriptor *odsc2);
+int dht_find_entry_all_st_v1(struct dht_entry *de, obj_descriptor *q_odsc,
+                       obj_descriptor **odsc_tab[], int timeout);
 int dht_find_entry_all_st_v2(struct dht_entry *de, obj_descriptor *q_odsc,
                        obj_descriptor **odsc_tab[], int timeout);
 void dht_find_other_st_entry_to_replace(struct dht_entry *de, obj_descriptor *odsc);

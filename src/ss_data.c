@@ -2423,6 +2423,50 @@ int dht_add_entry_st(struct dht_entry *de, obj_descriptor *odsc)
 }
 
 /*
+  Object descriptor 'q_odsc' can intersect multiple object descriptors
+  from dht entry 'de'; There should be only one st stored in server, so
+  we don't have to care about st when doing intersection check. But we 
+  have to subscribe the dht entry without st, since we don't know which
+  st request comes first; find all descriptor from 'de' and return their
+  number and references .
+*/
+int dht_find_entry_all_st_v1(struct dht_entry *de, obj_descriptor *q_odsc,
+                       obj_descriptor **odsc_tab[], int timeout)
+{
+    int n, num_odsc = 0;
+    long num_elem;
+    struct obj_desc_list *odscl;
+    struct bbox isect;
+    int sub = timeout != 0 && de == de->ss->ent_self;
+
+    n = q_odsc->version % de->odsc_size;
+    if(sub) {
+        num_elem = ssh_hash_elem_count(de->ss, &q_odsc->bb);
+        ABT_mutex_lock(de->hash_mutex[n]);
+    }
+    list_for_each_entry(odscl, &de->odsc_hash[n], struct obj_desc_list,
+                        odsc_entry)
+    {
+        if(obj_desc_equals_intersect(&odscl->odsc, q_odsc)) {
+            (*odsc_tab)[num_odsc++] = &odscl->odsc;
+            if(sub) {
+                bbox_intersect(&q_odsc->bb, &odscl->odsc.bb, &isect);
+                num_elem -= bbox_volume(&isect);
+            }
+        }
+    }
+    if(sub) {
+        if(num_elem > 0) {
+            dht_local_subscribe_no_st(de, q_odsc, odsc_tab, &num_odsc, num_elem,
+                                timeout);
+        }
+        ABT_mutex_unlock(de->hash_mutex[n]);
+    }
+
+    return num_odsc;
+}
+
+/*
     Object descriptor 'q_odsc' can intersect multiple object descriptors
     from dht entry 'de' in any st at first; find the first odsc to 
     make sure the src_st; If equals dst_st, do it as before; If not,
