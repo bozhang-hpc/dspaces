@@ -761,6 +761,7 @@ char *obj_desc_sprint(obj_descriptor *odsc)
 {
     char *str;
     int nb;
+    char src_st[16];
     char st[16];
     switch (odsc->st)
     {
@@ -776,13 +777,29 @@ char *obj_desc_sprint(obj_descriptor *odsc)
         break;
     }
 
+    switch (odsc->src_st)
+    {
+    case column_major:
+        sprintf(src_st, "column-major");
+        break;
+
+    case row_major:
+        sprintf(src_st, "row-major");
+        break;
+    
+    default:
+        sprintf(src_st, "undefined");
+        break;
+    }
+
     str = alloc_sprintf("obj_descriptor = {\n"
                         "\t.name = %s,\n"
                         "\t.owner = %s,\n"
                         "\t.version = %d,\n"
+                        "\t.src_st = %s,\n"
                         "\t.st = %s,\n"
                         "\t.bb = ",
-                        odsc->name, odsc->owner, odsc->version, st);
+                        odsc->name, odsc->owner, odsc->version, src_st, st);
     str = str_append_const(str_append(str, bbox_sprint(&odsc->bb)), "}\n");
 
     return str;

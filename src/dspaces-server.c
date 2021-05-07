@@ -2923,6 +2923,8 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     memcpy(&in_odsc, in.odsc.raw_odsc, sizeof(in_odsc));
 
     DEBUG_OUT("received get request\n");
+    fprintf(stdout, "DATASPACES: %s: received get request with in_odsc:"
+                    "%s.\n", __func__, obj_desc_sprint(&in_odsc));
 
     enum storage_type req_st;
 
@@ -2947,6 +2949,8 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     // need a list to maintain ongoing rcm tasks and a lock to allow atomicity
 
     from_obj = ls_find_st(server->dsg->ls, &in_odsc);
+    fprintf(stdout, "DATASPACES: %s: from_obj found! from_obj_odsc:"
+                    "%s.\n", __func__, obj_desc_sprint(&from_obj->obj_desc));
 
     // first get the exact data no matter what layout it is
     // ssd_copy needs trick for column-major copy
@@ -3002,6 +3006,9 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
 
     hg_size_t size = (in_odsc.size) * bbox_volume(&(in_odsc.bb));
     void *buffer = (in_odsc.st == req_st) ? (void *)od->data : (void *)new_od->data;
+
+    fprintf(stdout, "DATASPACES: %s: Send Back: od_obj_odsc:"
+                    "%s.\n", __func__, obj_desc_sprint(&od->obj_desc));
 
     hret = margo_bulk_create(mid, 1, (void **)&buffer, &size, HG_BULK_READ_ONLY,
                              &bulk_handle);
