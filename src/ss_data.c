@@ -812,7 +812,11 @@ int ssd_copy(struct obj_data *to_obj, struct obj_data *from_obj)
     struct bbox bbcom;
     int copied_elems = 0;
 
+    fprintf(stderr, "ssd_copy line 815, to_obj->obj_desc = %s\n", obj_desc_sprint(&to_obj->obj_desc));
+
     bbox_intersect(&to_obj->obj_desc.bb, &from_obj->obj_desc.bb, &bbcom);
+
+    fprintf(stderr, "ssd_copy line 819, to_obj->obj_desc = %s\n", obj_desc_sprint(&to_obj->obj_desc));
 
     matrix_init(&from_mat, from_obj->obj_desc.st, &from_obj->obj_desc.bb,
                 &bbcom, from_obj->data, from_obj->obj_desc.size);
@@ -820,7 +824,10 @@ int ssd_copy(struct obj_data *to_obj, struct obj_data *from_obj)
     matrix_init(&to_mat, to_obj->obj_desc.st, &to_obj->obj_desc.bb, &bbcom,
                 to_obj->data, to_obj->obj_desc.size);
 
+    fprintf(stderr, "ssd_copy line 827, to_obj->obj_desc = %s\n", obj_desc_sprint(&to_obj->obj_desc));
+
     copied_elems = matrix_copy(&to_mat, &from_mat);
+    fprintf(stderr, "ssd_copy line 830, to_obj->obj_desc = %s\n", obj_desc_sprint(&to_obj->obj_desc));
     return copied_elems;
 }
 
