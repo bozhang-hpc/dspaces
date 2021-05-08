@@ -2972,7 +2972,7 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     if(in_odsc.st != req_st) {
         obj_desc_transpose_st(&new_odsc, &in_odsc);
         new_od = obj_data_alloc(&new_odsc);
-        memcpy(&new_od->gdim, &od->gdim, sizeof(struct global_dimension));
+        memcpy(&new_od->gdim, &from_obj->gdim, sizeof(struct global_dimension));
 
         if(in_odsc.st == column_major) {
             od->obj_desc = in_odsc;
