@@ -2919,8 +2919,9 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
         return;
     }
 
-    obj_descriptor in_odsc, temp_odsc, temp_from_odsc, new_odsc;
+    obj_descriptor in_odsc, temp_odsc, temp_from_odsc, new_odsc, in_odsc2;
     memcpy(&in_odsc, in.odsc.raw_odsc, sizeof(in_odsc));
+    memcpy(&in_odsc2, in.odsc.raw_odsc, sizeof(in_odsc2));
 
     DEBUG_OUT("received get request\n");
     fprintf(stdout, "DATASPACES: %s: received get request with in_odsc:"
@@ -2958,7 +2959,7 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
 
     enum storage_type req_st;
 
-    switch (in_odsc.src_st)
+    switch (in_odsc2.src_st)
     {
     case column_major:
         req_st = row_major;
@@ -2966,6 +2967,7 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
 
     case row_major:
         fprintf(stderr, "line 2968, in_odsc = %s\n", obj_desc_sprint(&in_odsc));
+        fprintf(stderr, "line 2968, in_odsc2 = %s\n", obj_desc_sprint(&in_odsc2));
         req_st = column_major;
         break;
     
@@ -2975,19 +2977,20 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     }
 
     fprintf(stderr, "line 2977, in_odsc = %s\n", obj_desc_sprint(&in_odsc));
+    fprintf(stderr, "line 2977, in_odsc2 = %s\n", obj_desc_sprint(&in_odsc2));
 
     // need RCM conversion now and update the new od to the dht
-    if(in_odsc.st != req_st) {
-        fprintf(stderr, "RCM, in_odsc = %s\n", obj_desc_sprint(&in_odsc));
-        obj_desc_transpose_st(&new_odsc, &in_odsc);
-        fprintf(stderr, "after transpose_st, in_odsc = %s\n", obj_desc_sprint(&in_odsc));
+    if(in_odsc2.st != req_st) {
+        fprintf(stderr, "RCM, in_odsc2 = %s\n", obj_desc_sprint(&in_odsc2));
+        obj_desc_transpose_st(&new_odsc, &in_odsc2);
+        fprintf(stderr, "after transpose_st, in_odsc2 = %s\n", obj_desc_sprint(&in_odsc2));
         fprintf(stderr, "obj_data_alloc(new_od), new_odsc = %s\n", obj_desc_sprint(&new_odsc));
         new_od = obj_data_alloc(&new_odsc);
         memcpy(&new_od->gdim, &from_obj->gdim, sizeof(struct global_dimension));
 
-        if(in_odsc.st == column_major) {
-            od->obj_desc = in_odsc;
-        }
+        //if(in_odsc.st == column_major) {
+            od->obj_desc = in_odsc2;
+        //}
 
         int func_ret;
         switch (new_odsc.st)
@@ -3017,8 +3020,8 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     //fprintf(stderr, "%s\n", obj_desc_sprint(&new_od->obj_desc));
     //debug_print(new_od->data);
 
-    hg_size_t size = (in_odsc.size) * bbox_volume(&(in_odsc.bb));
-    void *buffer = (in_odsc.st == req_st) ? (void *)od->data : (void *)new_od->data;
+    hg_size_t size = (in_odsc2.size) * bbox_volume(&(in_odsc2.bb));
+    void *buffer = (in_odsc2.st == req_st) ? (void *)od->data : (void *)new_od->data;
 
     fprintf(stdout, "DATASPACES: %s: Send Back: od_obj_odsc:"
                     "%s.\n", __func__, obj_desc_sprint(&od->obj_desc));
@@ -3056,7 +3059,7 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     margo_destroy(handle);
 
 
-    if(in_odsc.st != req_st) {
+    if(in_odsc2.st != req_st) {
     // Maybe add a check for new od here, if does not exist then add it to dht.
     ABT_mutex_lock(server->ls_mutex);
     ls_add_obj_st(server->dsg->ls, new_od);
