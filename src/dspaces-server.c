@@ -2953,6 +2953,7 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
         od = obj_data_alloc(&in_odsc);
         fprintf(stderr, "line 2954, in_odsc = %s\n", obj_desc_sprint(&in_odsc));
         ssd_copy(od, from_obj);
+        fprintf(stderr, "line 2956, in_odsc = %s\n", obj_desc_sprint(&in_odsc));
     }
 
     enum storage_type req_st;
@@ -2964,7 +2965,7 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
         break;
 
     case row_major:
-        fprintf(stderr, "line 2967, in_odsc = %s\n", obj_desc_sprint(&in_odsc));
+        fprintf(stderr, "line 2968, in_odsc = %s\n", obj_desc_sprint(&in_odsc));
         req_st = column_major;
         break;
     
@@ -2973,7 +2974,7 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
         break;
     }
 
-    fprintf(stderr, "line 2976, in_odsc = %s\n", obj_desc_sprint(&in_odsc));
+    fprintf(stderr, "line 2977, in_odsc = %s\n", obj_desc_sprint(&in_odsc));
 
     // need RCM conversion now and update the new od to the dht
     if(in_odsc.st != req_st) {
