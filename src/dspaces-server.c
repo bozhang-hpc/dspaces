@@ -2926,22 +2926,7 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     fprintf(stdout, "DATASPACES: %s: received get request with in_odsc:"
                     "%s.\n", __func__, obj_desc_sprint(&in_odsc));
 
-    enum storage_type req_st;
-
-    switch (in_odsc.src_st)
-    {
-    case column_major:
-        req_st = row_major;
-        break;
-
-    case row_major:
-        req_st = column_major;
-        break;
     
-    default:
-        req_st = column_major; //default st is row-major
-        break;
-    }
 
     struct obj_data *od, *from_obj, *temp_from_obj, *new_od;
 
@@ -2964,6 +2949,23 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     } else {
         od = obj_data_alloc(&in_odsc);
         ssd_copy(od, from_obj);
+    }
+
+    enum storage_type req_st;
+
+    switch (in_odsc.src_st)
+    {
+    case column_major:
+        req_st = row_major;
+        break;
+
+    case row_major:
+        req_st = column_major;
+        break;
+    
+    default:
+        req_st = column_major; //default st is row-major
+        break;
     }
 
     // need RCM conversion now and update the new od to the dht
