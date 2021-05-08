@@ -2940,14 +2940,18 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     // first get the exact data no matter what layout it is
     // ssd_copy needs trick for column-major copy
     if(in_odsc.st == column_major) {
+        fprintf(stderr, "line 2943, in_odsc = %s\n", obj_desc_sprint(&in_odsc));
         obj_desc_transpose_bbox(&temp_odsc, &in_odsc);
+        fprintf(stderr, "line 2945, in_odsc = %s\n", obj_desc_sprint(&in_odsc));
         obj_desc_transpose_bbox(&temp_from_odsc, &from_obj->obj_desc);
         temp_from_obj = obj_data_alloc_no_data(&temp_from_odsc, from_obj->data);
         od = obj_data_alloc(&temp_odsc);
         ssd_copy(od, temp_from_obj);
         free(temp_from_obj);
     } else {
+        fprintf(stderr, "line 2952, in_odsc = %s\n", obj_desc_sprint(&in_odsc));
         od = obj_data_alloc(&in_odsc);
+        fprintf(stderr, "line 2954, in_odsc = %s\n", obj_desc_sprint(&in_odsc));
         ssd_copy(od, from_obj);
     }
 
@@ -2960,6 +2964,7 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
         break;
 
     case row_major:
+        fprintf(stderr, "line 2967, in_odsc = %s\n", obj_desc_sprint(&in_odsc));
         req_st = column_major;
         break;
     
@@ -2967,6 +2972,8 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
         req_st = column_major; //default st is row-major
         break;
     }
+
+    fprintf(stderr, "line 2976, in_odsc = %s\n", obj_desc_sprint(&in_odsc));
 
     // need RCM conversion now and update the new od to the dht
     if(in_odsc.st != req_st) {
