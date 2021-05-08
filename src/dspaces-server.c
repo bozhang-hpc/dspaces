@@ -2971,6 +2971,7 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     // need RCM conversion now and update the new od to the dht
     if(in_odsc.st != req_st) {
         obj_desc_transpose_st(&new_odsc, &in_odsc);
+        fprintf(stderr, "obj_data_alloc(new_od), new_odsc = %s\n", obj_desc_sprint(&new_odsc));
         new_od = obj_data_alloc(&new_odsc);
         memcpy(&new_od->gdim, &from_obj->gdim, sizeof(struct global_dimension));
 
