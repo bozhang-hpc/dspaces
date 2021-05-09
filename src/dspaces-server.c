@@ -2918,11 +2918,10 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
         margo_destroy(handle);
         return;
     }
-    usleep(10);
 
     obj_descriptor in_odsc, temp_odsc, temp_from_odsc, new_odsc, in_odsc2;
-    memcpy(&in_odsc, in.odsc.raw_odsc, sizeof(in_odsc));
-    memcpy(&in_odsc2, in.odsc.raw_odsc, sizeof(in_odsc2));
+    memcpy(&in_odsc, in.odsc.raw_odsc, sizeof(obj_descriptor));
+    memcpy(&in_odsc2, in.odsc.raw_odsc, sizeof(obj_descriptor));
 
     DEBUG_OUT("received get request\n");
     fprintf(stdout, "DATASPACES: %s: received get request with in_odsc:"
@@ -2935,7 +2934,7 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     // maybe need a 2nd level check to avoid simutaneous rcm request.
     // need a list to maintain ongoing rcm tasks and a lock to allow atomicity
 
-    from_obj = ls_find_st(server->dsg->ls, &in_odsc);
+    from_obj = ls_find_st(server->dsg->ls, &in_odsc2);
 
     if(in_odsc.st == column_major) {
         obj_desc_transpose_bbox(&temp_odsc, &in_odsc);
