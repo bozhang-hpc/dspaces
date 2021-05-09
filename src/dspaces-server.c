@@ -2927,7 +2927,7 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
 
     DEBUG_OUT("received get request\n");
     fprintf(stdout, "DATASPACES: %s: received get request with in_odsc:"
-                    "%s.\n", __func__, obj_desc_sprint(&in_odsc));
+                    "%s.\n", __func__, obj_desc_sprint(&in_odsc2));
 
     
 
@@ -2938,15 +2938,15 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
 
     from_obj = ls_find_st(server->dsg->ls, &in_odsc2);
 
-    if(in_odsc.st == column_major) {
-        obj_desc_transpose_bbox(&temp_odsc, &in_odsc);
+    if(in_odsc2.st == column_major) {
+        obj_desc_transpose_bbox(&temp_odsc, &in_odsc2);
         obj_desc_transpose_bbox(&temp_from_odsc, &from_obj->obj_desc);
         temp_from_obj = obj_data_alloc_no_data(&temp_from_odsc, from_obj->data);
         od = obj_data_alloc(&temp_odsc);
         ssd_copy(od, temp_from_obj);
         free(temp_from_obj);
     } else {
-        od = obj_data_alloc(&in_odsc);
+        od = obj_data_alloc(&in_odsc2);
         ssd_copy(od, from_obj);
     }
 
@@ -2955,7 +2955,7 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
 
     //od_print(od);
 
-    hg_size_t size = (in_odsc.size) * bbox_volume(&(in_odsc.bb));
+    hg_size_t size = (in_odsc2.size) * bbox_volume(&(in_odsc2.bb));
     void *buffer = (void *)od->data;
     hret = margo_bulk_create(mid, 1, (void **)&buffer, &size, HG_BULK_READ_ONLY,
                              &bulk_handle);
