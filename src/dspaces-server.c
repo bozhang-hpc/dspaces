@@ -2925,8 +2925,14 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     memcpy(&in_odsc, in.odsc.raw_odsc, sizeof(obj_descriptor));
     memcpy(&in_odsc2, in.odsc.raw_odsc, sizeof(obj_descriptor));
 
-    fprintf(stdout, "DATASPACES: %s: from_obj found! from_obj_odsc:"
-                    "%s.\n", __func__, obj_desc_sprint(&from_obj->obj_desc));
+    DEBUG_OUT("received get request\n");
+    fprintf(stdout, "DATASPACES: %s: received get request with in_odsc:"
+                    "%s.\n", __func__, obj_desc_sprint(&in_odsc2));
+
+    
+
+    struct obj_data *od, *from_obj, *temp_from_obj, *new_od;
+
 
     // first get the exact data no matter what layout it is
     // ssd_copy needs trick for column-major copy
