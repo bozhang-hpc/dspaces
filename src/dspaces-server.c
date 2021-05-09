@@ -2920,6 +2920,8 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     }
 
     obj_descriptor in_odsc, temp_odsc, temp_from_odsc, new_odsc, in_odsc2;
+    memset(&in_odsc, 0, sizeof(obj_descriptor));
+    memset(&in_odsc2, 0, sizeof(obj_descriptor));
     memcpy(&in_odsc, in.odsc.raw_odsc, sizeof(obj_descriptor));
     memcpy(&in_odsc2, in.odsc.raw_odsc, sizeof(obj_descriptor));
 
