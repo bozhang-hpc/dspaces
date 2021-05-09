@@ -2926,8 +2926,8 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     memcpy(&in_odsc2, in.odsc.raw_odsc, sizeof(obj_descriptor));
 
     DEBUG_OUT("received get request\n");
-    fprintf(stdout, "DATASPACES: %s: received get request with in_odsc:"
-                    "%s.\n", __func__, obj_desc_sprint(&in_odsc2));
+    //fprintf(stdout, "DATASPACES: %s: received get request with in_odsc:"
+    //                "%s.\n", __func__, obj_desc_sprint(&in_odsc2));
 
     
 
@@ -2938,20 +2938,20 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     // first get the exact data no matter what layout it is
     // ssd_copy needs trick for column-major copy
     if(in_odsc2.st == column_major) {
-        fprintf(stderr, "line 2943, in_odsc = %s\n", obj_desc_sprint(&in_odsc2));
+        //fprintf(stderr, "line 2943, in_odsc = %s\n", obj_desc_sprint(&in_odsc2));
         obj_desc_transpose_bbox(&temp_odsc, &in_odsc2);
-        fprintf(stderr, "line 2945, in_odsc = %s\n", obj_desc_sprint(&in_odsc2));
+        //fprintf(stderr, "line 2945, in_odsc = %s\n", obj_desc_sprint(&in_odsc2));
         obj_desc_transpose_bbox(&temp_from_odsc, &from_obj->obj_desc);
         temp_from_obj = obj_data_alloc_no_data(&temp_from_odsc, from_obj->data);
         od = obj_data_alloc(&temp_odsc);
         ssd_copy(od, temp_from_obj);
         free(temp_from_obj);
     } else {
-        fprintf(stderr, "line 2952, in_odsc = %s\n", obj_desc_sprint(&in_odsc2));
+        //fprintf(stderr, "line 2952, in_odsc = %s\n", obj_desc_sprint(&in_odsc2));
         od = obj_data_alloc(&in_odsc2);
-        fprintf(stderr, "line 2954, in_odsc = %s\n", obj_desc_sprint(&in_odsc2));
+        //fprintf(stderr, "line 2954, in_odsc = %s\n", obj_desc_sprint(&in_odsc2));
         ssd_copy(od, from_obj);
-        fprintf(stderr, "line 2956, in_odsc = %s\n", obj_desc_sprint(&in_odsc2));
+        //fprintf(stderr, "line 2956, in_odsc = %s\n", obj_desc_sprint(&in_odsc2));
     }
 
     enum storage_type req_st;
@@ -2963,8 +2963,8 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
         break;
 
     case row_major:
-        fprintf(stderr, "line 2968, in_odsc = %s\n", obj_desc_sprint(&in_odsc2));
-        fprintf(stderr, "line 2968, in_odsc2 = %s\n", obj_desc_sprint(&in_odsc2));
+        //fprintf(stderr, "line 2968, in_odsc = %s\n", obj_desc_sprint(&in_odsc2));
+        //fprintf(stderr, "line 2968, in_odsc2 = %s\n", obj_desc_sprint(&in_odsc2));
         req_st = column_major;
         break;
     
@@ -2973,15 +2973,15 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
         break;
     }
 
-    fprintf(stderr, "line 2977, in_odsc = %s\n", obj_desc_sprint(&in_odsc2));
-    fprintf(stderr, "line 2977, in_odsc2 = %s\n", obj_desc_sprint(&in_odsc2));
+    //fprintf(stderr, "line 2977, in_odsc = %s\n", obj_desc_sprint(&in_odsc2));
+    //fprintf(stderr, "line 2977, in_odsc2 = %s\n", obj_desc_sprint(&in_odsc2));
 
     // need RCM conversion now and update the new od to the dht
     if(in_odsc2.st != req_st) {
-        fprintf(stderr, "RCM, in_odsc2 = %s\n", obj_desc_sprint(&in_odsc2));
+        //fprintf(stderr, "RCM, in_odsc2 = %s\n", obj_desc_sprint(&in_odsc2));
         obj_desc_transpose_st(&new_odsc, &in_odsc2);
-        fprintf(stderr, "after transpose_st, in_odsc2 = %s\n", obj_desc_sprint(&in_odsc2));
-        fprintf(stderr, "obj_data_alloc(new_od), new_odsc = %s\n", obj_desc_sprint(&new_odsc));
+        //fprintf(stderr, "after transpose_st, in_odsc2 = %s\n", obj_desc_sprint(&in_odsc2));
+        //fprintf(stderr, "obj_data_alloc(new_od), new_odsc = %s\n", obj_desc_sprint(&new_odsc));
         new_od = obj_data_alloc(&new_odsc);
         memcpy(&new_od->gdim, &from_obj->gdim, sizeof(struct global_dimension));
 
@@ -3020,8 +3020,8 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     hg_size_t size = (in_odsc2.size) * bbox_volume(&(in_odsc2.bb));
     void *buffer = (in_odsc2.st == req_st) ? (void *)od->data : (void *)new_od->data;
 
-    fprintf(stdout, "DATASPACES: %s: Send Back: od_obj_odsc:"
-                    "%s.\n", __func__, obj_desc_sprint(&od->obj_desc));
+    //fprintf(stdout, "DATASPACES: %s: Send Back: od_obj_odsc:"
+    //                "%s.\n", __func__, obj_desc_sprint(&od->obj_desc));
 
     hret = margo_bulk_create(mid, 1, (void **)&buffer, &size, HG_BULK_READ_ONLY,
                              &bulk_handle);
