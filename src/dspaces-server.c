@@ -2933,6 +2933,7 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
 
     struct obj_data *od, *from_obj, *temp_from_obj, *new_od;
 
+    from_obj = ls_find_st(server->dsg->ls, &in_odsc2);
 
     // first get the exact data no matter what layout it is
     // ssd_copy needs trick for column-major copy
