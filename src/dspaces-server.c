@@ -2936,6 +2936,60 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     // need a list to maintain ongoing rcm tasks and a lock to allow atomicity
 
     from_obj = ls_find_st(server->dsg->ls, &in_odsc);
+
+    if(in_odsc.st == column_major) {
+        obj_desc_transpose_bbox(&temp_odsc, &in_odsc);
+        obj_desc_transpose_bbox(&temp_from_odsc, &from_obj->obj_desc);
+        temp_from_obj = obj_data_alloc_no_data(&temp_from_odsc, from_obj->data);
+        od = obj_data_alloc(&temp_odsc);
+        ssd_copy(od, temp_from_obj);
+        free(temp_from_obj);
+    } else {
+        od = obj_data_alloc(&in_odsc);
+        ssd_copy(od, from_obj);
+    }
+
+    //od = obj_data_alloc(&temp_odsc);
+    //ssd_copy(od, from_obj);
+
+    //od_print(od);
+
+    hg_size_t size = (in_odsc.size) * bbox_volume(&(in_odsc.bb));
+    void *buffer = (void *)od->data;
+    hret = margo_bulk_create(mid, 1, (void **)&buffer, &size, HG_BULK_READ_ONLY,
+                             &bulk_handle);
+
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_bulk_create() failure\n", __func__);
+        out.ret = dspaces_ERR_MERCURY;
+        margo_respond(handle, &out);
+        margo_free_input(handle, &in);
+        margo_destroy(handle);
+        return;
+    }
+
+    hret = margo_bulk_transfer(mid, HG_BULK_PUSH, info->addr, in.handle, 0,
+                               bulk_handle, 0, size);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_bulk_transfer() failure (%d)\n",
+                __func__, hret);
+        out.ret = dspaces_ERR_MERCURY;
+        margo_respond(handle, &out);
+        margo_free_input(handle, &in);
+        margo_bulk_free(bulk_handle);
+        margo_destroy(handle);
+        return;
+    }
+    margo_bulk_free(bulk_handle);
+    out.ret = dspaces_SUCCESS;
+    out.ret = dspaces_SUCCESS;
+    obj_data_free(od);
+    margo_respond(handle, &out);
+    margo_free_input(handle, &in);
+    margo_destroy(handle);
+
+
+    /*
     fprintf(stdout, "DATASPACES: %s: from_obj found! from_obj_odsc:"
                     "%s.\n", __func__, obj_desc_sprint(&from_obj->obj_desc));
 
@@ -3068,6 +3122,7 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     obj_update_dht_st(server, new_od, DS_OBJ_NEW);
     DEBUG_OUT("Finished transposed_obj_put_update from get_server_rcmc_rpc\n");
     }
+    */
 }
 DEFINE_MARGO_RPC_HANDLER(get_server_rcmc_rpc)
 
