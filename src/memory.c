@@ -74,8 +74,10 @@ int get_cluster_memory_usage_kb(long* vmrss_per_process, long* vmsize_per_proces
     return 0;
 }
 
-int get_global_memory_usage_kb(long* global_vmrss, long* global_vmsize, int np)
+int get_global_memory_usage_kb(long* global_vmrss, long* global_vmsize, MPI_Comm comm)
 {
+    int np;
+    MPI_Comm_size(comm, &np);
     long* vmrss_per_process  = (long*) malloc(np*sizeof(long));
     long* vmsize_per_process = (long*) malloc(np*sizeof(long));
     int ret_code = get_cluster_memory_usage_kb(vmrss_per_process, vmsize_per_process, 0, np);

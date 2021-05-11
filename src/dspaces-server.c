@@ -1956,6 +1956,9 @@ static void kill_rpc(hg_handle_t handle)
                 fprintf(fp, "Total\t%6ld KB\t%6ld (KB)\n", global_vmrss, global_vmsize);
                 fclose(fp);
             }
+
+            free(vmrss_per_process);
+            free(vmsize_per_process);
             
         }
         server_destroy(server);
