@@ -1953,7 +1953,7 @@ static void kill_rpc(hg_handle_t handle)
                     fprintf(fp, "%d\t%6ld KB\t%6ld (KB)\n", i, vmrss_per_process[i],
                             vmsize_per_process[i]);
                 }
-                fprintf(fp, "Total\t%6ld KB\t%6ld (KB)\n", i, global_vmrss, global_vmsize);
+                fprintf(fp, "Total\t%6ld KB\t%6ld (KB)\n", global_vmrss, global_vmsize);
                 fclose(fp);
             }
             
