@@ -9,6 +9,7 @@
 #include "dspacesp.h"
 #include "gspace.h"
 #include "ss_data.h"
+#include "memory.h"
 #include <abt.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -1935,6 +1936,28 @@ static void kill_rpc(hg_handle_t handle)
     margo_free_input(handle, &src);
     margo_destroy(handle);
     if(do_kill) {
+        if(rank == 0) {
+            long* vmrss_per_process  = (long*) malloc(server->dsg->size_sp*sizeof(long));
+            long* vmsize_per_process = (long*) malloc(server->dsg->size_sp*sizeof(long));
+            
+            int ret_code = get_cluster_memory_usage_kb(vmrss_per_process, vmsize_per_process,
+                                                        0, server->comm);
+            if (ret_code == 0) {
+                FILE* fp = fopen("dspaces_server_memory.log", "w");
+                fprintf(fp, "server_rank\tVmRSS\tVmSize(KB)\n");
+                long global_vmrss = 0;
+                long global_vmsize = 0;
+                for(int i=0; i<server->dsg->size_sp; i++) {
+                    global_vmrss += vmrss_per_process[i];
+                    global_vmsize += vmsize_per_process[i];
+                    fprintf(fp, "%d\t%6ld KB\t%6ld (KB)\n", i, vmrss_per_process[i],
+                            vmsize_per_process[i]);
+                }
+                fprintf(fp, "Total\t%6ld KB\t%6ld (KB)\n", i, global_vmrss, global_vmsize);
+                fclose(fp);
+            }
+            
+        }
         server_destroy(server);
     }
 }
