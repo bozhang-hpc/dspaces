@@ -1936,13 +1936,14 @@ static void kill_rpc(hg_handle_t handle)
     margo_free_input(handle, &src);
     margo_destroy(handle);
     if(do_kill) {
-        if(rank == 0) {
-            long* vmrss_per_process  = (long*) malloc(server->dsg->size_sp*sizeof(long));
-            long* vmsize_per_process = (long*) malloc(server->dsg->size_sp*sizeof(long));
+        
+        long* vmrss_per_process  = (long*) malloc(server->dsg->size_sp*sizeof(long));
+        long* vmsize_per_process = (long*) malloc(server->dsg->size_sp*sizeof(long));
             
-            int ret_code = get_cluster_memory_usage_kb(vmrss_per_process, vmsize_per_process,
+        int ret_code = get_cluster_memory_usage_kb(vmrss_per_process, vmsize_per_process,
                                                         0, server->comm);
-            if (ret_code == 0) {
+        if (ret_code == 0) {
+            if(rank == 0) {
                 FILE* fp = fopen("dspaces_server_memory.log", "w");
                 fprintf(fp, "server_rank\tVmRSS\tVmSize(KB)\n");
                 long global_vmrss = 0;
@@ -1956,11 +1957,12 @@ static void kill_rpc(hg_handle_t handle)
                 fprintf(fp, "Total\t%6ld KB\t%6ld (KB)\n", global_vmrss, global_vmsize);
                 fclose(fp);
             }
-
-            free(vmrss_per_process);
-            free(vmsize_per_process);
-            
         }
+
+        free(vmrss_per_process);
+        free(vmsize_per_process);
+            
+        
         server_destroy(server);
     }
 }
