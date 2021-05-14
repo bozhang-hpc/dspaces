@@ -2964,7 +2964,7 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     probe_obj = ls_find_st(server->dsg->ls, &temp_odsc2);
     if(probe_obj != NULL) {
         from_obj = probe_obj;
-        memcpy(&in_odsc2, temp_odsc2, sizeof(obj_descriptor));
+        memcpy(&in_odsc2, &temp_odsc2, sizeof(obj_descriptor));
     } else {
         from_obj = ls_find_st(server->dsg->ls, &in_odsc2);
     }
