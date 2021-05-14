@@ -393,7 +393,7 @@ void dht_local_subscribe_no_st(struct dht_entry *de, obj_descriptor *q_odsc,
                          long remaining, int timeout);
 
 int dht_add_entry_st(struct dht_entry *de, obj_descriptor *odsc);
-int dht_add_entry_new_st(struct dht_entry *de, obj_descriptor *odsc)
+int dht_add_entry_new_st(struct dht_entry *de, obj_descriptor *odsc);
 int dht_find_entry_all_st_v3(struct dht_entry *de, obj_descriptor *q_odsc,
                        obj_descriptor **odsc_tab[], int timeout);
 struct obj_data *ls_find_st(ss_storage *, obj_descriptor *);
