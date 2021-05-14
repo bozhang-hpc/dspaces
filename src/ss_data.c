@@ -2446,6 +2446,83 @@ int dht_add_entry_st(struct dht_entry *de, obj_descriptor *odsc)
     return 0;
 }
 
+int dht_add_entry_new_st(struct dht_entry *de, obj_descriptor *odsc)
+{
+    struct obj_desc_list *odscl;
+    struct obj_desc_ptr_list *sub_odscl;
+    struct dht_sub_list_entry *sub, *tmp;
+    struct bbox isect;
+    int sub_complete = 0;
+    int n, err = -ENOMEM;
+
+    odscl = dht_find_match_st(de, odsc);
+    if(odscl) {
+        /* There  is allready  a descriptor  with  a different
+           version in the DHT, so I will overwrite it. */
+        if(odscl->odsc.version == odsc->version) {
+            //if all same, just abort
+            return 0;
+        }
+        memcpy(&odscl->odsc, odsc, sizeof(*odsc));
+        return 0;
+    }
+
+    n = odsc->version % de->odsc_size;
+    odscl = malloc(sizeof(*odscl));
+    if(!odscl)
+        return err;
+    memcpy(&odscl->odsc, odsc, sizeof(*odsc));
+
+    ABT_mutex_lock(de->hash_mutex[n]);
+    list_add(&odscl->odsc_entry, &de->odsc_hash[n]);
+    de->odsc_num++;
+
+    list_for_each_entry_safe(sub, tmp, &de->dht_subs[n],
+                             struct dht_sub_list_entry, entry)
+    {
+        if(!(sub->st_init_flag)) {
+            if(obj_desc_equals_intersect(odsc, sub->odsc)) {
+                sub_odscl = malloc(sizeof(*sub_odscl));
+                sub_odscl->odsc = &odscl->odsc;
+                list_add(&sub_odscl->odsc_entry, &sub->recv_odsc);
+                sub->pub_count++;
+
+                bbox_intersect(&odsc->bb, &sub->odsc->bb, &isect);
+                sub->remaining -= bbox_volume(&isect);
+                if(sub->remaining == 0) {
+                    sub_complete = 1;
+                    list_del(&sub->entry);
+                }
+                sub->odsc->src_st = odsc->src_st;
+                sub->odsc->st = odsc->src_st;
+                sub->st_init_flag = 1;
+            }
+        } else {
+            if(obj_desc_st_equals_intersect(odsc, sub->odsc)) {
+                sub_odscl = malloc(sizeof(*sub_odscl));
+                sub_odscl->odsc = &odscl->odsc;
+                list_add(&sub_odscl->odsc_entry, &sub->recv_odsc);
+                sub->pub_count++;
+
+                bbox_intersect(&odsc->bb, &sub->odsc->bb, &isect);
+                sub->remaining -= bbox_volume(&isect);
+                if(sub->remaining == 0) {
+                    sub_complete = 1;
+                    list_del(&sub->entry);
+                }
+            }
+        }
+        
+    }
+    if(sub_complete) {
+        ABT_cond_broadcast(de->hash_cond[n]);
+    }
+
+    ABT_mutex_unlock(de->hash_mutex[n]);
+
+    return 0;
+}
+
 /*
   Object descriptor 'q_odsc' can intersect multiple object descriptors
   from dht entry 'de'; There should be only one st stored in server, so

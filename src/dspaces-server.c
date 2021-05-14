@@ -33,7 +33,7 @@
 
 static enum storage_type st = row_major;
 
-typedef enum obj_update_type { DS_OBJ_NEW, DS_OBJ_OWNER } obj_update_t;
+typedef enum obj_update_type { DS_OBJ_NEW, DS_OBJ_OWNER, DS_OBJ_NEW_ST} obj_update_t;
 
 int cond_num = 0;
 
@@ -2188,6 +2188,9 @@ static void obj_update_st_rpc(hg_handle_t handle)
     case DS_OBJ_OWNER:
         err = dht_update_owner(de, &in_odsc, 1);
         break;
+    case DS_OBJ_NEW_ST:
+        err = dht_add_entry_new_st(de, &in_odsc);
+        break;
     default:
         fprintf(stderr, "ERROR: (%s): unknown object update type.\n", __func__);
     }
@@ -2231,6 +2234,9 @@ static int obj_update_dht_st(dspaces_provider_t server, struct obj_data *od,
                 break;
             case DS_OBJ_OWNER:
                 dht_update_owner(ssd->ent_self, odsc, 1);
+                break;
+            case DS_OBJ_NEW_ST:
+                dht_add_entry_new_st(ssd->ent_self, odsc);
                 break;
             default:
                 fprintf(stderr, "ERROR: (%s): unknown object update type.\n",
@@ -3096,10 +3102,9 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     probe_obj2 = ls_find_st(server->dsg->ls, &temp_odsc2);
     if(probe_obj2 == NULL) {
         ls_add_obj_st(server->dsg->ls, new_od);
-        obj_update_dht_st(server, new_od, DS_OBJ_NEW);
     }
     ABT_mutex_unlock(server->ls_mutex);
-    //obj_update_dht_st(server, new_od, DS_OBJ_NEW);
+    obj_update_dht_st(server, new_od, DS_OBJ_NEW_ST);
     DEBUG_OUT("Finished transposed_obj_put_update from get_server_rcmc_rpc\n");
     }
     

@@ -2981,7 +2981,7 @@ int dspaces_put_layout(dspaces_client_t client, const char *var_name, unsigned i
                 int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum ds_layout_type src_layout,
                 const void *data)
 {
-    int option = 1;
+    int option = 2;
     int ret;
     switch (option)
     {
@@ -3011,7 +3011,7 @@ int dspaces_get_layout(dspaces_client_t client, const char *var_name, unsigned i
                 int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum ds_layout_type dst_layout, 
                 void *data, int timeout)
 {
-    int option = 1;
+    int option = 2;
     switch (option)
     {
     case 1:
