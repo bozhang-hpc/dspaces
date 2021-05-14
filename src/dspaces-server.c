@@ -2947,7 +2947,7 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
         return;
     }
 
-    obj_descriptor in_odsc, temp_odsc, temp_from_odsc, new_odsc, in_odsc2;
+    obj_descriptor in_odsc, temp_odsc, temp_from_odsc, new_odsc, in_odsc2, temp_odsc2;
     memset(&in_odsc, 0, sizeof(obj_descriptor));
     memset(&in_odsc2, 0, sizeof(obj_descriptor));
     memcpy(&in_odsc, in.odsc.raw_odsc, sizeof(obj_descriptor));
@@ -2957,11 +2957,17 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     //fprintf(stdout, "DATASPACES: %s: received get request with in_odsc:"
     //                "%s.\n", __func__, obj_desc_sprint(&in_odsc2));
 
-    
+    struct obj_data *od, *from_obj, *temp_from_obj, *new_od, *probe_obj, *probe_obj2;
 
-    struct obj_data *od, *from_obj, *temp_from_obj, *new_od;
-
-    from_obj = ls_find_st(server->dsg->ls, &in_odsc2);
+    //double check if ls has obj_data in opposite st
+    obj_desc_transpose_st(&temp_odsc2, &in_odsc2);
+    probe_obj = ls_find_st(server->dsg->ls, &temp_odsc2);
+    if(probe_obj != NULL) {
+        from_obj = probe_obj;
+        memcpy(&in_odsc2, temp_odsc2, sizeof(obj_descriptor));
+    } else {
+        from_obj = ls_find_st(server->dsg->ls, &in_odsc2);
+    }
 
     // first get the exact data no matter what layout it is
     // ssd_copy needs trick for column-major copy
@@ -3087,9 +3093,13 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     if(in_odsc2.st != req_st) {
     // Maybe add a check for new od here, if does not exist then add it to dht.
     ABT_mutex_lock(server->ls_mutex);
-    ls_add_obj_st(server->dsg->ls, new_od);
+    probe_obj2 = ls_find_st(server->dsg->ls, &temp_odsc2);
+    if(probe_obj2 == NULL) {
+        ls_add_obj_st(server->dsg->ls, new_od);
+        obj_update_dht_st(server, new_od, DS_OBJ_NEW);
+    }
     ABT_mutex_unlock(server->ls_mutex);
-    obj_update_dht_st(server, new_od, DS_OBJ_NEW);
+    //obj_update_dht_st(server, new_od, DS_OBJ_NEW);
     DEBUG_OUT("Finished transposed_obj_put_update from get_server_rcmc_rpc\n");
     }
     
