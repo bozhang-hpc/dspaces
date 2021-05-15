@@ -3102,6 +3102,9 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
     probe_obj2 = ls_find_st(server->dsg->ls, &temp_odsc2);
     if(probe_obj2 == NULL) {
         ls_add_obj_st(server->dsg->ls, new_od);
+    } else {
+        // need to rm new_od if do not need
+        obj_data_free(new_od);
     }
     ABT_mutex_unlock(server->ls_mutex);
     obj_update_dht_st(server, new_od, DS_OBJ_NEW_ST);
