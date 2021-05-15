@@ -2965,12 +2965,21 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
 
     struct obj_data *od, *from_obj, *temp_from_obj, *new_od, *probe_obj, *probe_obj2;
 
-    //double check if ls has obj_data in opposite st
-    obj_desc_transpose_st(&temp_odsc2, &in_odsc2);
-    probe_obj = ls_find_st(server->dsg->ls, &temp_odsc2);
-    if(probe_obj != NULL) {
-        from_obj = probe_obj;
-        memcpy(&in_odsc2, &temp_odsc2, sizeof(obj_descriptor));
+
+    //double check if ls has obj_data in opposite st,
+    //but only check those whose st == src_st, 
+    //which means it does not hit cache at odsc check
+    if(in_odsc2.st == in_odsc2.src_st) {
+        obj_desc_transpose_st(&temp_odsc2, &in_odsc2);
+        ABT_mutex_lock(server->ls_mutex);
+        probe_obj = ls_find_st(server->dsg->ls, &temp_odsc2);
+        ABT_mutex_unlock(server->ls_mutex);
+        if(probe_obj != NULL) {
+            from_obj = probe_obj;
+            memcpy(&in_odsc2, &temp_odsc2, sizeof(obj_descriptor));
+        } else {
+            from_obj = ls_find_st(server->dsg->ls, &in_odsc2);
+        }
     } else {
         from_obj = ls_find_st(server->dsg->ls, &in_odsc2);
     }
