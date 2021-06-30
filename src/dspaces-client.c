@@ -574,7 +574,7 @@ int dspaces_init(int rank, dspaces_client_t *c, char* listen_addr_str)
 
     dspaces_init_margo(client, listen_addr_str);
 
-    free(listen_addr_str);
+    //free(listen_addr_str);
 
     dspaces_post_init(client);
 
