@@ -5,11 +5,12 @@ use dspaces
     integer :: i, j, ierr
     integer(kind=8), dimension(2) :: lb, ub
     real(kind=8), dimension(10,10) :: data
+    character, pointer :: listen_addr_str => NULL ()
 
     rank = 0
     
     
-    call dspaces_init(rank, ndscl, NULL, ierr)
+    call dspaces_init(rank, ndscl, listen_addr_str, ierr)
     lb(1) = 0
     lb(2) = 0
     ub(1) = 9
