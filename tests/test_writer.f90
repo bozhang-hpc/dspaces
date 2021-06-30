@@ -5,6 +5,7 @@ use dspaces
     integer :: i, j, ierr
     integer(kind=8), dimension(2) :: lb, ub
     real(kind=8), dimension(10,10) :: data
+    character, pointer :: listen_addr_str => NULL ()
 
     rank = 0
 
