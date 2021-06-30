@@ -30,7 +30,7 @@ typedef struct dspaces_client *dspaces_client_t;
  *
  * @return dspaces_SUCCESS or error code defined in dspaces-common.h
  */
-int dspaces_init(int rank, dspaces_client_t *client);
+int dspaces_init(int rank, dspaces_client_t *client, char* listen_addr_str);
 
 /**
  * @brief Creates a dspaces client. Uses MPI primitives for scalable initialization.

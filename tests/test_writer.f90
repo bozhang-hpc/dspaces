@@ -8,7 +8,7 @@ use dspaces
 
     rank = 0
 
-    call dspaces_init(rank, ndscl, ierr)
+    call dspaces_init(rank, ndscl, NULL, ierr)
     do i = 1, 10
         do j = 1, 10
             data(i, j) = 2 * i + j

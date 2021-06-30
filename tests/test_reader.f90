@@ -9,7 +9,7 @@ use dspaces
     rank = 0
     
     
-    call dspaces_init(rank, ndscl, ierr)
+    call dspaces_init(rank, ndscl, NULL, ierr)
     lb(1) = 0
     lb(2) = 0
     ub(1) = 9

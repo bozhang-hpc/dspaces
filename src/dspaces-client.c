@@ -367,13 +367,14 @@ static int read_conf(dspaces_client_t client, char **listen_addr_str)
         fsetpos(fd, &lstart);
         fscanf(fd, "%s %s\n", client->node_names[i], client->server_address[i]);
     }
-    fgetpos(fd, &lstart);
-    fscanf(fd, "%*s%n\n", &size);
-    fsetpos(fd, &lstart);
-    *listen_addr_str = malloc(size + 1);
-    fscanf(fd, "%s\n", *listen_addr_str);
-    fclose(fd);
-
+    if(*listen_addr_str == NULL) {
+        fgetpos(fd, &lstart);
+        fscanf(fd, "%*s%n\n", &size);
+        fsetpos(fd, &lstart);
+        *listen_addr_str = malloc(size + 1);
+        fscanf(fd, "%s\n", *listen_addr_str);
+        fclose(fd);
+    }
     ret = 0;
 
 fini:
@@ -605,10 +606,10 @@ static int dspaces_post_init(dspaces_client_t client)
     return (dspaces_SUCCESS);
 }
 
-int dspaces_init(int rank, dspaces_client_t *c)
+int dspaces_init(int rank, dspaces_client_t *c, char* listen_addr_str)
 {
     dspaces_client_t client;
-    char *listen_addr_str;
+    //char *listen_addr_str;
     int ret;
 
     ret = dspaces_init_internal(rank, &client);
