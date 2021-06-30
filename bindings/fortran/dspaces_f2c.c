@@ -6,7 +6,7 @@ extern "C" {
 #endif
 
 void FC_GLOBAL(dspaces_init_f2c,
-               DSPACES_INIT_F2C)(int *rank, dspaces_client_t *client, char *listen_addr_str int *ierr)
+               DSPACES_INIT_F2C)(int *rank, dspaces_client_t *client, char *listen_addr_str, int *ierr)
 {
     *ierr = dspaces_init(*rank, client, listen_addr_str);
 }
