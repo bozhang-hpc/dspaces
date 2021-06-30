@@ -228,7 +228,9 @@ int test_sub_run(int ndims, int *npdim, uint64_t *spdim, int timestep,
     MPI_Comm_rank(gcomm_, &rank_);
     MPI_Comm_size(gcomm_, &nproc_);
 
-    ret = dspaces_init(rank_, &ndcl);
+    char* listen_addr_str = NULL;
+
+    ret = dspaces_init(rank_, &ndcl, listen_addr_str);
     if(ret != dspaces_SUCCESS) {
         fprintf(stderr, "%s: dspaces_init() failed with %d.\n", __func__, ret);
     }

@@ -15,15 +15,17 @@
 
 int main(int argc, char **argv)
 {
-    (void)argc;
-    (void)argv;
+    char* listen_addr_str = NULL;
+    if(argc == 2) {
+        listen_addr_str = argv[1];
+    }
     dspaces_client_t ds;
     int rank;
 
     MPI_Init(NULL, NULL);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    dspaces_init(rank, &ds);
+    dspaces_init(rank, &ds, listen_addr_str);
 
     dspaces_kill(ds);
 

@@ -75,12 +75,13 @@ module dspaces
     end interface
 
 contains
-    subroutine dspaces_init( rank, client, ierr)
+    subroutine dspaces_init( rank, client, listen_addr_str, ierr)
         integer, intent(in) :: rank
         type(dspaces_client), intent(out) :: client
+        character*(*), intent(in) :: listen_addr_str
         integer, intent(out) :: ierr
        
-        call dspaces_init_f2c(rank, client%client, ierr)
+        call dspaces_init_f2c(rank, client%client, listen_addr_str, ierr)
     end subroutine
 
     subroutine dspaces_fini( client, ierr)
