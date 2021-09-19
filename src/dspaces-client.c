@@ -609,20 +609,26 @@ static int dspaces_post_init(dspaces_client_t client)
 int dspaces_init(int rank, dspaces_client_t *c, char* listen_addr_str)
 {
     dspaces_client_t client;
-    //char *listen_addr_str;
-    int ret;
+    char *listen_addr_str_internal;
+    int str_size, ret;
 
     ret = dspaces_init_internal(rank, &client);
     if(ret != dspaces_SUCCESS) {
         return (ret);
     }
 
-    ret = read_conf(client, &listen_addr_str);
+    if(*listen_addr_str != NULL) {
+        sscanf(listen_addr_str, "%*s%n\n", &str_size);
+        listen_addr_str = malloc(str_size+1);
+        sscanf(listen_addr_str, "%s\n", listen_addr_str_internal);
+    }
+
+    ret = read_conf(client, &listen_addr_str_internal);
     if(ret != 0) {
         return (ret);
     }
 
-    dspaces_init_margo(client, listen_addr_str);
+    dspaces_init_margo(client, listen_addr_str_internal);
 
     //free(listen_addr_str);
 
