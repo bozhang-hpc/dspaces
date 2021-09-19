@@ -569,7 +569,7 @@ int dspaces_init(int rank, dspaces_client_t *c, char* listen_addr_str)
 
     if(listen_addr_str != NULL) {
         sscanf(listen_addr_str, "%*s%n\n", &str_size);
-        listen_addr_str = malloc(str_size+1);
+        listen_addr_str_internal = malloc(str_size+1);
         sscanf(listen_addr_str, "%s\n", listen_addr_str_internal);
     }
 
