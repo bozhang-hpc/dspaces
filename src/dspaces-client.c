@@ -609,7 +609,7 @@ static int dspaces_post_init(dspaces_client_t client)
 int dspaces_init(int rank, dspaces_client_t *c, char* listen_addr_str)
 {
     dspaces_client_t client;
-    char *listen_addr_str_internal;
+    char *listen_addr_str_internal = NULL;
     int str_size, ret;
 
     ret = dspaces_init_internal(rank, &client);
