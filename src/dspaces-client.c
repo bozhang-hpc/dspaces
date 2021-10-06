@@ -60,6 +60,9 @@ struct dspaces_put_req {
     margo_request req;
     struct dspaces_put_req *next;
     bulk_gdim_t in;
+    int finalized;
+    void *buffer;
+    hg_return_t ret;
 };
 
 struct dspaces_client {
@@ -183,13 +186,14 @@ static int get_ss_info(dspaces_client_t client)
         return dspaces_ERR_MERCURY;
     }
 
+    DEBUG_OUT("Sending ss_rpc\n");
     hret = margo_forward(handle, NULL);
     if(hret != HG_SUCCESS) {
         fprintf(stderr, "ERROR: (%s):  margo_forward() failed\n", __func__);
         margo_destroy(handle);
         return dspaces_ERR_MERCURY;
     }
-
+    DEBUG_OUT("Got ss_rpc reply\n");
     hret = margo_get_output(handle, &out);
     if(hret != HG_SUCCESS) {
         fprintf(stderr, "ERROR: (%s): margo_get_output() failed\n", __func__);
@@ -821,17 +825,66 @@ int dspaces_put(dspaces_client_t client, const char *var_name, unsigned int ver,
     return ret;
 }
 
+static int finalize_req(struct dspaces_put_req *req)
+{
+    bulk_out_t out;
+    int ret;
+    hg_return_t hret;
+
+    hret = margo_get_output(req->handle, &out);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_get_output() failed\n", __func__);
+        margo_bulk_free(req->in.handle);
+        margo_destroy(req->handle);
+        return dspaces_ERR_MERCURY;
+    }
+    ret = out.ret;
+    margo_free_output(req->handle, &out);
+    margo_bulk_free(req->in.handle);
+    margo_destroy(req->handle);
+
+    if(req->buffer) {
+        free(req->buffer);
+        req->buffer = NULL;
+    }
+
+    req->finalized = 1;
+    req->ret = ret;
+
+    return ret;
+}
+
 struct dspaces_put_req *dspaces_iput(dspaces_client_t client,
                                      const char *var_name, unsigned int ver,
                                      int elem_size, int ndim, uint64_t *lb,
-                                     uint64_t *ub, const void *data)
+                                     uint64_t *ub, const void *data, int alloc)
 {
     hg_addr_t server_addr;
     hg_return_t hret;
     struct dspaces_put_req *ds_req, **ds_req_p;
     int ret = dspaces_SUCCESS;
+    const void *buffer;
+    int flag;
 
-    ds_req = malloc(sizeof(*ds_req));
+    // Check for comleted iputs
+    ds_req_p = &client->put_reqs;
+    while(*ds_req_p) {
+        ds_req = *ds_req_p;
+        flag = 0;
+        if(!ds_req->finalized) {
+            margo_test(ds_req->req, &flag);
+            if(flag) {
+                finalize_req(ds_req);
+                *ds_req_p = ds_req->next;
+                // do not free ds_req yet - user might do a dspaces_check_put
+                // later
+            }
+        }
+
+        ds_req_p = &ds_req->next;
+    }
+
+    ds_req = calloc(1, sizeof(*ds_req));
     obj_descriptor odsc = {.version = ver,
                            .owner = {0},
                            .st = st,
@@ -860,9 +913,17 @@ struct dspaces_put_req *dspaces_iput(dspaces_client_t client,
     ds_req->in.odsc.raw_gdim = (char *)(&odsc_gdim);
     hg_size_t rdma_size = (elem_size)*bbox_volume(&odsc.bb);
 
+    if(alloc) {
+        ds_req->buffer = malloc(rdma_size);
+        memcpy(ds_req->buffer, data, rdma_size);
+        buffer = ds_req->buffer;
+    } else {
+        buffer = data;
+    }
+
     DEBUG_OUT("sending object %s \n", obj_desc_sprint(&odsc));
 
-    hret = margo_bulk_create(client->mid, 1, (void **)&data, &rdma_size,
+    hret = margo_bulk_create(client->mid, 1, (void **)&buffer, &rdma_size,
                              HG_BULK_READ_ONLY, &ds_req->in.handle);
     if(hret != HG_SUCCESS) {
         fprintf(stderr, "ERROR: (%s): margo_bulk_create() failed\n", __func__);
@@ -899,27 +960,6 @@ struct dspaces_put_req *dspaces_iput(dspaces_client_t client,
     return ds_req;
 }
 
-static int finalize_req(struct dspaces_put_req *req)
-{
-    bulk_out_t out;
-    int ret;
-    hg_return_t hret;
-
-    hret = margo_get_output(req->handle, &out);
-    if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_get_output() failed\n", __func__);
-        margo_bulk_free(req->in.handle);
-        margo_destroy(req->handle);
-        return dspaces_ERR_MERCURY;
-    }
-    ret = out.ret;
-    margo_free_output(req->handle, &out);
-    margo_bulk_free(req->in.handle);
-    margo_destroy(req->handle);
-
-    return ret;
-}
-
 int dspaces_check_put(dspaces_client_t client, struct dspaces_put_req *req,
                       int wait)
 {
@@ -927,6 +967,12 @@ int dspaces_check_put(dspaces_client_t client, struct dspaces_put_req *req,
     struct dspaces_put_req **ds_req_p;
     int ret;
     hg_return_t hret;
+
+    if(req->finalized) {
+        ret = req->ret;
+        free(req);
+        return ret;
+    }
 
     if(wait) {
         hret = margo_wait(req->req);
@@ -1728,6 +1774,10 @@ static void notify_rpc(hg_handle_t handle)
             get_data(client, num_odscs, subh->q_odsc, odsc_tab, data);
         }
     } else {
+        fprintf(stderr,
+                "WARNING: got notification, but sub status was not "
+                "DSPACES_SUB_WAIT (%i)\n",
+                subh->status);
         ABT_mutex_unlock(client->sub_mutex);
         odsc_tab = NULL;
         data = NULL;
@@ -1789,6 +1839,7 @@ struct dspaces_sub_handle *dspaces_sub(dspaces_client_t client,
 {
     hg_addr_t my_addr, server_addr;
     hg_handle_t handle;
+    margo_request req;
     hg_return_t hret;
     struct dspaces_sub_handle *subh;
     odsc_gdim_t in;
@@ -1827,6 +1878,7 @@ struct dspaces_sub_handle *dspaces_sub(dspaces_client_t client,
     client->pending_sub++;
     subh->id = client->sub_serial++;
     register_client_sub(client, subh);
+    subh->status = DSPACES_SUB_WAIT;
     ABT_mutex_unlock(client->sub_mutex);
 
     memset(subh->q_odsc.bb.lb.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
@@ -1862,7 +1914,7 @@ struct dspaces_sub_handle *dspaces_sub(dspaces_client_t client,
                 hret);
         return (DSPACES_SUB_FAIL);
     }
-    hret = margo_forward(handle, &in);
+    hret = margo_iforward(handle, &in, &req);
     if(hret != HG_SUCCESS) {
         fprintf(stderr, "ERROR: %s: margo_forward() failed with %d.\n",
                 __func__, hret);
@@ -1871,7 +1923,6 @@ struct dspaces_sub_handle *dspaces_sub(dspaces_client_t client,
     }
 
     DEBUG_OUT("subscription %d sent.\n", subh->id);
-    subh->status = DSPACES_SUB_WAIT;
 
     margo_addr_free(client->mid, server_addr);
     margo_destroy(handle);
@@ -1945,6 +1996,7 @@ void dspaces_kill(dspaces_client_t client)
     uint32_t in;
     hg_addr_t server_addr;
     hg_handle_t h;
+    margo_request req;
     hg_return_t hret;
 
     in = -1;
@@ -1958,7 +2010,7 @@ void dspaces_kill(dspaces_client_t client)
         margo_addr_free(client->mid, server_addr);
         return;
     }
-    margo_forward(h, &in);
+    margo_iforward(h, &in, &req);
 
     DEBUG_OUT("kill signal sent.\n");
 
