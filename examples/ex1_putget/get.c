@@ -10,11 +10,15 @@
 
 int main(int argc, char **argv)
 {
+    char* listen_addr_str = NULL;
+    if(argc == 2) {
+        listen_addr_str = argv[1];
+    }
     dspaces_client_t client;
     // DataSpaces: Initalize and identify application
     // Usage: dspaces_init(num_peers, appid, Ptr to MPI comm, parameters)
     // Note: appid for get.c is 2 [for put.c, it was 1]
-    dspaces_init(0, &client);
+    dspaces_init(0, &client, listen_addr_str);
 
     int timestep = 0;
 

@@ -12,6 +12,10 @@
 
 int main(int argc, char **argv)
 {
+    char* listen_addr_str = NULL;
+    if(argc == 2) {
+        listen_addr_str = argv[1];
+    }
     dspaces_client_t client;
 
     // Initalize DataSpaces
@@ -21,7 +25,7 @@ int main(int argc, char **argv)
     // Pointer to the MPI Communicator:
     //      when NOT NULL, allows DS Layer to use MPI barrier func
     // Addt'l parameters: Placeholder for future arguments, currently NULL.
-    dspaces_init(0, &client);
+    dspaces_init(0, &client, listen_addr_str);
 
     int timestep = 0;
 
