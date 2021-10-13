@@ -550,8 +550,8 @@ static int obj_update_dht(dspaces_provider_t server, struct obj_data *od,
     /* Compute object distribution to nodes in the space. */
     num_de = ssd_hash(ssd, &odsc->bb, dht_tab);
     if(num_de == 0) {
-        fprintf(stderr, "'%s()': this should not happen, num_de == 0 ?!\n",
-                __func__);
+        fprintf(stderr, "'%s()': object %s this should not happen, num_de == 0 ?!\n",
+                __func__, obj_desc_sprint(odsc));
     }
     /* Update object descriptors on the corresponding nodes. */
     for(i = 0; i < num_de; i++) {
