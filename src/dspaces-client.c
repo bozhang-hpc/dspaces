@@ -89,6 +89,8 @@ struct dspaces_client {
     hg_id_t put_st_server_rcmc_id;
     hg_id_t query_layout_v3_id;
     hg_id_t get_st_id;
+    hg_id_t put_layout_id;
+    hg_id_t query_layout_id;
     struct dc_gspace *dcg;
     char **server_address;
     char **node_names;
@@ -897,6 +899,9 @@ static void od_print(struct obj_data *od)
             printf("\n");
         }
         printf("**************\n");
+    }
+}
+
 static int finalize_req(struct dspaces_put_req *req)
 {
     bulk_out_t out;
@@ -3260,6 +3265,205 @@ int dspaces_get_layout(dspaces_client_t client, const char *var_name, unsigned i
     
     default:
         break;
+    }
+
+    return (0);
+}
+
+int dspaces_put_layout_new(dspaces_client_t client, const char *var_name, unsigned int ver,
+                int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum ds_layout_type src_layout,
+                const void *data, int mode)
+{
+    hg_addr_t server_addr;
+    hg_handle_t handle;
+    hg_return_t hret;
+    int ret = dspaces_SUCCESS;
+
+    enum storage_type src_st;
+    if (src_layout == dspaces_LAYOUT_RIGHT)
+        src_st = row_major;
+    else
+        src_st = column_major;
+
+    obj_descriptor temp_odsc, odsc;
+
+    fill_odsc_src_st(var_name, ver, elem_size, ndim, lb, ub, src_st, &temp_odsc);
+
+    if(src_st != st)
+        obj_desc_transpose_bbox(&odsc, &temp_odsc);
+    else
+        memcpy(&odsc, &temp_odsc, sizeof(obj_descriptor));
+
+    bulk_gdim_layout_t in;
+    bulk_out_t out;
+    struct global_dimension odsc_gdim;
+    set_global_dimension(&(client->dcg->gdim_list), var_name,
+                         &(client->dcg->default_gdim), &odsc_gdim);
+
+    in.odsc.size = sizeof(odsc);
+    in.odsc.raw_odsc = (char *)(&odsc);
+    in.odsc.gdim_size = sizeof(struct global_dimension);
+    in.odsc.raw_gdim = (char *)(&odsc_gdim);
+    in.mode = mode;
+    hg_size_t rdma_size = (elem_size)*bbox_volume(&odsc.bb);
+
+    DEBUG_OUT("sending object %s \n", obj_desc_sprint(&odsc));
+
+    hret = margo_bulk_create(client->mid, 1, (void **)&data, &rdma_size,
+                             HG_BULK_READ_ONLY, &in.handle);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_bulk_create() failed\n", __func__);
+        return dspaces_ERR_MERCURY;
+    }
+
+    get_server_address(client, &server_addr);
+    /* create handle */
+    hret = margo_create(client->mid, server_addr, client->put_layout_id, &handle);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_create() failed\n", __func__);
+        margo_bulk_free(in.handle);
+        return dspaces_ERR_MERCURY;
+    }
+
+    hret = margo_forward(handle, &in);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_forward() failed\n", __func__);
+        margo_bulk_free(in.handle);
+        margo_destroy(handle);
+        return dspaces_ERR_MERCURY;
+    }
+
+    hret = margo_get_output(handle, &out);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_get_output() failed\n", __func__);
+        margo_bulk_free(in.handle);
+        margo_destroy(handle);
+        return dspaces_ERR_MERCURY;
+    }
+
+    ret = out.ret;
+    margo_free_output(handle, &out);
+    margo_bulk_free(in.handle);
+    margo_destroy(handle);
+    margo_addr_free(client->mid, server_addr);
+    return ret;
+}
+
+static int get_odscs_layout(dspaces_client_t client, obj_descriptor *odsc, int timeout,
+                     obj_descriptor **odsc_tab, int mode)
+{
+    struct global_dimension od_gdim;
+    int num_odscs;
+    hg_addr_t server_addr;
+    hg_return_t hret;
+    hg_handle_t handle;
+
+    odsc_gdim_layout_t in;
+    odsc_list_t out;
+
+    in.odsc_gdim.size = sizeof(*odsc);
+    in.odsc_gdim.raw_odsc = (char *)odsc;
+    in.mode = mode;
+    in.param = timeout;
+
+    set_global_dimension(&(client->dcg->gdim_list), odsc->name,
+                         &(client->dcg->default_gdim), &od_gdim);
+    in.odsc_gdim.gdim_size = sizeof(od_gdim);
+    in.odsc_gdim.raw_gdim = (char *)(&od_gdim);
+
+    get_server_address(client, &server_addr);
+
+    hret = margo_create(client->mid, server_addr, client->query_layout_v1_id, &handle);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: %s: margo_create() failed with %d.\n", __func__,
+                hret);
+        return (0);
+    }
+
+    hret = margo_forward(handle, &in);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: %s: margo_forward() failed with %d.\n",
+                __func__, hret);
+        margo_destroy(handle);
+        return (0);
+    }
+    hret = margo_get_output(handle, &out);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: %s: margo_get_output() failed with %d.\n",
+                __func__, hret);
+        margo_destroy(handle);
+        return (0);
+    }
+
+    num_odscs = (out.odsc_list.size) / sizeof(obj_descriptor);
+    *odsc_tab = malloc(out.odsc_list.size);
+    memcpy(*odsc_tab, out.odsc_list.raw_odsc, out.odsc_list.size);
+    margo_free_output(handle, &out);
+    margo_addr_free(client->mid, server_addr);
+    margo_destroy(handle);
+
+    return (num_odscs);
+}
+
+int dspaces_get_layout_new(dspaces_client_t client, const char *var_name, unsigned int ver,
+                int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum ds_layout_type dst_layout, 
+                void *data, int timeout, int mode)
+{
+
+    obj_descriptor temp_odsc, odsc;
+    obj_descriptor *odsc_tab;
+    int num_odscs;
+    int ret = dspaces_SUCCESS;
+    //enum storage_type src_st;
+    enum storage_type dst_st;
+    switch (dst_layout)
+    {
+    case dspaces_LAYOUT_RIGHT:
+        dst_st = row_major;
+        break;
+
+    case dspaces_LAYOUT_LEFT:
+        dst_st = column_major;
+        break;
+    
+    default:
+        dst_st = st;
+        break;
+    }
+    
+    fill_odsc_st(var_name, ver, elem_size, ndim, lb, ub, dst_st, &temp_odsc);
+
+    if(dst_st != st)
+        obj_desc_transpose_bbox(&odsc, &temp_odsc);
+    else
+        memcpy(&odsc, &temp_odsc, sizeof(obj_descriptor));
+
+    DEBUG_OUT("Querying %s with timeout %d\n", obj_desc_sprint(&odsc), timeout);
+
+    num_odscs = get_odscs_layout(client, &odsc, timeout, &odsc_tab, mode);
+
+    DEBUG_OUT("Finished query - need to fetch %d objects\n", num_odscs);
+    for(int i = 0; i < num_odscs; ++i) {
+        DEBUG_OUT("%s\n", obj_desc_sprint(&odsc_tab[i]));
+    }
+
+    if(num_odscs != 0) {
+        if(mode == 1) {
+            if(odsc_tab[0].src_st == dst_st)
+                get_data(client, num_odscs, odsc, odsc_tab, data);
+            else
+                get_data_rcmc(client, num_odscs, odsc, odsc_tab, data);
+        }
+        else if(mode == 2) {
+            if(odsc_tab[0].src_st == dst_st)
+                get_data(client, num_odscs, odsc, odsc_tab, data);
+            else
+                get_data_rcmc_at_server(client, num_odscs, odsc, odsc_tab, data);
+        }
+        else if(mode == 3) {
+            get_data_st(client, num_odscs, odsc, odsc_tab, data);
+        }
+        free(odsc_tab);
     }
 
     return (0);

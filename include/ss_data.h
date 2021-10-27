@@ -281,6 +281,8 @@ static inline hg_return_t hg_proc_odsc_hdr_with_gdim(hg_proc_t proc, void *arg)
 }
 
 MERCURY_GEN_PROC(bulk_gdim_t, ((odsc_hdr_with_gdim)(odsc))((hg_bulk_t)(handle)))
+MERCURY_GEN_PROC(bulk_gdim_layout_t,
+                 ((odsc_hdr_with_gdim)(odsc))((int32_t)(mode))((hg_bulk_t)(handle)))
 MERCURY_GEN_PROC(bulk_in_t, ((odsc_hdr)(odsc))((hg_bulk_t)(handle)))
 MERCURY_GEN_PROC(bulk_out_t, ((int32_t)(ret)))
 MERCURY_GEN_PROC(put_meta_in_t, ((hg_string_t)(name))((int32_t)(length))(
@@ -291,6 +293,8 @@ MERCURY_GEN_PROC(query_meta_out_t,
                  ((hg_bulk_t)(handle))((hg_size_t)(size))((int32_t)(version)))
 MERCURY_GEN_PROC(odsc_gdim_t,
                  ((odsc_hdr_with_gdim)(odsc_gdim))((int32_t)(param)))
+MERCURY_GEN_PROC(odsc_gdim_layout_t,
+                 ((odsc_hdr_with_gdim)(odsc_gdim))((int32_t)(mode))((int32_t)(param)))
 MERCURY_GEN_PROC(odsc_list_t, ((odsc_hdr)(odsc_list))((int32_t)(param)))
 MERCURY_GEN_PROC(ss_information, ((odsc_hdr)(ss_buf)))
 
@@ -399,5 +403,8 @@ int dht_find_entry_all_st_v3(struct dht_entry *de, obj_descriptor *q_odsc,
 struct obj_data *ls_find_st(ss_storage *, obj_descriptor *);
 struct obj_data *ls_find_no_version_st(ss_storage *ls, obj_descriptor *odsc);
 void ls_add_obj_st(ss_storage *ls, struct obj_data *od);
+
+int dht_find_entry_all_st(struct dht_entry *de, obj_descriptor *q_odsc,
+                       obj_descriptor **odsc_tab[], int timeout, int mode);
 
 #endif /* __SS_DATA_H_ */

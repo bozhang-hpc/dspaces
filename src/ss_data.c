@@ -2575,7 +2575,8 @@ int dht_find_entry_all_st_v1(struct dht_entry *de, obj_descriptor *q_odsc,
     make sure the src_st; If equals dst_st, do it as before; If not,
     then, find the intersected multiple object  descriptors from dht entry 
     'de' in exact src_st; Finally, replace the odsc_tab entry which 
-    is included by object descriptors in dst_st. 
+    is included by object descriptors in dst_st, but this replacement happens
+    in get_data()
 */
 int dht_find_entry_all_st_v2(struct dht_entry *de, obj_descriptor *q_odsc,
                        obj_descriptor **odsc_tab[], int timeout)
@@ -2715,6 +2716,112 @@ int dht_find_entry_all_st_v3(struct dht_entry *de, obj_descriptor *q_odsc,
                                 timeout);
         }
         ABT_mutex_unlock(de->hash_mutex[n]);
+    }
+
+    return num_odsc;
+}
+
+int dht_find_entry_all_st(struct dht_entry *de, obj_descriptor *q_odsc,
+                       obj_descriptor **odsc_tab[], int timeout, int mode)
+{
+    int n, num_odsc = 0;
+    long num_elem;
+    struct obj_desc_list *odscl;
+    struct bbox isect;
+    int sub = timeout != 0 && de == de->ss->ent_self;
+    int found_flag = 0; // uninitialized
+    enum storage_type src_st;
+    obj_descriptor odsc_src_st, odsc_entry_dst_st;
+
+    n = q_odsc->version % de->odsc_size;
+    if(sub) {
+        num_elem = ssh_hash_elem_count(de->ss, &q_odsc->bb);
+        ABT_mutex_lock(de->hash_mutex[n]);
+    }
+
+    if(mode == 1 | mode == 2) {
+        // general idea for this loop: always add the entry whose st is same as src_st
+        list_for_each_entry(odscl, &de->odsc_hash[n], struct obj_desc_list,
+                            odsc_entry)
+        {
+            // check the first odsc found to make sure the src_st
+            if(!found_flag) {
+                if(obj_desc_equals_intersect(&odscl->odsc, q_odsc)) {
+                    src_st = odscl->odsc.src_st;
+                    found_flag = 1;
+                    // Don't ignore the first entry even if its src_st is different from the our request
+                    // As long as its st and src_st are same, we need it
+                    if(odscl->odsc.st == src_st) {
+                        (*odsc_tab)[num_odsc++] = &odscl->odsc;
+                        if(sub) {
+                            bbox_intersect(&q_odsc->bb, &odscl->odsc.bb, &isect);
+                            num_elem -= bbox_volume(&isect);
+                        }
+                    }
+                }
+            } else {
+                if(src_st == q_odsc->st) {
+                    if(obj_desc_st_equals_intersect(&odscl->odsc, q_odsc)) {
+                        (*odsc_tab)[num_odsc++] = &odscl->odsc;
+                        if(sub) {
+                            bbox_intersect(&q_odsc->bb, &odscl->odsc.bb, &isect);
+                            num_elem -= bbox_volume(&isect);
+                        }
+                    }
+                } else {
+                    obj_desc_transpose_st(&odsc_src_st, q_odsc);
+                    if(obj_desc_st_equals_intersect(&odscl->odsc, &odsc_src_st)) {
+                        (*odsc_tab)[num_odsc++] = &odscl->odsc;
+                        if(sub) {
+                            bbox_intersect(&odsc_src_st.bb, &odscl->odsc.bb, &isect);
+                            num_elem -= bbox_volume(&isect);
+                        }
+                    }
+                }
+            
+            }
+        }
+        if(sub) {
+            if(num_elem > 0) {
+                if(found_flag) {
+                    if(src_st == q_odsc->st) {
+                        dht_local_subscribe(de, q_odsc, odsc_tab, &num_odsc, num_elem,
+                                            timeout);
+                    } else {
+                        dht_local_subscribe(de, &odsc_src_st, odsc_tab, &num_odsc, num_elem,
+                                            timeout);
+                    }
+                } else {
+                    dht_local_subscribe_no_st(de, q_odsc, odsc_tab, &num_odsc, num_elem,
+                                                timeout);
+                }
+            
+            }
+            ABT_mutex_unlock(de->hash_mutex[n]);
+        }
+    }
+    else if(mode == 3) {
+        list_for_each_entry(odscl, &de->odsc_hash[n], struct obj_desc_list,
+                            odsc_entry)
+        {
+            if(obj_desc_st_equals_intersect(&odscl->odsc, q_odsc)) {
+                (*odsc_tab)[num_odsc++] = &odscl->odsc;
+                if(sub) {
+                    bbox_intersect(&q_odsc->bb, &odscl->odsc.bb, &isect);
+                    num_elem -= bbox_volume(&isect);
+                }
+            }
+        }
+        if(sub) {
+            if(num_elem > 0) {
+                dht_local_subscribe(de, q_odsc, odsc_tab, &num_odsc, num_elem,
+                                    timeout);
+            }
+            ABT_mutex_unlock(de->hash_mutex[n]);
+        }
+    }
+    else if(mode=4) {
+        // Reserved for hybrid method
     }
 
     return num_odsc;
