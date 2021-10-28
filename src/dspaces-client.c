@@ -3380,7 +3380,7 @@ static int get_odscs_layout(dspaces_client_t client, obj_descriptor *odsc, int t
 
     get_server_address(client, &server_addr);
 
-    hret = margo_create(client->mid, server_addr, client->query_layout_v1_id, &handle);
+    hret = margo_create(client->mid, server_addr, client->query_layout_id, &handle);
     if(hret != HG_SUCCESS) {
         fprintf(stderr, "ERROR: %s: margo_create() failed with %d.\n", __func__,
                 hret);
