@@ -523,6 +523,9 @@ static int dspaces_init_margo(dspaces_client_t client,
         margo_registered_name(client->mid, "query_layout_v3_rpc", &client->query_layout_v3_id,
                               &flag);
         margo_registered_name(client->mid, "get_st_rpc", &client->get_st_id, &flag);
+        margo_registered_name(client->mid, "put_layout_rpc", &client->put_layout_id, &flag);
+        margo_registered_name(client->mid, "query_layout_rpc", &client->query_layout_id,
+                              &flag);
     } else {
         client->put_id = MARGO_REGISTER(client->mid, "put_rpc", bulk_gdim_t,
                                         bulk_out_t, NULL);
@@ -590,6 +593,10 @@ static int dspaces_init_margo(dspaces_client_t client,
         client->get_st_id =
             MARGO_REGISTER(client->mid, "get_st_rpc", bulk_in_t, bulk_out_t, NULL);
         margo_register_data(client->mid, client->get_st_id, (void *)client, NULL);
+        client->put_layout_id = MARGO_REGISTER(client->mid, "put_layout_rpc", bulk_gdim_layout_t,
+                                        bulk_out_t, NULL);
+        client->query_layout_id = MARGO_REGISTER(client->mid, "query_layout_rpc", odsc_gdim_layout_t,
+                                          odsc_list_t, NULL);
     }
 
     return (dspaces_SUCCESS);
