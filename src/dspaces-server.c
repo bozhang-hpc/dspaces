@@ -3798,19 +3798,19 @@ static void put_layout_rpc(hg_handle_t handle)
 
     DEBUG_OUT("Received obj %s\n", obj_desc_sprint(&od->obj_desc));
 
+    // now update the dht
+    out.ret = dspaces_SUCCESS;
+    margo_bulk_free(bulk_handle);
+    margo_respond(handle, &out);
+    margo_free_input(handle, &in);
+    margo_destroy(handle);
+
+    //od_print(od);
+
+    obj_update_dht_st(server, od, DS_OBJ_NEW);
+    DEBUG_OUT("Finished obj_put_update_st for original odsc from put_rpc\n");
+
     if(mode==3) {
-        // now update the dht
-        out.ret = dspaces_SUCCESS;
-        margo_bulk_free(bulk_handle);
-        margo_respond(handle, &out);
-        margo_free_input(handle, &in);
-        margo_destroy(handle);
-
-        //od_print(od);
-
-        obj_update_dht_st(server, od, DS_OBJ_NEW);
-        DEBUG_OUT("Finished obj_put_update_st for original odsc from put_rpc\n");
-
         obj_descriptor new_odsc;
         struct obj_data *new_od;
         obj_desc_transpose_st(&new_odsc, &in_odsc);
