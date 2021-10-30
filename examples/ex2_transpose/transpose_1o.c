@@ -72,7 +72,6 @@ int main(int argc, char** argv)
                                  dspaces_LAYOUT_RIGHT, data, mode);
     
     MPI_Barrier(gcomm);
-    printf("=================DEBUG================\n");
 
     get_lb[0] = 0;
     get_lb[1] = 0;
