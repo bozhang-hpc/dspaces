@@ -56,6 +56,9 @@ struct ds_gspace {
     /* Pending object descriptors for draining. */
     struct list_head obj_desc_drain_list;
 
+    /* List of 'struct getvar_record_list_entry' */
+    struct list_head getvar_record_list;
+
     int rank;
     int size_sp;
     char **server_address;
@@ -77,6 +80,10 @@ struct dc_gspace {
     struct list_head locks_list;
     /* List of 'struct gdim_list_entry' */
     struct list_head gdim_list;
+
+    /* List of 'struct getvar_list_entry' */
+    struct list_head getvar_list;
+    int getvar_nums;
 
     enum sspace_hash_version hash_version;
     int max_versions;

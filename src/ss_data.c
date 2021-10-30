@@ -2901,3 +2901,31 @@ void ls_add_obj_st(ss_storage *ls, struct obj_data *od)
     ls->num_obj++;
     // ABT_rwlock_unlock(&od->lock);
 }
+
+struct getvar_list_entry *lookup_getvar_list(struct list_head *getvar_list,
+                                         const char *var_name)
+{
+    if(!getvar_list)
+        return NULL;
+    struct getvar_list_entry *e;
+    list_for_each_entry(e, getvar_list, struct getvar_list_entry, entry)
+    {
+        if(0 == strcmp(e->var_name, var_name))
+            return e;
+    }
+    return NULL;
+}
+
+struct getvar_record_list_entry *lookup_getvar_record_list(struct list_head *getvar_record_list,
+                                         const char *var_name)
+{
+    if(!getvar_record_list)
+        return NULL;
+    struct getvar_record_list_entry *e;
+    list_for_each_entry(e, getvar_record_list, struct getvar_record_list_entry, entry)
+    {
+        if(0 == strcmp(e->var_name, var_name))
+            return e;
+    }
+    return NULL;
+}

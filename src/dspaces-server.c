@@ -295,6 +295,8 @@ static int init_sspace(struct bbox *default_domain, struct ds_gspace *dsg_l)
     }
 
     INIT_LIST_HEAD(&dsg_l->sspace_list);
+    // added for get pattern record
+    INIT_LIST_HEAD(&dsg_l->getvar_record_list);
     return 0;
 err_out:
     fprintf(stderr, "%s(): ERROR failed\n", __func__);
@@ -4082,6 +4084,7 @@ static int get_query_layout_odscs(dspaces_provider_t server, odsc_gdim_layout_t 
 
     odsc_curr = *results = malloc(sizeof(**results) * total_odscs);
 
+    // need dedup further, doesn't matter now
     for(i = 0; i < peer_num; i++) {
         if(odsc_nums[i] == 0) {
             continue;
@@ -4154,3 +4157,43 @@ static void query_layout_rpc(hg_handle_t handle)
     free(results);
 }
 DEFINE_MARGO_RPC_HANDLER(query_layout_rpc)
+
+static void get_pattern_rpc(hg_handle_t handle)
+{
+    hg_return_t hret;
+    bulk_in_t in;
+    // bulk_out_t out;
+    margo_instance_id mid = margo_hg_handle_get_instance(handle);
+
+    const struct hg_info *info = margo_get_info(handle);
+    dspaces_provider_t server =
+        (dspaces_provider_t)margo_registered_data(mid, info->id);
+
+    hret = margo_get_input(handle, &in);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr,
+                "DATASPACES: ERROR handling %s: margo_get_input() failed with "
+                "%d.\n",
+                __func__, hret);
+        margo_destroy(handle);
+        return;
+    }
+
+    obj_descriptor in_fake_odsc;
+    memcpy(&in_fake_odsc, in.odsc.raw_odsc, sizeof(in_fake_odsc));
+
+    // check the server record
+    // the entry should not be added initialy here but the bbox in the entry should be
+    struct getvar_record_list_entry *e = lookup_getvar_record_list(server->dsg->get_var_record_list,
+                                                                    in_fake_odsc.name);
+    // this should not happen
+    if(!e) {
+        // add new entry
+        e = (struct getvar_record_list_entry *) malloc(sizeof(*e));
+        e->var_name = malloc(strlen(in_fake_odsc.var_name) + 1);
+        strcpy(e->var_name, in_fake_odsc.var_name);
+        list_add(&e->entry, server->dsg->get_var_record_list);
+    }
+
+}
+DEFINE_MARGO_RPC_HANDLER(get_pattern_rpc)

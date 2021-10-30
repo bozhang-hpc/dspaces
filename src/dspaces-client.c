@@ -97,6 +97,8 @@ struct dspaces_client {
     char my_node_name[HOST_NAME_MAX];
     int my_server;
     int size_sp;
+    int size_cp;
+    MPI_Comm comm;
     int rank;
     int local_put_count; // used during finalize
     int f_debug;
@@ -242,6 +244,11 @@ static struct dc_gspace *dcg_alloc(dspaces_client_t client)
     INIT_LIST_HEAD(&dcg_l->locks_list);
     init_gdim_list(&dcg_l->gdim_list);
     dcg_l->hash_version = ssd_hash_version_v1; // set default hash versio
+
+    // added for get pattern prediction
+    INIT_LIST_HEAD(&dcg_l->getvar_list);
+    dcg_l->getvar_nums = 0;
+
     return dcg_l;
 
 err_out:
@@ -405,6 +412,47 @@ static int dspaces_init_internal(int rank, dspaces_client_t *c)
     }
 
     client->rank = rank;
+
+    // now do dcg_alloc and store gid
+    client->dcg = dcg_alloc(client);
+
+    if(!(client->dcg))
+        return dspaces_ERR_ALLOCATION;
+
+    is_initialized = 1;
+
+    *c = client;
+
+    return dspaces_SUCCESS;
+}
+
+static int dspaces_init_internal_mpi(MPI_Comm comm, dspaces_client_t *c)
+{
+    const char *envdebug = getenv("DSPACES_DEBUG");
+    static int is_initialized = 0;
+    int rank, size;
+
+    if(is_initialized) {
+        fprintf(stderr,
+                "DATASPACES: WARNING: %s: multiple instantiations of the "
+                "dataspaces client are not supported.\n",
+                __func__);
+        return (dspaces_ERR_ALLOCATION);
+    }
+    dspaces_client_t client = (dspaces_client_t)calloc(1, sizeof(*client));
+    if(!client)
+        return dspaces_ERR_ALLOCATION;
+
+    if(envdebug) {
+        client->f_debug = 1;
+    }
+
+    MPI_Comm_rank(comm, &rank);
+    MPI_Comm_size(comm, &size);
+
+    client->rank = rank;
+    client->size_cp = size;
+    client->comm = comm;
 
     // now do dcg_alloc and store gid
     client->dcg = dcg_alloc(client);
@@ -647,13 +695,13 @@ int dspaces_init(int rank, dspaces_client_t *c)
 int dspaces_init_mpi(MPI_Comm comm, dspaces_client_t *c)
 {
     dspaces_client_t client;
-    int rank;
+    // int rank;
     char *listen_addr_str;
     int ret;
 
-    MPI_Comm_rank(comm, &rank);
+    // MPI_Comm_rank(comm, &rank);
 
-    ret = dspaces_init_internal(rank, &client);
+    ret = dspaces_init_internal_mpi(comm, &client);
     if(ret != dspaces_SUCCESS) {
         return (ret);
     }
@@ -3296,6 +3344,7 @@ int dspaces_put_layout_new(dspaces_client_t client, const char *var_name, unsign
 
     fill_odsc_src_st(var_name, ver, elem_size, ndim, lb, ub, src_st, &temp_odsc);
 
+    // st is default var defined globally
     if(src_st != st)
         obj_desc_transpose_bbox(&odsc, &temp_odsc);
     else
@@ -3412,6 +3461,69 @@ static int get_odscs_layout(dspaces_client_t client, obj_descriptor *odsc, int t
     return (num_odscs);
 }
 
+static int send_getvar_pattern(dspaces_client_t client, const char *var_name, int ndim,
+                                uint64_t *glb, uint64_t *gub, enum storage_type st_)
+{
+    hg_addr_t server_addr;
+    hg_handle_t handle;
+    hg_return_t hret;
+    int ret = dspaces_SUCCESS;
+    bulk_in_t in;
+    // use fake odsc due to laziness
+    obj_descriptor fake_odsc, temp_odsc;
+    memset(&temp_odsc, 0, sizeof(obj_descriptor));
+    temp_odsc->st = st_;
+    temp_odsc->bb.ndims = ndim;
+    memset(temp_odsc->bb.lb.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+    memset(temp_odsc->bb.ub.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+
+    memcpy(temp_odsc->bb.lb.c, lb, sizeof(uint64_t) * ndim);
+    memcpy(temp_odsc->bb.ub.c, ub, sizeof(uint64_t) * ndim);
+    strncpy(temp_odsc->name, var_name, sizeof(temp_odsc->name) - 1);
+    temp_odsc->name[sizeof(temp_odsc->name) - 1] = '\0';
+
+    // st is default var defined globally
+    if(st_ != st)
+        obj_desc_transpose_bbox(&fake_odsc, &temp_odsc);
+    else
+        memcpy(&fake_odsc, &temp_odsc, sizeof(obj_descriptor));
+
+    in.odsc.size = sizeof(fake_odsc);
+    in.odsc.raw_odsc = (char *)(&odsc);
+
+    get_server_address(client, &server_addr);
+
+    // TODO: new rpc need to be registered
+    hret = margo_create(client->mid, server_addr, client->, &handle);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: %s: margo_create() failed with %d.\n", __func__,
+                hret);
+        return (0);
+    }
+
+    hret = margo_forward(handle, &in);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: %s: margo_forward() failed with %d.\n",
+                __func__, hret);
+        margo_destroy(handle);
+        return (0);
+    }
+    hret = margo_get_output(handle, &out);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: %s: margo_get_output() failed with %d.\n",
+                __func__, hret);
+        margo_destroy(handle);
+        return (0);
+    }
+
+    ret = out.ret;
+    margo_free_output(handle, &out);
+    margo_destroy(handle);
+    margo_addr_free(client->mid, server_addr);
+    return ret;
+
+}
+
 int dspaces_get_layout_new(dspaces_client_t client, const char *var_name, unsigned int ver,
                 int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum ds_layout_type dst_layout, 
                 void *data, int timeout, int mode)
@@ -3423,6 +3535,12 @@ int dspaces_get_layout_new(dspaces_client_t client, const char *var_name, unsign
     int ret = dspaces_SUCCESS;
     //enum storage_type src_st;
     enum storage_type dst_st;
+    uint64_t* lbbuf = NULL;
+    uint64_t* ubbuf = NULL;
+    MPI_Comm getvar_comm;
+    int getvar_rank;
+    int getvar_root = 0;
+    MPI_Request rank_req, lb_req, ub_req;
     switch (dst_layout)
     {
     case dspaces_LAYOUT_RIGHT:
@@ -3440,10 +3558,28 @@ int dspaces_get_layout_new(dspaces_client_t client, const char *var_name, unsign
     
     fill_odsc_st(var_name, ver, elem_size, ndim, lb, ub, dst_st, &temp_odsc);
 
+    // st is default var defined globally
     if(dst_st != st)
         obj_desc_transpose_bbox(&odsc, &temp_odsc);
     else
         memcpy(&odsc, &temp_odsc, sizeof(obj_descriptor));
+
+    // collect get pattern among all get ranks
+    if(mode==4) {
+        // only if there is no get_var record in client side
+        if(!lookup_getvar_list(client->dcg->getvar_list, odsc.name)) {
+            MPI_Comm_split(client->comm, client->dcg->getvar_num, client->rank, &getvar_comm);
+            MPI_Comm_rank(getvar_comm, &getvar_rank);
+            if(getvar_rank == getvar_root) {
+                lbbuf = (uint64_t*) malloc(odsc.bb.num_dims*sizeof(uint64_t));
+                ubbuf = (uint64_t*) malloc(odsc.bb.num_dims*sizeof(uint64_t));
+            }
+            MPI_Ireduce(odsc.bb.lb.c, lbbuf, odsc.bb.num_dims, MPI_UINT64_T,
+                         MPI_MIN, getvar_root, getvar_comm, &lb_req);
+            MPI_Ireduce(odsc.bb.ub.c, ubbuf, odsc.bb.num_dims, MPI_UINT64_T,
+                         MPI_MAX, getvar_root, getvar_comm, &ub_req);
+        }
+    }
 
     DEBUG_OUT("Querying %s with timeout %d\n", obj_desc_sprint(&odsc), timeout);
 
@@ -3472,6 +3608,29 @@ int dspaces_get_layout_new(dspaces_client_t client, const char *var_name, unsign
         }
         free(odsc_tab);
     }
+
+    // add get_var pattern to list and send it to server
+    if(mode==4) {
+        if(lbbuf && ubbuf) {
+            // add new entry
+            struct getvar_list_entry *e = (struct getvar_list_entry *) malloc(sizeof(*e));
+            e->var_name = malloc(strlen(odsc.name) + 1);
+            strcpy(e->var_name, odsc.name);
+            list_add(&e->entry, client->dcg->getvar_list);
+
+            MPI_Wait(&lb_req, MPI_STATUS_IGNORE);
+            MPI_Wait(&ub_req, MPI_STATUS_IGNORE);
+
+            // send it to server
+            if(getvar_rank == getvar_root) {
+
+            }
+
+        }
+
+    }
+
+    
 
     return (0);
 }

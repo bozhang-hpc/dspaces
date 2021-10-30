@@ -81,6 +81,19 @@ struct obj_data {
     unsigned int f_free : 1;
 };
 
+struct getvar_list_entry {
+    struct list_head entry;
+    char *var_name;
+};
+
+struct getvar_record_list_entry {
+    struct list_head entry;
+    char *var_name;
+    /* Global bounding box descriptor. */
+    struct bbox bb;
+    double *interval;
+};
+
 struct gdim_list_entry {
     struct list_head entry;
     char *var_name;
@@ -406,5 +419,11 @@ void ls_add_obj_st(ss_storage *ls, struct obj_data *od);
 
 int dht_find_entry_all_st(struct dht_entry *de, obj_descriptor *q_odsc,
                        obj_descriptor **odsc_tab[], int timeout, int mode);
+
+struct getvar_list_entry *lookup_getvar_list(struct list_head *getvar_list,
+                                         const char *var_name);
+
+struct getvar_record_list_entry *lookup_getvar_record_list(struct list_head *getvar_record_list,
+                                         const char *var_name);
 
 #endif /* __SS_DATA_H_ */
