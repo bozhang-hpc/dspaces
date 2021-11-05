@@ -24,7 +24,7 @@ int main(int argc, char** argv)
     MPI_Comm gcomm = MPI_COMM_WORLD;
 
     dspaces_client_t ndcl = dspaces_CLIENT_NULL;
-    dspaces_init(rank, &ndcl);
+    dspaces_init_mpi(gcomm, &ndcl);
 
     char var_name[128];
 
