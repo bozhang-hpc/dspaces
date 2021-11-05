@@ -166,6 +166,22 @@ void bbox_intersect(const struct bbox *b0, const struct bbox *b1,
 }
 
 /*
+  Compute the super bounding boxes of b0 and b1, and store it on
+  b2. Implicit assumption: b0 and b1 intersect.
+*/
+void bbox_super(const struct bbox *b0, const struct bbox *b1,
+                    struct bbox *b2)
+{
+    int i;
+
+    b2->num_dims = b0->num_dims;
+    for(i = 0; i < b0->num_dims; i++) {
+        b2->lb.c[i] = min(b0->lb.c[i], b1->lb.c[i]);
+        b2->ub.c[i] = max(b0->ub.c[i], b1->ub.c[i]);
+    }
+}
+
+/*
   Test if two bounding boxes are equal.
 */
 int bbox_equals(const struct bbox *bb0, const struct bbox *bb1)

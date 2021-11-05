@@ -41,6 +41,7 @@ void bbox_divide(struct bbox *b0, struct bbox *b_tab);
 int bbox_include(const struct bbox *, const struct bbox *);
 int bbox_does_intersect(const struct bbox *, const struct bbox *);
 void bbox_intersect(const struct bbox *, const struct bbox *, struct bbox *);
+void bbox_super(const struct bbox *, const struct bbox *, struct bbox *);
 int bbox_equals(const struct bbox *, const struct bbox *);
 
 uint64_t bbox_volume(struct bbox *);

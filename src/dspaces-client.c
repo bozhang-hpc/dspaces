@@ -91,6 +91,8 @@ struct dspaces_client {
     hg_id_t get_st_id;
     hg_id_t put_layout_id;
     hg_id_t query_layout_id;
+    hg_id_t get_pattern_id;
+    hg_id_t get_hybrid_id;
     struct dc_gspace *dcg;
     char **server_address;
     char **node_names;
@@ -574,6 +576,9 @@ static int dspaces_init_margo(dspaces_client_t client,
         margo_registered_name(client->mid, "put_layout_rpc", &client->put_layout_id, &flag);
         margo_registered_name(client->mid, "query_layout_rpc", &client->query_layout_id,
                               &flag);
+        margo_registered_name(client->mid, "get_pattern_rpc", &client->get_pattern_id,
+                              &flag);
+        margo_registered_name(client->mid, "get_hybrid_rpc", &client->get_hybrid_id, &flag);
     } else {
         client->put_id = MARGO_REGISTER(client->mid, "put_rpc", bulk_gdim_t,
                                         bulk_out_t, NULL);
@@ -645,6 +650,10 @@ static int dspaces_init_margo(dspaces_client_t client,
                                         bulk_out_t, NULL);
         client->query_layout_id = MARGO_REGISTER(client->mid, "query_layout_rpc", odsc_gdim_layout_t,
                                           odsc_list_t, NULL);
+        client->get_pattern_id = MARGO_REGISTER(client->mid, "get_pattern_rpc", bulk_in_t,
+                                          bulk_out_t, NULL);
+        client->get_hybrid_id =
+            MARGO_REGISTER(client->mid, "get_hybrid_rpc", bulk_in_layout_t, bulk_out_t, NULL);
     }
 
     return (dspaces_SUCCESS);
@@ -765,6 +774,7 @@ int dspaces_fini(dspaces_client_t client)
     DEBUG_OUT("all objects drained. Finalizing...\n");
 
     free_gdim_list(&client->dcg->gdim_list);
+    free_getvar_list(&client->dcg->getvar_list);
     free(client->server_address[0]);
     free(client->server_address);
     ls_free(client->dcg->ls);
@@ -3325,6 +3335,136 @@ int dspaces_get_layout(dspaces_client_t client, const char *var_name, unsigned i
     return (0);
 }
 
+static int get_data_hybrid(dspaces_client_t client, int num_odscs, obj_descriptor req_obj,
+                            obj_descriptor *odsc_tab, void *data)
+{
+    int ret = dspaces_SUCCESS;
+    bulk_in_layout_t *in;
+    in = (bulk_in_layout_t *)malloc(sizeof(bulk_in_t) * num_odscs);
+    struct obj_data **od;
+    od = malloc(num_odscs * sizeof(struct obj_data *));
+    margo_request *serv_req;
+    hg_handle_t *hndl;
+    hndl = (hg_handle_t *)malloc(sizeof(hg_handle_t) * num_odscs);
+    serv_req = (margo_request *)malloc(sizeof(margo_request) * num_odscs);
+
+    for(int i = 0; i < num_odscs; ++i) {
+        od[i] = obj_data_alloc(&odsc_tab[i]);
+        in[i].odsc.size = sizeof(obj_descriptor);
+        in[i].odsc.raw_odsc = (char *)(&odsc_tab[i]);
+        if(odsc_tab[i].st == req_obj.st) {
+            in[i].param = 0;
+        } else {
+            in[i].param = 1;
+        }
+
+        hg_size_t rdma_size = (req_obj.size) * bbox_volume(&odsc_tab[i].bb);
+
+        margo_bulk_create(client->mid, 1, (void **)(&(od[i]->data)), &rdma_size,
+                          HG_BULK_WRITE_ONLY, &in[i].handle);
+
+        hg_addr_t server_addr;
+        margo_addr_lookup(client->mid, odsc_tab[i].owner, &server_addr);
+
+        hg_handle_t handle;
+        //if(odsc_tab[i].flags & DS_CLIENT_STORAGE) {
+        //    DEBUG_OUT("retrieving object from client-local storage.\n");
+        //    margo_create(client->mid, server_addr, client->get_local_id,
+        //                 &handle);
+        //} else {
+            DEBUG_OUT("retrieving object from server storage.\n");
+            margo_create(client->mid, server_addr, client->get_hybrid_id, &handle);
+        //}
+        margo_request req;
+        // forward get requests
+        margo_iforward(handle, &in[i], &req);
+        hndl[i] = handle;
+        serv_req[i] = req;
+        margo_addr_free(client->mid, server_addr);
+    }
+
+    obj_descriptor temp_odsc;
+
+    struct obj_data *return_od;
+
+    if(req_obj.st == column_major) {
+        obj_desc_transpose_bbox(&temp_odsc, &req_obj);
+        return_od = obj_data_alloc(&temp_odsc);
+    } else {
+        return_od = obj_data_alloc(&req_obj);
+    }
+
+    for(int i = 0; i < num_odscs; ++i) {
+        margo_wait(serv_req[i]);
+        bulk_out_t resp;
+        margo_get_output(hndl[i], &resp);
+        if(resp.ret == 1) { 
+        // found the dst_layout thru double check
+            // change st first
+            obj_descriptor temp_odsc_entry1;
+            obj_desc_transpose_st(&temp_odsc_entry1, &od[i]->obj_desc);
+            memcpy(&od[i]->obj_desc, &temp_odsc_entry1, sizeof(obj_descriptor));
+        }
+
+        if(od[i]->obj_desc.st == req_obj.st) {
+            // normal copy
+            if(req_obj.st == column_major) {
+                obj_descriptor temp_odsc_entry2;
+                obj_desc_transpose_bbox(&temp_odsc_entry2, &od[i]->obj_desc);
+                memcpy(&od[i]->obj_desc, &temp_odsc_entry2, sizeof(obj_descriptor));
+            }
+            ssd_copy(return_od, od[i]);
+            
+        } else {
+            // need transpose
+            struct obj_data *temp_od;
+            obj_descriptor temp_odsc_entry3;
+            obj_desc_transpose_st(&temp_odsc_entry3, &od[i]->obj_desc);
+            temp_od = obj_data_alloc(&temp_odsc_entry3);
+            
+            int func_ret;
+            switch (req_obj.st)
+            {
+            case column_major:
+                func_ret = od_rm2cm(temp_od, od[i]);
+                break;
+
+            case row_major:
+                func_ret = od_cm2rm(temp_od, od[i]);
+                break;
+    
+            default:
+                func_ret = 0;
+                break;
+            }
+            if(func_ret != bbox_volume(&temp_od->obj_desc.bb)) {
+                fprintf(stderr,
+                    "DATASPACES: ERROR handling %s: od_transpose() failed with "
+                    "%d.\n",
+                    __func__, ret);
+                ret = dspaces_ERR_LAYOUT;
+            }
+            // normal copy
+            if(req_obj.st == column_major) {
+                obj_descriptor temp_odsc_entry4;
+                obj_desc_transpose_bbox(&temp_odsc_entry4, &temp_od->obj_desc);
+                memcpy(&temp_od->obj_desc, &temp_odsc_entry4, sizeof(obj_descriptor));
+            }
+            ssd_copy(return_od, temp_od);
+            obj_data_free(temp_od);
+        }
+
+        obj_data_free(od[i]);
+        margo_free_output(hndl[i], &resp);
+        margo_destroy(hndl[i]);
+    }
+    free(hndl);
+    free(serv_req);
+    free(in);
+    free(return_od);
+    return ret;
+}
+
 int dspaces_put_layout_new(dspaces_client_t client, const char *var_name, unsigned int ver,
                 int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum ds_layout_type src_layout,
                 const void *data, int mode)
@@ -3469,18 +3609,19 @@ static int send_getvar_pattern(dspaces_client_t client, const char *var_name, in
     hg_return_t hret;
     int ret = dspaces_SUCCESS;
     bulk_in_t in;
+    bulk_out_t out;
     // use fake odsc due to laziness
     obj_descriptor fake_odsc, temp_odsc;
     memset(&temp_odsc, 0, sizeof(obj_descriptor));
-    temp_odsc->st = st_;
-    temp_odsc->bb.ndims = ndim;
-    memset(temp_odsc->bb.lb.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
-    memset(temp_odsc->bb.ub.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+    temp_odsc.st = st_;
+    temp_odsc.bb.num_dims = ndim;
+    memset(temp_odsc.bb.lb.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+    memset(temp_odsc.bb.ub.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
 
-    memcpy(temp_odsc->bb.lb.c, lb, sizeof(uint64_t) * ndim);
-    memcpy(temp_odsc->bb.ub.c, ub, sizeof(uint64_t) * ndim);
-    strncpy(temp_odsc->name, var_name, sizeof(temp_odsc->name) - 1);
-    temp_odsc->name[sizeof(temp_odsc->name) - 1] = '\0';
+    memcpy(temp_odsc.bb.lb.c, glb, sizeof(uint64_t) * ndim);
+    memcpy(temp_odsc.bb.ub.c, gub, sizeof(uint64_t) * ndim);
+    strncpy(temp_odsc.name, var_name, sizeof(temp_odsc.name) - 1);
+    temp_odsc.name[sizeof(temp_odsc.name) - 1] = '\0';
 
     // st is default var defined globally
     if(st_ != st)
@@ -3489,12 +3630,11 @@ static int send_getvar_pattern(dspaces_client_t client, const char *var_name, in
         memcpy(&fake_odsc, &temp_odsc, sizeof(obj_descriptor));
 
     in.odsc.size = sizeof(fake_odsc);
-    in.odsc.raw_odsc = (char *)(&odsc);
+    in.odsc.raw_odsc = (char *)(&fake_odsc);
 
     get_server_address(client, &server_addr);
 
-    // TODO: new rpc need to be registered
-    hret = margo_create(client->mid, server_addr, client->, &handle);
+    hret = margo_create(client->mid, server_addr, client->get_pattern_id, &handle);
     if(hret != HG_SUCCESS) {
         fprintf(stderr, "ERROR: %s: margo_create() failed with %d.\n", __func__,
                 hret);
@@ -3517,6 +3657,7 @@ static int send_getvar_pattern(dspaces_client_t client, const char *var_name, in
     }
 
     ret = out.ret;
+    DEBUG_OUT("Send get pattern to servers\n");
     margo_free_output(handle, &out);
     margo_destroy(handle);
     margo_addr_free(client->mid, server_addr);
@@ -3540,7 +3681,7 @@ int dspaces_get_layout_new(dspaces_client_t client, const char *var_name, unsign
     MPI_Comm getvar_comm;
     int getvar_rank;
     int getvar_root = 0;
-    MPI_Request rank_req, lb_req, ub_req;
+    MPI_Request lb_req, ub_req;
     switch (dst_layout)
     {
     case dspaces_LAYOUT_RIGHT:
@@ -3564,11 +3705,14 @@ int dspaces_get_layout_new(dspaces_client_t client, const char *var_name, unsign
     else
         memcpy(&odsc, &temp_odsc, sizeof(obj_descriptor));
 
+    struct getvar_list_entry *e;
     // collect get pattern among all get ranks
     if(mode==4) {
         // only if there is no get_var record in client side
-        if(!lookup_getvar_list(client->dcg->getvar_list, odsc.name)) {
-            MPI_Comm_split(client->comm, client->dcg->getvar_num, client->rank, &getvar_comm);
+        e = lookup_getvar_list(&client->dcg->getvar_list, odsc.name, odsc.st);
+        if(!e) {
+            MPI_Comm_split(client->comm, client->dcg->getvar_nums, client->rank, &getvar_comm);
+            client->dcg->getvar_nums++;
             MPI_Comm_rank(getvar_comm, &getvar_rank);
             if(getvar_rank == getvar_root) {
                 lbbuf = (uint64_t*) malloc(odsc.bb.num_dims*sizeof(uint64_t));
@@ -3606,24 +3750,26 @@ int dspaces_get_layout_new(dspaces_client_t client, const char *var_name, unsign
         else if(mode == 3) {
             get_data_st(client, num_odscs, odsc, odsc_tab, data);
         }
+        else if(mode == 4) {
+            get_data_hybrid(client, num_odscs, odsc, odsc_tab, data);
+        }
         free(odsc_tab);
     }
 
     // add get_var pattern to list and send it to server
     if(mode==4) {
-        if(lbbuf && ubbuf) {
+        if(!e) {
             // add new entry
-            struct getvar_list_entry *e = (struct getvar_list_entry *) malloc(sizeof(*e));
+            e = (struct getvar_list_entry *) malloc(sizeof(*e));
             e->var_name = malloc(strlen(odsc.name) + 1);
             strcpy(e->var_name, odsc.name);
-            list_add(&e->entry, client->dcg->getvar_list);
+            list_add(&e->entry, &client->dcg->getvar_list);
 
             MPI_Wait(&lb_req, MPI_STATUS_IGNORE);
             MPI_Wait(&ub_req, MPI_STATUS_IGNORE);
 
-            // send it to server
             if(getvar_rank == getvar_root) {
-
+                send_getvar_pattern(client, odsc.name, odsc.bb.num_dims, lbbuf, ubbuf, dst_st);
             }
 
         }

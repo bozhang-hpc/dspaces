@@ -18,6 +18,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #ifdef HAVE_DRC
@@ -78,6 +79,9 @@ struct dspaces_provider {
     hg_id_t put_layout_id;
     hg_id_t query_layout_id;
     hg_id_t odsc_layout_internal_id;
+    hg_id_t get_pattern_internal_id;
+    hg_id_t get_pattern_id;
+    hg_id_t get_hybrid_id;
     struct ds_gspace *dsg;
     char **server_address;
     char **node_names;
@@ -99,6 +103,7 @@ struct dspaces_provider {
     ABT_mutex dht_mutex;
     ABT_mutex sspace_mutex;
     ABT_mutex kill_mutex;
+    ABT_mutex get_pattern_mutex;
 
     ABT_xstream drain_xstream;
     ABT_pool drain_pool;
@@ -131,6 +136,9 @@ DECLARE_MARGO_RPC_HANDLER(get_st_rpc);
 DECLARE_MARGO_RPC_HANDLER(put_layout_rpc);
 DECLARE_MARGO_RPC_HANDLER(query_layout_rpc);
 DECLARE_MARGO_RPC_HANDLER(odsc_layout_internal_rpc);
+DECLARE_MARGO_RPC_HANDLER(get_pattern_rpc);
+DECLARE_MARGO_RPC_HANDLER(get_pattern_internal_rpc);
+DECLARE_MARGO_RPC_HANDLER(get_hybrid_rpc);
 
 static void put_rpc(hg_handle_t h);
 static void put_local_rpc(hg_handle_t h);
@@ -158,6 +166,9 @@ static void get_st_rpc(hg_handle_t h);
 static void put_layout_rpc(hg_handle_t h);
 static void query_layout_rpc(hg_handle_t h);
 static void odsc_layout_internal_rpc(hg_handle_t h);
+static void get_pattern_rpc(hg_handle_t h);
+static void get_pattern_internal_rpc(hg_handle_t h);
+static void get_hybrid_rpc(hg_handle_t h);
 // static void write_lock_rpc(hg_handle_t h);
 // static void read_lock_rpc(hg_handle_t h);
 
@@ -516,6 +527,8 @@ static int free_sspace(struct ds_gspace *dsg_l)
         free(ssd_entry);
     }
 
+    free_getvar_record_list(&dsg_l->getvar_record_list);
+
     return 0;
 }
 
@@ -861,6 +874,7 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm,
     ABT_mutex_create(&server->dht_mutex);
     ABT_mutex_create(&server->sspace_mutex);
     ABT_mutex_create(&server->kill_mutex);
+    ABT_mutex_create(&server->get_pattern_mutex);
 
     hg = margo_get_class(server->mid);
 
@@ -962,6 +976,16 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm,
                               &server->odsc_layout_internal_id, &flag);
         DS_HG_REGISTER(hg, server->odsc_layout_internal_id, odsc_gdim_layout_t, odsc_list_t,
                        odsc_layout_internal_rpc);
+        margo_registered_name(server->mid, "get_pattern_internal_rpc",
+                              &server->get_pattern_internal_id, &flag);
+        DS_HG_REGISTER(hg, server->get_pattern_internal_id, bulk_in_t, bulk_out_t,
+                       get_pattern_internal_rpc);
+        margo_registered_name(server->mid, "get_pattern_rpc",
+                              &server->get_pattern_id, &flag);
+        DS_HG_REGISTER(hg, server->get_pattern_id, bulk_in_t, bulk_out_t,
+                       get_pattern_rpc);
+        margo_registered_name(server->mid, "get_hybrid_rpc", &server->get_hybrid_id, &flag);
+        DS_HG_REGISTER(hg, server->get_hybrid_id, bulk_in_layout_t, bulk_out_t, get_hybrid_rpc);
     } else {
         server->put_id = MARGO_REGISTER(server->mid, "put_rpc", bulk_gdim_t,
                                         bulk_out_t, put_rpc);
@@ -1085,6 +1109,19 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm,
                            odsc_list_t, odsc_layout_internal_rpc);
         margo_register_data(server->mid, server->odsc_layout_internal_id,
                             (void *)server, NULL);
+        server->get_pattern_internal_id =
+            MARGO_REGISTER(server->mid, "get_pattern_internal_rpc", bulk_in_t,
+                           bulk_out_t, get_pattern_internal_rpc);
+        margo_register_data(server->mid, server->get_pattern_internal_id,
+                            (void *)server, NULL);
+        server->get_pattern_id =
+            MARGO_REGISTER(server->mid, "get_pattern_rpc", bulk_in_t,
+                           bulk_out_t, get_pattern_rpc);
+        margo_register_data(server->mid, server->get_pattern_id,
+                            (void *)server, NULL);
+        server->get_hybrid_id = MARGO_REGISTER(server->mid, "get_hybrid_rpc", bulk_in_layout_t,
+                                        bulk_out_t, get_hybrid_rpc);
+        margo_register_data(server->mid, server->get_hybrid_id, (void *)server, NULL);
     }
     int err = dsg_alloc(server, "dataspaces.conf", comm);
     if(err) {
@@ -3717,6 +3754,116 @@ static void get_st_rpc(hg_handle_t handle)
 }
 DEFINE_MARGO_RPC_HANDLER(get_st_rpc)
 
+static void get_hybrid_rpc(hg_handle_t handle)
+{
+    hg_return_t hret;
+    bulk_in_layout_t in;
+    bulk_out_t out;
+    hg_bulk_t bulk_handle;
+    int st_flag;
+
+    margo_instance_id mid = margo_hg_handle_get_instance(handle);
+
+    const struct hg_info *info = margo_get_info(handle);
+    dspaces_provider_t server =
+        (dspaces_provider_t)margo_registered_data(mid, info->id);
+
+    hret = margo_get_input(handle, &in);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr,
+                "DATASPACES: ERROR handling %s: margo_get_input() failed with "
+                "%d.\n",
+                __func__, hret);
+        margo_destroy(handle);
+        return;
+    }
+
+    obj_descriptor in_odsc, temp_odsc, temp_odsc2, temp_from_odsc;
+
+    memset(&in_odsc, 0, sizeof(in_odsc));
+    memcpy(&in_odsc, in.odsc.raw_odsc, sizeof(in_odsc));
+    // st_flag == 1 means odsc_tab[i]'s st is different from the req_odsc
+    // so it needs double check if ls has obj_data in opposite st
+    st_flag = in.param;
+
+    DEBUG_OUT("received get request\n");
+
+    struct obj_data *od, *from_obj, *temp_from_obj, *probe_obj;
+
+    //double check if ls has obj_data in opposite st,
+    //but only check those whose st == src_st, 
+    //which means it does not hit cache at odsc check
+    if(st_flag && in_odsc.st == in_odsc.src_st) {
+        obj_desc_transpose_st(&temp_odsc2, &in_odsc);
+        ABT_mutex_lock(server->ls_mutex);
+        probe_obj = ls_find_st(server->dsg->ls, &temp_odsc2);
+        ABT_mutex_unlock(server->ls_mutex);
+        if(probe_obj) {
+            // out param show double check found
+            out.ret = 1;
+            from_obj = probe_obj;
+            memcpy(&in_odsc, &temp_odsc2, sizeof(obj_descriptor));
+        } else {
+            out.ret = 0;
+            from_obj = ls_find_st(server->dsg->ls, &in_odsc);
+        }
+    } else {
+        out.ret = 0;
+        from_obj = ls_find_st(server->dsg->ls, &in_odsc);
+    }
+
+    // first get the exact data no matter what layout it is
+    // ssd_copy needs trick for column-major copy
+    if(in_odsc.st == column_major) {
+        obj_desc_transpose_bbox(&temp_odsc, &in_odsc);
+        obj_desc_transpose_bbox(&temp_from_odsc, &from_obj->obj_desc);
+        temp_from_obj = obj_data_alloc_no_data(&temp_from_odsc, from_obj->data);
+        od = obj_data_alloc(&temp_odsc);
+        ssd_copy(od, temp_from_obj);
+        free(temp_from_obj);
+    } else {
+        od = obj_data_alloc(&in_odsc);
+        ssd_copy(od, from_obj);
+    }
+
+    hg_size_t size = (in_odsc.size) * bbox_volume(&(in_odsc.bb));
+    void *buffer = (void *)od->data;
+
+    hret = margo_bulk_create(mid, 1, (void **)&buffer, &size, HG_BULK_READ_ONLY,
+                             &bulk_handle);
+
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_bulk_create() failure\n", __func__);
+        out.ret = dspaces_ERR_MERCURY;
+        margo_respond(handle, &out);
+        margo_free_input(handle, &in);
+        margo_destroy(handle);
+        return;
+    }
+
+    hret = margo_bulk_transfer(mid, HG_BULK_PUSH, info->addr, in.handle, 0,
+                               bulk_handle, 0, size);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_bulk_transfer() failure (%d)\n",
+                __func__, hret);
+        out.ret = dspaces_ERR_MERCURY;
+        margo_respond(handle, &out);
+        margo_free_input(handle, &in);
+        margo_bulk_free(bulk_handle);
+        margo_destroy(handle);
+        return;
+    }
+
+    margo_bulk_free(bulk_handle);
+    out.ret = dspaces_SUCCESS;
+    obj_data_free(od);
+    margo_respond(handle, &out);
+    margo_free_input(handle, &in);
+    margo_destroy(handle);
+
+}
+DEFINE_MARGO_RPC_HANDLER(get_hybrid_rpc)
+
 static void put_layout_rpc(hg_handle_t handle)
 {
     hg_return_t hret;
@@ -3849,6 +3996,75 @@ static void put_layout_rpc(hg_handle_t handle)
         ABT_mutex_unlock(server->ls_mutex);
         obj_update_dht_st(server, new_od, DS_OBJ_NEW);
         DEBUG_OUT("Finished obj_put_update_st converted odsc from put_rpc\n");
+    }
+
+    if(mode == 4) {
+        enum storage_type probe_st = (in_odsc.st == row_major) ? column_major: row_major;
+        ABT_mutex_lock(server->get_pattern_mutex);
+        struct getvar_record_list_entry *e = lookup_getvar_record_list(&server->dsg->getvar_record_list,
+                                                                    in_odsc.name, probe_st);
+        ABT_mutex_unlock(server->get_pattern_mutex);
+        if(e && e->st != in_odsc.st) {
+            obj_descriptor sub_odsc, new_odsc;
+            struct obj_data *sub_od, *new_od;
+            if(bbox_does_intersect(&in_odsc.bb, &e->bb)) {
+                DEBUG_OUT("Found intersected get_pattern record!\n");
+                obj_descriptor temp_to_odsc, temp_from_odsc;
+                struct obj_data *temp_from_obj;
+                struct bbox sub_bb;
+                bbox_intersect(&in_odsc.bb, &e->bb, &sub_bb);
+                memcpy(&sub_odsc, &in_odsc, sizeof(obj_descriptor));
+                memcpy(&sub_odsc.bb, &sub_bb, sizeof(sub_bb));
+
+                if(in_odsc.st == column_major) {
+                    obj_desc_transpose_bbox(&temp_to_odsc, &sub_odsc);
+                    obj_desc_transpose_bbox(&temp_from_odsc, &in_odsc);
+                    temp_from_obj = obj_data_alloc_no_data(&temp_from_odsc, od->data);
+                    sub_od = obj_data_alloc(&temp_to_odsc);
+                    ssd_copy(sub_od, temp_from_obj);
+                    free(temp_from_obj);
+                    // resume back sub_od's odsc to sub_odsc
+                    memcpy(&sub_od->obj_desc, &sub_odsc, sizeof(obj_descriptor));
+                } else {
+                    sub_od = obj_data_alloc(&sub_odsc);
+                    ssd_copy(sub_od, od);
+                }
+
+                memcpy(&new_odsc, &sub_odsc, sizeof(obj_descriptor));
+                new_odsc.st = e->st;
+                new_od = obj_data_alloc(&new_odsc);
+                memcpy(&new_od->gdim, &od->gdim, sizeof(struct global_dimension));
+
+                int func_ret;
+                switch (new_odsc.st)
+                {
+                case column_major:
+                    func_ret = od_rm2cm(new_od, sub_od);
+                    break;
+
+                case row_major:
+                    func_ret = od_cm2rm(new_od, sub_od);
+                    break;
+    
+                default:
+                    func_ret = 0;
+                    break;
+                }
+                if(func_ret != bbox_volume(&new_od->obj_desc.bb)) {
+                    fprintf(stderr,
+                        "DATASPACES: ERROR handling %s: od_transpose() failed with "
+                        "%d.\n",
+                        __func__, func_ret);
+                    // ret = dspaces_ERR_LAYOUT;
+                }
+
+                ABT_mutex_lock(server->ls_mutex);
+                ls_add_obj_st(server->dsg->ls, new_od);
+                ABT_mutex_unlock(server->ls_mutex);
+                obj_update_dht_st(server, new_od, DS_OBJ_NEW);
+                DEBUG_OUT("Finished obj_put_update_st converted odsc from put_rpc\n");
+            }
+        }
     }
 }
 DEFINE_MARGO_RPC_HANDLER(put_layout_rpc)
@@ -4022,7 +4238,7 @@ static int get_query_layout_odscs(dspaces_provider_t server, odsc_gdim_layout_t 
         if(odsc_nums[self_id_num]) {
             odsc_tabs[self_id_num] =
                 malloc(sizeof(**odsc_tabs) * odsc_nums[self_id_num]);
-            if(mode == 1 | mode == 3) {
+            if(mode == 1 || mode == 3) {
                 for(i = 0; i < odsc_nums[self_id_num]; i++) {
                     obj_descriptor *odsc =
                         &odsc_tabs[self_id_num][i]; // readability
@@ -4031,7 +4247,7 @@ static int get_query_layout_odscs(dspaces_provider_t server, odsc_gdim_layout_t 
                     DEBUG_OUT("%s\n", obj_desc_sprint(&odsc_tabs[self_id_num][i]));
                 }  
             }
-            else if(mode == 2) {
+            else if(mode == 2 || mode == 4) {
                 src_st = podsc[0]->src_st;
                 if(src_st == q_odsc->st) {
                     for(i = 0; i < odsc_nums[self_id_num]; i++) {
@@ -4107,6 +4323,11 @@ static int get_query_layout_odscs(dspaces_provider_t server, odsc_gdim_layout_t 
     return (sizeof(obj_descriptor) * total_odscs);
 }
 
+// static void get_interval_internal_rpc(hg_handle_t handle)
+// {
+
+// }
+
 static void query_layout_rpc(hg_handle_t handle)
 {
     // write a func in ss_data.c, find the first odsc to check its src_layout
@@ -4123,7 +4344,11 @@ static void query_layout_rpc(hg_handle_t handle)
     struct global_dimension in_gdim;
     int timeout;
     obj_descriptor *results;
-    hg_return_t hret; 
+    hg_return_t hret;
+    // int mode;
+    // hg_addr_t server_addr;
+    // hg_handle_t *hndls;
+    // margo_request *serv_reqs;
 
     // unwrap context and input from margo
     mid = margo_hg_handle_get_instance(handle);
@@ -4147,6 +4372,47 @@ static void query_layout_rpc(hg_handle_t handle)
     DEBUG_OUT("Received query for %s with timeout %d",
               obj_desc_sprint(&in_odsc), timeout);
 
+    // mode = in.mode;
+    // if(mode == 4) {
+    //     hndls = malloc(sizeof(*hndls) * server->comm_size);
+    //     serv_reqs = malloc(sizeof(*serv_reqs) * server->comm_size);
+    //     for(int i=0; i<server->comm_size; i++) {
+    //         if(i == server->dsg->rank) {
+    //             continue;
+    //         }
+    //         margo_addr_lookup(server->mid, server->server_address[i],
+    //                       &server_addr);
+    //         margo_create(server->mid, server_addr, server->_internal_id,
+    //                  &hndls[i]);
+    //         margo_iforward(hndls[i], &in, &serv_reqs[i]);
+    //         margo_addr_free(server->mid, server_addr);
+    //     }
+
+    //     ABT_mutex_lock(server->get_pattern_mutex);
+    //     struct getvar_record_list_entry *e = lookup_getvar_record_list(server->dsg->get_var_record_list,
+    //                                                                 in_odsc.name);
+    //     if(!e) {
+    //         // add new entry
+    //         e = (struct getvar_record_list_entry *) malloc(sizeof(*e));
+    //         e->bb.num_dims = -1; // uninit flag
+    //         INIT_LIST_HEAD(e->interval_list);
+    //         e->var_name = malloc(strlen(in_odsc.var_name) + 1);
+    //         strcpy(e->var_name, in_odsc.var_name);
+    //         list_add(&e->entry, server->dsg->get_var_record_list);
+    //     }
+
+    //     if(!lookup_interval_list(e->interval_list, in_odsc.version)) {
+    //         struct timeval now;
+    //         gettimeofday(&now, 0);
+    //         struct interval_entry *ie = (struct interval_entry *) malloc(sizeof(*ie));
+    //         ie->version = in_odsc.version;
+    //         ie->time = (double)now.tv_usec + now.tv_sec * 1.e6;
+    //         list_add(&ie->entry, e->interval_list);
+    //     }
+
+    //     ABT_mutex_unlock(server->get_pattern_mutex);
+    // }
+
     out.odsc_list.size = get_query_layout_odscs(server, &in, timeout, &results);
 
     out.odsc_list.raw_odsc = (char *)results;
@@ -4158,11 +4424,12 @@ static void query_layout_rpc(hg_handle_t handle)
 }
 DEFINE_MARGO_RPC_HANDLER(query_layout_rpc)
 
-static void get_pattern_rpc(hg_handle_t handle)
+static void get_pattern_internal_rpc(hg_handle_t handle)
 {
     hg_return_t hret;
     bulk_in_t in;
-    // bulk_out_t out;
+    bulk_out_t out;
+
     margo_instance_id mid = margo_hg_handle_get_instance(handle);
 
     const struct hg_info *info = margo_get_info(handle);
@@ -4182,18 +4449,141 @@ static void get_pattern_rpc(hg_handle_t handle)
     obj_descriptor in_fake_odsc;
     memcpy(&in_fake_odsc, in.odsc.raw_odsc, sizeof(in_fake_odsc));
 
+    out.ret = dspaces_SUCCESS;
+    margo_respond(handle, &out);
+
     // check the server record
     // the entry should not be added initialy here but the bbox in the entry should be
-    struct getvar_record_list_entry *e = lookup_getvar_record_list(server->dsg->get_var_record_list,
-                                                                    in_fake_odsc.name);
+    ABT_mutex_lock(server->get_pattern_mutex);
+    struct getvar_record_list_entry *e = lookup_getvar_record_list(&server->dsg->getvar_record_list,
+                                                                    in_fake_odsc.name, in_fake_odsc.st);
     // this should not happen
     if(!e) {
         // add new entry
         e = (struct getvar_record_list_entry *) malloc(sizeof(*e));
-        e->var_name = malloc(strlen(in_fake_odsc.var_name) + 1);
-        strcpy(e->var_name, in_fake_odsc.var_name);
-        list_add(&e->entry, server->dsg->get_var_record_list);
+        e->bb.num_dims = -1; // uninit flag
+        e->st = in_fake_odsc.st;
+        e->var_name = malloc(strlen(in_fake_odsc.name) + 1);
+        strcpy(e->var_name, in_fake_odsc.name);
+        list_add(&e->entry, &server->dsg->getvar_record_list);
     }
+
+    // if uninitialized or existing bbox is intersected by coming bbox, update global bbox
+    if(e->bb.num_dims == -1) {
+        e->bb.num_dims = in_fake_odsc.bb.num_dims;
+        memset(e->bb.lb.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+        memset(e->bb.ub.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+        memcpy(e->bb.lb.c, in_fake_odsc.bb.lb.c, sizeof(uint64_t) * e->bb.num_dims);
+        memcpy(e->bb.ub.c, in_fake_odsc.bb.ub.c, sizeof(uint64_t) * e->bb.num_dims);
+    } else if (bbox_does_intersect(&e->bb, &in_fake_odsc.bb)) {
+        struct bbox superbb;
+        bbox_super(&e->bb, &in_fake_odsc.bb, &superbb);
+        memcpy(e->bb.lb.c, superbb.lb.c, sizeof(uint64_t) * e->bb.num_dims);
+        memcpy(e->bb.ub.c, superbb.ub.c, sizeof(uint64_t) * e->bb.num_dims);
+    }
+    ABT_mutex_unlock(server->get_pattern_mutex);
+
+    margo_free_input(handle, &in);
+    margo_destroy(handle);
+
+}
+DEFINE_MARGO_RPC_HANDLER(get_pattern_internal_rpc)
+
+static void get_pattern_rpc(hg_handle_t handle)
+{
+    hg_return_t hret;
+    bulk_in_t in;
+    bulk_out_t out;
+    hg_addr_t server_addr;
+    hg_handle_t *hndls;
+    margo_request *serv_reqs;
+    bulk_out_t resp;
+    margo_instance_id mid = margo_hg_handle_get_instance(handle);
+
+    const struct hg_info *info = margo_get_info(handle);
+    dspaces_provider_t server =
+        (dspaces_provider_t)margo_registered_data(mid, info->id);
+
+    hret = margo_get_input(handle, &in);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr,
+                "DATASPACES: ERROR handling %s: margo_get_input() failed with "
+                "%d.\n",
+                __func__, hret);
+        margo_destroy(handle);
+        return;
+    }
+
+    obj_descriptor in_fake_odsc;
+    memcpy(&in_fake_odsc, in.odsc.raw_odsc, sizeof(in_fake_odsc));
+
+    out.ret = dspaces_SUCCESS;
+    margo_respond(handle, &out);
+
+    hndls = malloc(sizeof(*hndls) * server->comm_size);
+    serv_reqs = malloc(sizeof(*serv_reqs) * server->comm_size);
+
+    for(int i=0; i<server->comm_size; i++) {
+        if(i == server->dsg->rank) {
+            continue;
+        }
+        margo_addr_lookup(server->mid, server->server_address[i],
+                          &server_addr);
+        margo_create(server->mid, server_addr, server->get_pattern_internal_id,
+                     &hndls[i]);
+        margo_iforward(hndls[i], &in, &serv_reqs[i]);
+        margo_addr_free(server->mid, server_addr);
+    }
+    
+    // need to revise for new coming get pattern with same var_name but different bbox
+
+    // check the server record
+    // the entry should added initialy here
+    ABT_mutex_lock(server->get_pattern_mutex);
+    struct getvar_record_list_entry *e = lookup_getvar_record_list(&server->dsg->getvar_record_list,
+                                                                    in_fake_odsc.name, in_fake_odsc.st);
+    if(!e) {
+        // add new entry
+        e = (struct getvar_record_list_entry *) malloc(sizeof(*e));
+        e->bb.num_dims = -1; // uninit flag
+        INIT_LIST_HEAD(&e->interval_list);
+        e->st = in_fake_odsc.st;
+        e->var_name = malloc(strlen(in_fake_odsc.name) + 1);
+        strcpy(e->var_name, in_fake_odsc.name);
+        list_add(&e->entry, &server->dsg->getvar_record_list);
+    }
+
+    // if uninitialized or existing bbox is intersected by coming bbox, update global bbox
+    if(e->bb.num_dims == -1) {
+        e->bb.num_dims = in_fake_odsc.bb.num_dims;
+        memset(e->bb.lb.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+        memset(e->bb.ub.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+        memcpy(e->bb.lb.c, in_fake_odsc.bb.lb.c, sizeof(uint64_t) * e->bb.num_dims);
+        memcpy(e->bb.ub.c, in_fake_odsc.bb.ub.c, sizeof(uint64_t) * e->bb.num_dims);
+    } else if (bbox_does_intersect(&e->bb, &in_fake_odsc.bb)) {
+        struct bbox superbb;
+        bbox_super(&e->bb, &in_fake_odsc.bb, &superbb);
+        memcpy(e->bb.lb.c, superbb.lb.c, sizeof(uint64_t) * e->bb.num_dims);
+        memcpy(e->bb.ub.c, superbb.ub.c, sizeof(uint64_t) * e->bb.num_dims);
+    }
+
+    ABT_mutex_unlock(server->get_pattern_mutex);
+
+    for(int i=0; i<server->comm_size; i++) {
+        if(i == server->dsg->rank) {
+            continue;
+        }
+        DEBUG_OUT("waiting for %d\n", i);
+        margo_wait(serv_reqs[i]);
+        margo_get_output(hndls[i], &resp);
+        // Maybe add error check
+        margo_free_output(hndls[i], &resp);
+        margo_destroy(hndls[i]);
+    }
+
+    
+    margo_free_input(handle, &in);
+    margo_destroy(handle);
 
 }
 DEFINE_MARGO_RPC_HANDLER(get_pattern_rpc)

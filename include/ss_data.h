@@ -81,17 +81,26 @@ struct obj_data {
     unsigned int f_free : 1;
 };
 
+struct interval_entry {
+    struct list_head entry;
+    unsigned int version;
+    double time;
+};
+
+
 struct getvar_list_entry {
     struct list_head entry;
     char *var_name;
+    enum storage_type st;
 };
 
 struct getvar_record_list_entry {
     struct list_head entry;
     char *var_name;
+    enum storage_type st;
     /* Global bounding box descriptor. */
     struct bbox bb;
-    double *interval;
+    struct list_head interval_list;
 };
 
 struct gdim_list_entry {
@@ -297,6 +306,7 @@ MERCURY_GEN_PROC(bulk_gdim_t, ((odsc_hdr_with_gdim)(odsc))((hg_bulk_t)(handle)))
 MERCURY_GEN_PROC(bulk_gdim_layout_t,
                  ((odsc_hdr_with_gdim)(odsc))((int32_t)(mode))((hg_bulk_t)(handle)))
 MERCURY_GEN_PROC(bulk_in_t, ((odsc_hdr)(odsc))((hg_bulk_t)(handle)))
+MERCURY_GEN_PROC(bulk_in_layout_t, ((odsc_hdr)(odsc))((int32_t)(param))((hg_bulk_t)(handle)))
 MERCURY_GEN_PROC(bulk_out_t, ((int32_t)(ret)))
 MERCURY_GEN_PROC(put_meta_in_t, ((hg_string_t)(name))((int32_t)(length))(
                                     (int32_t)(version))((hg_bulk_t)(handle)))
@@ -421,9 +431,16 @@ int dht_find_entry_all_st(struct dht_entry *de, obj_descriptor *q_odsc,
                        obj_descriptor **odsc_tab[], int timeout, int mode);
 
 struct getvar_list_entry *lookup_getvar_list(struct list_head *getvar_list,
-                                         const char *var_name);
+                                         const char *var_name, enum storage_type st);
+
+void free_getvar_list(struct list_head *getvar_list);
 
 struct getvar_record_list_entry *lookup_getvar_record_list(struct list_head *getvar_record_list,
-                                         const char *var_name);
+                                         const char *var_name, enum storage_type st);
+
+void free_getvar_record_list(struct list_head *getvar_record_list);
+
+struct interval_entry *lookup_interval_list(struct list_head *interval_list,
+                                            const unsigned int version);
 
 #endif /* __SS_DATA_H_ */

@@ -2903,28 +2903,82 @@ void ls_add_obj_st(ss_storage *ls, struct obj_data *od)
 }
 
 struct getvar_list_entry *lookup_getvar_list(struct list_head *getvar_list,
-                                         const char *var_name)
+                                         const char *var_name, enum storage_type st)
 {
     if(!getvar_list)
         return NULL;
     struct getvar_list_entry *e;
     list_for_each_entry(e, getvar_list, struct getvar_list_entry, entry)
     {
-        if(0 == strcmp(e->var_name, var_name))
+        if(0 == strcmp(e->var_name, var_name) && e->st == st)
             return e;
     }
     return NULL;
 }
 
+void free_getvar_list(struct list_head *getvar_list)
+{
+    if(!getvar_list)
+        return;
+    int cnt = 0;
+    struct getvar_list_entry *e, *t;
+    list_for_each_entry_safe(e, t, getvar_list, struct getvar_list_entry, entry)
+    {
+        list_del(&e->entry);
+        free(e->var_name);
+        free(e);
+        cnt++;
+    }
+
+#ifdef DEBUG
+    fprintf(stderr, "%s(): number of user-defined global dimension is %d\n",
+            __func__, cnt);
+#endif
+}
+
 struct getvar_record_list_entry *lookup_getvar_record_list(struct list_head *getvar_record_list,
-                                         const char *var_name)
+                                         const char *var_name, enum storage_type st)
 {
     if(!getvar_record_list)
         return NULL;
     struct getvar_record_list_entry *e;
     list_for_each_entry(e, getvar_record_list, struct getvar_record_list_entry, entry)
     {
-        if(0 == strcmp(e->var_name, var_name))
+        if(0 == strcmp(e->var_name, var_name) && e->st == st)
+            return e;
+    }
+    return NULL;
+}
+
+void free_getvar_record_list(struct list_head *getvar_record_list)
+{
+    if(!getvar_record_list)
+        return;
+    int cnt = 0;
+    struct getvar_record_list_entry *e, *t;
+    list_for_each_entry_safe(e, t, getvar_record_list, struct getvar_record_list_entry, entry)
+    {
+        list_del(&e->entry);
+        free(e->var_name);
+        free(e);
+        cnt++;
+    }
+
+#ifdef DEBUG
+    fprintf(stderr, "%s(): number of user-defined global dimension is %d\n",
+            __func__, cnt);
+#endif
+}
+
+struct interval_entry *lookup_interval_list(struct list_head *interval_list,
+                                            const unsigned int version)
+{
+    if(!interval_list)
+        return NULL;
+    struct interval_entry *e;
+    list_for_each_entry(e, interval_list, struct interval_entry, entry)
+    {
+        if(e->version == version)
             return e;
     }
     return NULL;
