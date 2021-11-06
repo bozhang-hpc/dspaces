@@ -13,5 +13,5 @@ target_link_libraries(transpose_mso dspaces)
 add_executable(cache_hit cache_hit.c)
 target_link_libraries(cache_hit dspaces)
 
-add_executable(hybird_cache_hit hybrid_cache_hit.c)
+add_executable(hybrid_cache_hit hybrid_cache_hit.c)
 target_link_libraries(hybrid_cache_hit dspaces)
