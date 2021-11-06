@@ -9,7 +9,7 @@
 
 int main(int argc, char** argv)
 {
-    int mode = argv[1];
+    int mode = atoi(argv[1]);
     int rank, nprocs; 
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
