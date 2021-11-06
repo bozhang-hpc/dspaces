@@ -3340,7 +3340,7 @@ static int get_data_hybrid(dspaces_client_t client, int num_odscs, obj_descripto
 {
     int ret = dspaces_SUCCESS;
     bulk_in_layout_t *in;
-    in = (bulk_in_layout_t *)malloc(sizeof(bulk_in_t) * num_odscs);
+    in = (bulk_in_layout_t *)malloc(sizeof(bulk_in_layout_t) * num_odscs);
     struct obj_data **od;
     od = malloc(num_odscs * sizeof(struct obj_data *));
     margo_request *serv_req;
