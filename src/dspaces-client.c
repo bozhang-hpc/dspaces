@@ -3722,6 +3722,8 @@ int dspaces_get_layout_new(dspaces_client_t client, const char *var_name, unsign
                          MPI_MIN, getvar_root, getvar_comm, &lb_req);
             MPI_Ireduce(odsc.bb.ub.c, ubbuf, odsc.bb.num_dims, MPI_UINT64_T,
                          MPI_MAX, getvar_root, getvar_comm, &ub_req);
+        } else {
+            DEBUG_OUT("Found Get Pattern at client!\n");
         }
     }
 

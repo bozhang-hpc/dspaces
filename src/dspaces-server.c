@@ -3799,6 +3799,7 @@ static void get_hybrid_rpc(hg_handle_t handle)
         probe_obj = ls_find_st(server->dsg->ls, &temp_odsc2);
         ABT_mutex_unlock(server->ls_mutex);
         if(probe_obj) {
+            DEBUG_OUT("Hit Cache when bulk transfer\n");
             // out param show double check found
             out.ret = 1;
             from_obj = probe_obj;
@@ -3828,8 +3829,6 @@ static void get_hybrid_rpc(hg_handle_t handle)
 
     hg_size_t size = (in_odsc.size) * bbox_volume(&(in_odsc.bb));
     void *buffer = (void *)od->data;
-
-    od_print(od);
 
     hret = margo_bulk_create(mid, 1, (void **)&buffer, &size, HG_BULK_READ_ONLY,
                              &bulk_handle);
@@ -4575,13 +4574,14 @@ static void get_pattern_rpc(hg_handle_t handle)
         if(i == server->dsg->rank) {
             continue;
         }
-        DEBUG_OUT("waiting for %d\n", i);
         margo_wait(serv_reqs[i]);
         margo_get_output(hndls[i], &resp);
         // Maybe add error check
         margo_free_output(hndls[i], &resp);
         margo_destroy(hndls[i]);
     }
+
+    DEBUG_OUT("Received & Updated get pattern %d\n", i);
 
     
     margo_free_input(handle, &in);
