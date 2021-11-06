@@ -5,6 +5,7 @@
 #include "stdint.h"
 #include "dspaces.h"
 #include "mpi.h"
+#include "unistd.h"
 
 int main(int argc, char** argv)
 {
@@ -138,7 +139,7 @@ int main(int argc, char** argv)
     get_ub[2] = 1;
 
     err = dspaces_get_layout_new(ndcl, var_name, iter, sizeof(double), ndim, get_lb, get_ub,
-                                 dspaces_LAYOUT_RIGHT, recv_data, -1 mode);
+                                 dspaces_LAYOUT_RIGHT, recv_data, -1, mode);
 
     if(err != 0 )
         goto free;
@@ -153,6 +154,8 @@ int main(int argc, char** argv)
         }
         printf("**************\n");
     }
+
+    sleep(1);
 
     }
 
