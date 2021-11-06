@@ -3389,9 +3389,9 @@ static int get_data_hybrid(dspaces_client_t client, int num_odscs, obj_descripto
 
     if(req_obj.st == column_major) {
         obj_desc_transpose_bbox(&temp_odsc, &req_obj);
-        return_od = obj_data_alloc(&temp_odsc);
+        return_od = obj_data_alloc_no_data(&temp_odsc, data);
     } else {
-        return_od = obj_data_alloc(&req_obj);
+        return_od = obj_data_alloc_no_data(&req_obj, data);
     }
 
     for(int i = 0; i < num_odscs; ++i) {
