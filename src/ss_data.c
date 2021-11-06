@@ -2739,7 +2739,7 @@ int dht_find_entry_all_st(struct dht_entry *de, obj_descriptor *q_odsc,
         ABT_mutex_lock(de->hash_mutex[n]);
     }
 
-    if(mode == 1 | mode == 2) {
+    if(mode == 1 || mode == 2 || mode == 4) {
         // general idea for this loop: always add the entry whose st is same as src_st
         list_for_each_entry(odscl, &de->odsc_hash[n], struct obj_desc_list,
                             odsc_entry)
@@ -2820,9 +2820,7 @@ int dht_find_entry_all_st(struct dht_entry *de, obj_descriptor *q_odsc,
             ABT_mutex_unlock(de->hash_mutex[n]);
         }
     }
-    else if(mode=4) {
-        // Reserved for hybrid method
-    }
+    
 
     return num_odsc;
 }
