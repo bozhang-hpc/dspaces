@@ -4581,7 +4581,7 @@ static void get_pattern_rpc(hg_handle_t handle)
         margo_destroy(hndls[i]);
     }
 
-    DEBUG_OUT("Received & Updated get pattern.\n", );
+    DEBUG_OUT("Received & Updated get pattern.\n");
 
     
     margo_free_input(handle, &in);
