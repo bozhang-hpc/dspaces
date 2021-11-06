@@ -3764,6 +3764,7 @@ int dspaces_get_layout_new(dspaces_client_t client, const char *var_name, unsign
             // add new entry
             e = (struct getvar_list_entry *) malloc(sizeof(*e));
             e->var_name = malloc(strlen(odsc.name) + 1);
+            e->st = dst_st;
             strcpy(e->var_name, odsc.name);
             list_add(&e->entry, &client->dcg->getvar_list);
 
