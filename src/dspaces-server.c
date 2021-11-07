@@ -3830,8 +3830,6 @@ static void get_hybrid_rpc(hg_handle_t handle)
     hg_size_t size = (in_odsc.size) * bbox_volume(&(in_odsc.bb));
     void *buffer = (void *)od->data;
 
-    od_print(od);
-
     hret = margo_bulk_create(mid, 1, (void **)&buffer, &size, HG_BULK_READ_ONLY,
                              &bulk_handle);
 
