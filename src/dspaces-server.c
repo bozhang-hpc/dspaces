@@ -88,6 +88,7 @@ struct dspaces_provider {
     char *listen_addr_str;
     int rank;
     int comm_size;
+    int f_layout_mode;
     int f_debug;
     int f_drain;
     int f_kill;
@@ -770,6 +771,7 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm,
     const char *envdebug = getenv("DSPACES_DEBUG");
     const char *envnthreads = getenv("DSPACES_NUM_HANDLERS");
     const char *envdrain = getenv("DSPACES_DRAIN");
+    const char *envmode = getenv("DSPACES_LAYOUT_MODE");
     dspaces_provider_t server;
     hg_class_t *hg;
     static int is_initialized = 0;
@@ -800,6 +802,20 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm,
     if(envdrain) {
         server->f_drain = 1;
     }
+
+    if(envmode) {
+        int mode = atoi(envmode);
+        // mode check 1-4
+        if(mode>0 && mode <5) {
+            server->f_layout_mode = mode;
+        } else{
+            server->f_layout_mode = 1;
+        }
+    } else {
+        server->f_layout_mode = 1;
+    }
+    DEBUG_OUT("DSPACES_LAYOUT_MODE = %d\n", server->f_layout_mode);
+
 
     MPI_Comm_dup(comm, &server->comm);
     MPI_Comm_rank(comm, &server->rank);

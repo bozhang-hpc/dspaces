@@ -103,6 +103,7 @@ struct dspaces_client {
     MPI_Comm comm;
     int rank;
     int local_put_count; // used during finalize
+    int f_layout_mode;
     int f_debug;
     int f_final;
     int listener_init;
@@ -431,6 +432,7 @@ static int dspaces_init_internal(int rank, dspaces_client_t *c)
 static int dspaces_init_internal_mpi(MPI_Comm comm, dspaces_client_t *c)
 {
     const char *envdebug = getenv("DSPACES_DEBUG");
+    const char *envmode = getenv("DSPACES_LAYOUT_MODE");
     static int is_initialized = 0;
     int rank, size;
 
@@ -448,6 +450,19 @@ static int dspaces_init_internal_mpi(MPI_Comm comm, dspaces_client_t *c)
     if(envdebug) {
         client->f_debug = 1;
     }
+
+    if(envmode) {
+        int mode = atoi(envmode);
+        // mode check 1-4
+        if(mode>0 && mode <5) {
+            client->f_layout_mode = mode;
+        } else{
+            client->f_layout_mode = 1;
+        }
+    } else {
+        client->f_layout_mode = 1;
+    }
+    DEBUG_OUT("DSPACES_LAYOUT_MODE = %d\n", client->f_layout_mode);
 
     MPI_Comm_rank(comm, &rank);
     MPI_Comm_size(comm, &size);
@@ -3467,8 +3482,9 @@ static int get_data_hybrid(dspaces_client_t client, int num_odscs, obj_descripto
 
 int dspaces_put_layout_new(dspaces_client_t client, const char *var_name, unsigned int ver,
                 int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum ds_layout_type src_layout,
-                const void *data, int mode)
+                const void *data)
 {
+    int mode = client->f_layout_mode;
     hg_addr_t server_addr;
     hg_handle_t handle;
     hg_return_t hret;
@@ -3667,9 +3683,9 @@ static int send_getvar_pattern(dspaces_client_t client, const char *var_name, in
 
 int dspaces_get_layout_new(dspaces_client_t client, const char *var_name, unsigned int ver,
                 int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum ds_layout_type dst_layout, 
-                void *data, int timeout, int mode)
+                void *data, int timeout)
 {
-
+    int mode = client->f_layout_mode;
     obj_descriptor temp_odsc, odsc;
     obj_descriptor *odsc_tab;
     int num_odscs;

@@ -466,11 +466,11 @@ int dspaces_put_layout(dspaces_client_t client, const char *var_name, unsigned i
 
 int dspaces_put_layout_new(dspaces_client_t client, const char *var_name, unsigned int ver,
                 int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum ds_layout_type src_layout,
-                const void *data, int mode);
+                const void *data);
 
 int dspaces_get_layout_new(dspaces_client_t client, const char *var_name, unsigned int ver,
                 int elem_size, int ndim, uint64_t *lb, uint64_t *ub, enum ds_layout_type dst_layout, 
-                void *data, int timeout, int mode);
+                void *data, int timeout);
 
 #if defined(__cplusplus)
 }

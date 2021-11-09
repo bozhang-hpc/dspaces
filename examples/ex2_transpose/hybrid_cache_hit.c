@@ -9,7 +9,7 @@
 
 int main(int argc, char** argv)
 {
-    int mode = atoi(argv[1]);
+    // int mode = atoi(argv[1]);
     int rank, nprocs; 
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
@@ -71,7 +71,7 @@ int main(int argc, char** argv)
     put_ub[2] = 1;
 
     err = dspaces_put_layout_new(ndcl, var_name, iter, sizeof(double), ndim, put_lb, put_ub,
-                                 dspaces_LAYOUT_RIGHT, data, mode);
+                                 dspaces_LAYOUT_RIGHT, data);
 
     printf("=================GET ENTIRE OBJ================\n");
 
@@ -84,7 +84,7 @@ int main(int argc, char** argv)
     get_ub[2] = 3;
 
     err = dspaces_get_layout_new(ndcl, var_name, iter, sizeof(double), ndim, get_lb, get_ub,
-                                 dspaces_LAYOUT_LEFT, recv_data, -1, mode);
+                                 dspaces_LAYOUT_LEFT, recv_data, -1);
 
     if(err != 0 )
         goto free;
@@ -126,7 +126,7 @@ int main(int argc, char** argv)
 
 
     err = dspaces_put_layout_new(ndcl, var_name, iter, sizeof(double), ndim, put_lb, put_ub,
-                                 dspaces_LAYOUT_LEFT, data, mode);
+                                 dspaces_LAYOUT_LEFT, data);
     
     printf("=================GET ENTIRE OBJ================\n");
 
@@ -139,7 +139,7 @@ int main(int argc, char** argv)
     get_ub[2] = 1;
 
     err = dspaces_get_layout_new(ndcl, var_name, iter, sizeof(double), ndim, get_lb, get_ub,
-                                 dspaces_LAYOUT_RIGHT, recv_data, -1, mode);
+                                 dspaces_LAYOUT_RIGHT, recv_data, -1);
 
     if(err != 0 )
         goto free;
