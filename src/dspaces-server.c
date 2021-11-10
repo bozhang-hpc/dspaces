@@ -994,11 +994,11 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm,
                        odsc_layout_internal_rpc);
         margo_registered_name(server->mid, "get_pattern_internal_rpc",
                               &server->get_pattern_internal_id, &flag);
-        DS_HG_REGISTER(hg, server->get_pattern_internal_id, bulk_in_t, bulk_out_t,
+        DS_HG_REGISTER(hg, server->get_pattern_internal_id, pattern_info_t, bulk_out_t,
                        get_pattern_internal_rpc);
         margo_registered_name(server->mid, "get_pattern_rpc",
                               &server->get_pattern_id, &flag);
-        DS_HG_REGISTER(hg, server->get_pattern_id, bulk_in_t, bulk_out_t,
+        DS_HG_REGISTER(hg, server->get_pattern_id, pattern_info_t, bulk_out_t,
                        get_pattern_rpc);
         margo_registered_name(server->mid, "get_hybrid_rpc", &server->get_hybrid_id, &flag);
         DS_HG_REGISTER(hg, server->get_hybrid_id, bulk_in_layout_t, bulk_out_t, get_hybrid_rpc);
@@ -1126,12 +1126,12 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm,
         margo_register_data(server->mid, server->odsc_layout_internal_id,
                             (void *)server, NULL);
         server->get_pattern_internal_id =
-            MARGO_REGISTER(server->mid, "get_pattern_internal_rpc", bulk_in_t,
+            MARGO_REGISTER(server->mid, "get_pattern_internal_rpc", pattern_info_t,
                            bulk_out_t, get_pattern_internal_rpc);
         margo_register_data(server->mid, server->get_pattern_internal_id,
                             (void *)server, NULL);
         server->get_pattern_id =
-            MARGO_REGISTER(server->mid, "get_pattern_rpc", bulk_in_t,
+            MARGO_REGISTER(server->mid, "get_pattern_rpc", pattern_info_t,
                            bulk_out_t, get_pattern_rpc);
         margo_register_data(server->mid, server->get_pattern_id,
                             (void *)server, NULL);
@@ -4444,7 +4444,7 @@ DEFINE_MARGO_RPC_HANDLER(query_layout_rpc)
 static void get_pattern_internal_rpc(hg_handle_t handle)
 {
     hg_return_t hret;
-    bulk_in_t in;
+    pattern_info_t in;
     bulk_out_t out;
 
     margo_instance_id mid = margo_hg_handle_get_instance(handle);
@@ -4464,7 +4464,7 @@ static void get_pattern_internal_rpc(hg_handle_t handle)
     }
 
     obj_descriptor in_fake_odsc;
-    memcpy(&in_fake_odsc, in.odsc.raw_odsc, sizeof(in_fake_odsc));
+    memcpy(&in_fake_odsc, in.pattern.raw_odsc, sizeof(in_fake_odsc));
 
     out.ret = dspaces_SUCCESS;
     margo_respond(handle, &out);
@@ -4509,7 +4509,7 @@ DEFINE_MARGO_RPC_HANDLER(get_pattern_internal_rpc)
 static void get_pattern_rpc(hg_handle_t handle)
 {
     hg_return_t hret;
-    bulk_in_t in;
+    pattern_info_t in;
     bulk_out_t out;
     hg_addr_t server_addr;
     hg_handle_t *hndls;
@@ -4532,7 +4532,7 @@ static void get_pattern_rpc(hg_handle_t handle)
     }
 
     obj_descriptor in_fake_odsc;
-    memcpy(&in_fake_odsc, in.odsc.raw_odsc, sizeof(in_fake_odsc));
+    memcpy(&in_fake_odsc, in.pattern.raw_odsc, sizeof(in_fake_odsc));
 
     out.ret = dspaces_SUCCESS;
     margo_respond(handle, &out);

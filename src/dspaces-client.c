@@ -665,7 +665,7 @@ static int dspaces_init_margo(dspaces_client_t client,
                                         bulk_out_t, NULL);
         client->query_layout_id = MARGO_REGISTER(client->mid, "query_layout_rpc", odsc_gdim_layout_t,
                                           odsc_list_t, NULL);
-        client->get_pattern_id = MARGO_REGISTER(client->mid, "get_pattern_rpc", bulk_in_t,
+        client->get_pattern_id = MARGO_REGISTER(client->mid, "get_pattern_rpc", pattern_info_t,
                                           bulk_out_t, NULL);
         client->get_hybrid_id =
             MARGO_REGISTER(client->mid, "get_hybrid_rpc", bulk_in_layout_t, bulk_out_t, NULL);
@@ -3624,7 +3624,7 @@ static int send_getvar_pattern(dspaces_client_t client, const char *var_name, in
     hg_handle_t handle;
     hg_return_t hret;
     int ret = dspaces_SUCCESS;
-    bulk_in_t in;
+    pattern_info_t in;
     bulk_out_t out;
     // use fake odsc due to laziness
     obj_descriptor fake_odsc, temp_odsc;
@@ -3645,8 +3645,8 @@ static int send_getvar_pattern(dspaces_client_t client, const char *var_name, in
     else
         memcpy(&fake_odsc, &temp_odsc, sizeof(obj_descriptor));
 
-    in.odsc.size = sizeof(fake_odsc);
-    in.odsc.raw_odsc = (char *)(&fake_odsc);
+    in.pattern.size = sizeof(fake_odsc);
+    in.pattern.raw_odsc = (char *)(&fake_odsc);
 
     get_server_address(client, &server_addr);
 

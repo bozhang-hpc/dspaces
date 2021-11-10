@@ -320,6 +320,7 @@ MERCURY_GEN_PROC(odsc_gdim_layout_t,
                  ((odsc_hdr_with_gdim)(odsc_gdim))((int32_t)(mode))((int32_t)(param)))
 MERCURY_GEN_PROC(odsc_list_t, ((odsc_hdr)(odsc_list))((int32_t)(param)))
 MERCURY_GEN_PROC(ss_information, ((odsc_hdr)(ss_buf)))
+MERCURY_GEN_PROC(pattern_info_t, ((odsc_hdr)(pattern)))
 
 char *obj_desc_sprint(obj_descriptor *);
 //
