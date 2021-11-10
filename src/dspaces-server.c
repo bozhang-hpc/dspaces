@@ -4141,7 +4141,7 @@ static void odsc_layout_internal_rpc(hg_handle_t handle)
     } else {
         odsc_tab = malloc(sizeof(*odsc_tab) * num_odsc);
         //different here for v1, v2, v3
-        if(mode == 1 | mode == 3) {
+        if(mode == 1 || mode == 3) {
             for(int j = 0; j < num_odsc; j++) {
                 obj_descriptor odsc;
                 odsc = *podsc[j];
@@ -4150,7 +4150,7 @@ static void odsc_layout_internal_rpc(hg_handle_t handle)
                 odsc_tab[j] = odsc;
             }
         }
-        else if(mode==2) {
+        else if(mode==2 || mode == 4) {
             src_st = podsc[0]->src_st;
             if(src_st == in_odsc.st) {
                 for(int j = 0; j < num_odsc; j++) {
