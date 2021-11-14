@@ -3752,28 +3752,6 @@ int dspaces_get_layout_new(dspaces_client_t client, const char *var_name, unsign
         DEBUG_OUT("%s\n", obj_desc_sprint(&odsc_tab[i]));
     }
 
-    if(num_odscs != 0) {
-        if(mode == 1) {
-            if(odsc_tab[0].src_st == dst_st)
-                get_data(client, num_odscs, odsc, odsc_tab, data);
-            else
-                get_data_rcmc(client, num_odscs, odsc, odsc_tab, data);
-        }
-        else if(mode == 2) {
-            if(odsc_tab[0].src_st == dst_st)
-                get_data(client, num_odscs, odsc, odsc_tab, data);
-            else
-                get_data_rcmc_at_server(client, num_odscs, odsc, odsc_tab, data);
-        }
-        else if(mode == 3) {
-            get_data_st(client, num_odscs, odsc, odsc_tab, data);
-        }
-        else if(mode == 4) {
-            get_data_hybrid(client, num_odscs, odsc, odsc_tab, data);
-        }
-        free(odsc_tab);
-    }
-
     // add get_var pattern to list and send it to server
     if(mode==4) {
         if(!e) {
@@ -3795,7 +3773,27 @@ int dspaces_get_layout_new(dspaces_client_t client, const char *var_name, unsign
 
     }
 
-    
+    if(num_odscs != 0) {
+        if(mode == 1) {
+            if(odsc_tab[0].src_st == dst_st)
+                get_data(client, num_odscs, odsc, odsc_tab, data);
+            else
+                get_data_rcmc(client, num_odscs, odsc, odsc_tab, data);
+        }
+        else if(mode == 2) {
+            if(odsc_tab[0].src_st == dst_st)
+                get_data(client, num_odscs, odsc, odsc_tab, data);
+            else
+                get_data_rcmc_at_server(client, num_odscs, odsc, odsc_tab, data);
+        }
+        else if(mode == 3) {
+            get_data_st(client, num_odscs, odsc, odsc_tab, data);
+        }
+        else if(mode == 4) {
+            get_data_hybrid(client, num_odscs, odsc, odsc_tab, data);
+        }
+        free(odsc_tab);
+    }
 
     return (0);
 }
