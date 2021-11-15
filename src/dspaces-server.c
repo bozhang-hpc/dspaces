@@ -3153,10 +3153,14 @@ static void get_server_rcmc_rpc(hg_handle_t handle)
             from_obj = probe_obj;
             memcpy(&in_odsc2, &temp_odsc2, sizeof(obj_descriptor));
         } else {
+            ABT_mutex_lock(server->ls_mutex);
             from_obj = ls_find_st(server->dsg->ls, &in_odsc2);
+            ABT_mutex_unlock(server->ls_mutex);
         }
     } else {
+        ABT_mutex_lock(server->ls_mutex);
         from_obj = ls_find_st(server->dsg->ls, &in_odsc2);
+        ABT_mutex_unlock(server->ls_mutex);
     }
 
     // first get the exact data no matter what layout it is
@@ -3822,11 +3826,15 @@ static void get_hybrid_rpc(hg_handle_t handle)
             memcpy(&in_odsc, &temp_odsc2, sizeof(obj_descriptor));
         } else {
             out.ret = 0;
+            ABT_mutex_lock(server->ls_mutex);
             from_obj = ls_find_st(server->dsg->ls, &in_odsc);
+            ABT_mutex_unlock(server->ls_mutex);
         }
     } else {
         out.ret = 0;
+        ABT_mutex_lock(server->ls_mutex);
         from_obj = ls_find_st(server->dsg->ls, &in_odsc);
+        ABT_mutex_unlock(server->ls_mutex);
     }
 
     // first get the exact data no matter what layout it is
