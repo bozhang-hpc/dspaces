@@ -3810,32 +3810,32 @@ static void get_hybrid_rpc(hg_handle_t handle)
 
     struct obj_data *od, *from_obj, *temp_from_obj, *probe_obj;
 
-    //double check if ls has obj_data in opposite st,
-    //but only check those whose st == src_st, 
-    //which means it does not hit cache at odsc check
-    // if(st_flag && in_odsc.st == in_odsc.src_st) {
-    //     obj_desc_transpose_st(&temp_odsc2, &in_odsc);
-    //     ABT_mutex_lock(server->ls_mutex);
-    //     probe_obj = ls_find_st(server->dsg->ls, &temp_odsc2);
-    //     ABT_mutex_unlock(server->ls_mutex);
-    //     if(probe_obj) {
-    //         DEBUG_OUT("Hit Cache when bulk transfer\n");
-    //         // out param show double check found
-    //         out.ret = 1;
-    //         from_obj = probe_obj;
-    //         memcpy(&in_odsc, &temp_odsc2, sizeof(obj_descriptor));
-    //     } else {
-    //         out.ret = 0;
-    //         ABT_mutex_lock(server->ls_mutex);
-    //         from_obj = ls_find_st(server->dsg->ls, &in_odsc);
-    //         ABT_mutex_unlock(server->ls_mutex);
-    //     }
-    // } else {
+    double check if ls has obj_data in opposite st,
+    but only check those whose st == src_st, 
+    which means it does not hit cache at odsc check
+    if(st_flag && in_odsc.st == in_odsc.src_st) {
+        obj_desc_transpose_st(&temp_odsc2, &in_odsc);
+        ABT_mutex_lock(server->ls_mutex);
+        probe_obj = ls_find_st(server->dsg->ls, &temp_odsc2);
+        ABT_mutex_unlock(server->ls_mutex);
+        if(probe_obj) {
+            DEBUG_OUT("Hit Cache when bulk transfer\n");
+            // out param show double check found
+            out.ret = 1;
+            from_obj = probe_obj;
+            memcpy(&in_odsc, &temp_odsc2, sizeof(obj_descriptor));
+        } else {
+            out.ret = 0;
+            ABT_mutex_lock(server->ls_mutex);
+            from_obj = ls_find_st(server->dsg->ls, &in_odsc);
+            ABT_mutex_unlock(server->ls_mutex);
+        }
+    } else {
         out.ret = 0;
         ABT_mutex_lock(server->ls_mutex);
         from_obj = ls_find_st(server->dsg->ls, &in_odsc);
         ABT_mutex_unlock(server->ls_mutex);
-    // }
+    }
 
     // first get the exact data no matter what layout it is
     // ssd_copy needs trick for column-major copy
