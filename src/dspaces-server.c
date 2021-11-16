@@ -3810,9 +3810,9 @@ static void get_hybrid_rpc(hg_handle_t handle)
 
     struct obj_data *od, *from_obj, *temp_from_obj, *probe_obj;
 
-    double check if ls has obj_data in opposite st,
-    but only check those whose st == src_st, 
-    which means it does not hit cache at odsc check
+    // double check if ls has obj_data in opposite st,
+    // but only check those whose st == src_st, 
+    // which means it does not hit cache at odsc check
     if(st_flag && in_odsc.st == in_odsc.src_st) {
         obj_desc_transpose_st(&temp_odsc2, &in_odsc);
         ABT_mutex_lock(server->ls_mutex);
