@@ -3640,10 +3640,10 @@ static int send_getvar_pattern(dspaces_client_t client, const char *var_name, in
     temp_odsc.name[sizeof(temp_odsc.name) - 1] = '\0';
 
     // st is default var defined globally
-    if(st_ != st)
-        obj_desc_transpose_bbox(&fake_odsc, &temp_odsc);
-    else
-        memcpy(&fake_odsc, &temp_odsc, sizeof(obj_descriptor));
+    // if(st_ != st)
+    //     obj_desc_transpose_bbox(&fake_odsc, &temp_odsc);
+    // else
+    memcpy(&fake_odsc, &temp_odsc, sizeof(obj_descriptor));
 
     in.pattern.size = sizeof(fake_odsc);
     in.pattern.raw_odsc = (char *)(&fake_odsc);
