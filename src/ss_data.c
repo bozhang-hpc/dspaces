@@ -2525,6 +2525,74 @@ int dht_add_entry_new_st(struct dht_entry *de, obj_descriptor *odsc)
     return 0;
 }
 
+int dht_add_entry_st_v4(struct dht_entry *de, obj_descriptor *odsc)
+{
+    struct obj_desc_list *odscl;
+    struct obj_desc_ptr_list *sub_odscl;
+    struct dht_sub_list_entry *sub, *tmp;
+    struct bbox isect;
+    int sub_complete = 0;
+    int n, err = -ENOMEM;
+
+    odscl = dht_find_match_st(de, odsc);
+    if(odscl) {
+        /* There  is allready  a descriptor  with  a different
+           version in the DHT, so I will overwrite it. */
+        if(odscl->odsc.version == odsc->version) {
+            fprintf(stderr, "WARNING: the server has detected an overlapping "
+                            "put (same version and some common elements with a "
+                            "previous put. DataSpaces storage is intended to "
+                            "be immutable, and the behavior of updates is "
+                            "undefined. Proceed at your own risk...\n");
+            fprintf(stderr, " New put is: \n%s\n", obj_desc_sprint(odsc));
+            fprintf(stderr, " But found existing: \n%s\n",
+                    obj_desc_sprint(&odscl->odsc));
+        }
+        memcpy(&odscl->odsc, odsc, sizeof(*odsc));
+        return 0;
+    }
+
+    n = odsc->version % de->odsc_size;
+    odscl = malloc(sizeof(*odscl));
+    if(!odscl)
+        return err;
+    memcpy(&odscl->odsc, odsc, sizeof(*odsc));
+
+    ABT_mutex_lock(de->hash_mutex[n]);
+    list_add(&odscl->odsc_entry, &de->odsc_hash[n]);
+    de->odsc_num++;
+
+    if(odsc->st == odsc->src_st) {
+    // subscribed odscs processing
+        list_for_each_entry_safe(sub, tmp, &de->dht_subs[n],
+                             struct dht_sub_list_entry, entry)
+        {
+            if(obj_desc_equals_intersect(odsc, sub->odsc)) {
+                sub_odscl = malloc(sizeof(*sub_odscl));
+                sub_odscl->odsc = &odscl->odsc;
+                list_add(&sub_odscl->odsc_entry, &sub->recv_odsc);
+                sub->pub_count++;
+
+                bbox_intersect(&odsc->bb, &sub->odsc->bb, &isect);
+                sub->remaining -= bbox_volume(&isect);
+                if(sub->remaining == 0) {
+                    sub_complete = 1;
+                    list_del(&sub->entry);
+                }
+            }
+        
+        
+        }
+        if(sub_complete) {
+            ABT_cond_broadcast(de->hash_cond[n]);
+        }
+    }
+
+    ABT_mutex_unlock(de->hash_mutex[n]);
+
+    return 0;
+}
+
 /*
   Object descriptor 'q_odsc' can intersect multiple object descriptors
   from dht entry 'de'; There should be only one st stored in server, so
@@ -2739,7 +2807,7 @@ int dht_find_entry_all_st(struct dht_entry *de, obj_descriptor *q_odsc,
         ABT_mutex_lock(de->hash_mutex[n]);
     }
 
-    if(mode == 1 || mode == 2 || mode == 4) {
+    if(mode == 1 || mode == 2) {
         // general idea for this loop: always add the entry whose st is same as src_st
         list_for_each_entry(odscl, &de->odsc_hash[n], struct obj_desc_list,
                             odsc_entry)
@@ -2816,6 +2884,33 @@ int dht_find_entry_all_st(struct dht_entry *de, obj_descriptor *q_odsc,
             if(num_elem > 0) {
                 dht_local_subscribe(de, q_odsc, odsc_tab, &num_odsc, num_elem,
                                     timeout);
+            }
+            ABT_mutex_unlock(de->hash_mutex[n]);
+        }
+    }
+    else if(mode == 4) {
+        // general idea for this loop: always add the entry whose st is same as src_st
+        list_for_each_entry(odscl, &de->odsc_hash[n], struct obj_desc_list,
+                            odsc_entry)
+        {
+            // only count odscs whose st is the same as src_st
+            if(obj_desc_equals_intersect(&odscl->odsc, q_odsc)) {
+                src_st = odscl->odsc.src_st;
+                // Don't ignore the first entry even if its src_st is different from the our request
+                // As long as its st and src_st are same, we need it
+                if(odscl->odsc.st == odscl->odsc.src_st) {
+                    (*odsc_tab)[num_odsc++] = &odscl->odsc;
+                    if(sub) {
+                        bbox_intersect(&q_odsc->bb, &odscl->odsc.bb, &isect);
+                        num_elem -= bbox_volume(&isect);
+                    }
+                }
+            }
+        }
+        if(sub) {
+            if(num_elem > 0) {
+                dht_local_subscribe_no_st(de, q_odsc, odsc_tab, &num_odsc,
+                                            num_elem, timeout);
             }
             ABT_mutex_unlock(de->hash_mutex[n]);
         }
