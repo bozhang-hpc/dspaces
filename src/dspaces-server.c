@@ -4381,8 +4381,8 @@ static int get_query_layout_odscs(dspaces_provider_t server, odsc_gdim_layout_t 
                         DEBUG_OUT("%s\n", obj_desc_sprint(&odsc_tabs[self_id_num][i]));
                         podsc2[i] = malloc(sizeof(**podsc2) * ssd->ent_self->odsc_num);
                         podsc_nums[i] = dht_find_other_st_entry_to_replace_v4(ssd->ent_self, &podsc2[i],odsc);
-                        DEBUG_OUT("ERROR:podsc_nums = %d\n",
-                                 podsc_nums[i]);
+                        // DEBUG_OUT("ERROR:podsc_nums = %d\n",
+                        //          podsc_nums[i]);
                         if(podsc_nums[i]>0) {
                             v4odsc_num += podsc_nums[i];
                         } else if (podsc_nums[i]==0) {
@@ -4413,10 +4413,10 @@ static int get_query_layout_odscs(dspaces_provider_t server, odsc_gdim_layout_t 
                     free(podsc_nums);
                     free(odsc_tabs[self_id_num]);
                     odsc_tabs[self_id_num] = v4odsc_tab;
-                    if(odsc_nums[self_id_num]!=v4odsc_num){
-                        DEBUG_OUT("ERROR:odsc_nums[self_id_num] = %d, v4odsc_num = %d\n",
-                                 odsc_nums[self_id_num], v4odsc_num);
-                    }
+                    // if(odsc_nums[self_id_num]!=v4odsc_num){
+                    //     DEBUG_OUT("ERROR:odsc_nums[self_id_num] = %d, v4odsc_num = %d\n",
+                    //              odsc_nums[self_id_num], v4odsc_num);
+                    // }
                     odsc_nums[self_id_num] = v4odsc_num;
                 } 
             }

@@ -2306,9 +2306,9 @@ int dht_find_other_st_entry_to_replace_v4(struct dht_entry *de, obj_descriptor *
                         odsc_entry)
     {
         if(obj_desc_st_equals_intersect(&odscl->odsc, &qodsc_dst_st)) {
-            fprintf(stderr, "hit cache! very good!\n"
-                           "in_odsc: %s\n"
-                           "match_odsc: %s\n", obj_desc_sprint(&qodsc_dst_st), obj_desc_sprint(&odscl->odsc));
+            // fprintf(stderr, "hit cache! very good!\n"
+            //                "in_odsc: %s\n"
+            //                "match_odsc: %s\n", obj_desc_sprint(&qodsc_dst_st), obj_desc_sprint(&odscl->odsc));
             (*odsc_tab)[num_odsc++] = &odscl->odsc;
             bbox_intersect(&qodsc_dst_st.bb, &odscl->odsc.bb, &isect);
             num_elem -= bbox_volume(&isect);
