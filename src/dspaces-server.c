@@ -4411,6 +4411,10 @@ static int get_query_layout_odscs(dspaces_provider_t server, odsc_gdim_layout_t 
                     free(podsc_nums);
                     free(odsc_tabs[self_id_num]);
                     odsc_tabs[self_id_num] = v4odsc_tab;
+                    if(odsc_nums[self_id_num]!=v4odsc_num){
+                        DEBUG_OUT("ERROR:odsc_nums[self_id_num] = %d, v4odsc_num = %d\n",
+                                 odsc_nums[self_id_num], v4odsc_num);
+                    }
                     odsc_nums[self_id_num] = v4odsc_num;
                 } 
             }
