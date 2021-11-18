@@ -432,6 +432,9 @@ void ls_add_obj_st(ss_storage *ls, struct obj_data *od);
 int dht_find_entry_all_st(struct dht_entry *de, obj_descriptor *q_odsc,
                        obj_descriptor **odsc_tab[], int timeout, int mode);
 
+int dht_find_other_st_entry_to_replace_v4(struct dht_entry *de, obj_descriptor **odsc_tab[],
+                                         obj_descriptor *qodsc)
+
 struct getvar_list_entry *lookup_getvar_list(struct list_head *getvar_list,
                                          const char *var_name, enum storage_type st);
 

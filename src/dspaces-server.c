@@ -4105,7 +4105,10 @@ static void odsc_layout_internal_rpc(hg_handle_t handle)
     int timeout;
     int mode;
     odsc_list_t out;
-    obj_descriptor **podsc;
+    int v4odsc_num = 0;
+    int v4hflag;
+    int *podsc_nums;
+    obj_descriptor **podsc, ***pdosc2;
     enum storage_type src_st;
     margo_instance_id mid = margo_hg_handle_get_instance(handle);
 
@@ -4134,7 +4137,7 @@ static void odsc_layout_internal_rpc(hg_handle_t handle)
     DEBUG_OUT("Received query for %s with timeout %d\n",
               obj_desc_sprint(&in_odsc), timeout);
 
-    obj_descriptor odsc, *odsc_tab;
+    obj_descriptor odsc, *odsc_tab, *v4odsc_tab;
     ABT_mutex_lock(server->sspace_mutex);
     struct sspace *ssd = lookup_sspace(server, in_odsc.name, &od_gdim);
     ABT_mutex_unlock(server->sspace_mutex);
@@ -4162,7 +4165,7 @@ static void odsc_layout_internal_rpc(hg_handle_t handle)
                 odsc_tab[j] = odsc;
             }
         }
-        else if(mode==2 || mode == 4) {
+        else if(mode==2) {
             src_st = podsc[0]->src_st;
             if(src_st == in_odsc.st) {
                 for(int j = 0; j < num_odsc; j++) {
@@ -4183,14 +4186,67 @@ static void odsc_layout_internal_rpc(hg_handle_t handle)
                 }
             }
         }
+        else if (mode==4) {
+            src_st = podsc[0]->src_st;
+            if(src_st == in_odsc.st) {
+                v4hflag = 0;
+                for(int j = 0; j < num_odsc; j++) {
+                    obj_descriptor odsc;
+                    odsc = *podsc[j];
+                    DEBUG_OUT("including %s\n", obj_desc_sprint(&odsc));
+                    bbox_intersect(&in_odsc.bb, &odsc.bb, &odsc.bb);
+                    odsc_tab[j] = odsc;
+                }
+            } else {
+                v4hfalg = 1;
+                podsc_nums = malloc(sizeof(int) * num_odsc);
+                podsc2 = malloc(sizeof(*podsc2) * num_odsc);
+                for(int j = 0; j < num_odsc; j++) {
+                    obj_descriptor odsc;
+                    odsc = *podsc[j];
+                    podsc2[j] = malloc(sizeof(**podsc2) * ssd->ent_self->odsc_num);
+                    DEBUG_OUT("including %s\n", obj_desc_sprint(&odsc));
+                    bbox_intersect(&in_odsc.bb, &odsc.bb, &odsc.bb);
+                    podsc_nums[j] = dht_find_other_st_entry_to_replace_v4(ssd->ent_self, &podsc2[j],&odsc);
+                    if(podsc_nums[j]>0) {
+                        v4odsc_num += podsc_nums[j];
+                    } else if (podsc_nums[j]==0) {
+                        v4odsc_num ++;
+                    }
+                    // odsc_tab[j] = odsc;
+                }
+                v4odsc_tab = malloc(sizeof(*v4odsc_tab)*v4odsc_num);
+                int idx = 0;
+                for(int j = 0; j < num_odsc; j++) {
+                    if(podsc_nums[j] > 0){
+                        memcpy(&v4odsc_tab[idx], podsc2[j], sizeof(*v4odsc_tab)*podsc_nums[j]);
+                        idx += podsc_nums[j];  
+                    } else if(podsc_nums[j]==0) {
+                        memcpy(&v4odsc_tab[idx], podsc[j], sizeof(*v4odsc_tab));
+                        idx ++ ;
+                    }
+                    free(podsc2[j]);
+                }
+                free(podsc2);
+                free(podsc_nums);
+                free(odsc_tab);
+                odsc_tab = v4odsc_tab;
+                num_odsc = v4odsc_num;
+            }
+        }
         out.odsc_list.size = num_odsc * sizeof(obj_descriptor);
         out.odsc_list.raw_odsc = (char *)odsc_tab;
         margo_respond(handle, &out);
         margo_free_input(handle, &in);
         margo_destroy(handle);
     }
+
     for(int i = 0; i < num_odsc; ++i) {
         DEBUG_OUT("send odsc: %s\n", obj_desc_sprint(&odsc_tab[i]));
+    }
+
+    if(num_odsc) {
+        free(odsc_tab);
     }
 
     free(podsc);
@@ -4276,7 +4332,7 @@ static int get_query_layout_odscs(dspaces_provider_t server, odsc_gdim_layout_t 
                     DEBUG_OUT("%s\n", obj_desc_sprint(&odsc_tabs[self_id_num][i]));
                 }  
             }
-            else if(mode == 2 || mode == 4) {
+            else if(mode == 2) {
                 src_st = podsc[0]->src_st;
                 if(src_st == q_odsc->st) {
                     for(i = 0; i < odsc_nums[self_id_num]; i++) {
@@ -4296,6 +4352,54 @@ static int get_query_layout_odscs(dspaces_provider_t server, odsc_gdim_layout_t 
                         DEBUG_OUT("%s\n", obj_desc_sprint(&odsc_tabs[self_id_num][i]));
                     }
                 }
+            }
+            else if(mode == 4) {
+                src_st = podsc[0]->src_st;
+                if(src_st == q_odsc->st) {
+                    for(i = 0; i < odsc_nums[self_id_num]; i++) {
+                        obj_descriptor *odsc =
+                            &odsc_tabs[self_id_num][i]; // readability
+                        *odsc = *podsc[i];
+                        bbox_intersect(&q_odsc->bb, &odsc->bb, &odsc->bb);
+                        DEBUG_OUT("%s\n", obj_desc_sprint(&odsc_tabs[self_id_num][i]));
+                    }
+                } else {
+                    int *podsc_nums = malloc(sizeof(int) * odsc_nums[self_id_num]);
+                    obj_descriptor ***pdosc2 = malloc(sizeof(*podsc2) * odsc_nums[self_id_num]);
+                    int v4odsc_num=0;
+                    
+                    for(i = 0; i < odsc_nums[self_id_num]; i++) {
+                        obj_descriptor *odsc =
+                            &odsc_tabs[self_id_num][i]; // readability
+                        *odsc = *podsc[i];
+                        bbox_intersect(&q_odsc->bb, &odsc->bb, &odsc->bb);
+                        DEBUG_OUT("%s\n", obj_desc_sprint(&odsc_tabs[self_id_num][i]));
+                        podsc2[i] = malloc(sizeof(**podsc2) * ssd->ent_self->odsc_num);
+                        podsc_nums[i] = dht_find_other_st_entry_to_replace_v4(ssd->ent_self, &podsc2[i],odsc);
+                        if(podsc_nums[i]>0) {
+                            v4odsc_num += podsc_nums[j];
+                        } else if (podsc_nums[i]==0) {
+                            v4odsc_num ++;
+                        }
+                    }
+                    obj_descriptor *v4odsc_tab = malloc(sizeof(*v4odsc_tab)*v4odsc_num);
+                    int idx=0;
+                    for(int i = 0; i < odsc_nums[self_id_num]; i++) {
+                        if(podsc_nums[i] > 0){
+                            memcpy(&v4odsc_tab[idx], podsc2[i], sizeof(*v4odsc_tab)*podsc_nums[i]);
+                            idx += podsc_nums[i];  
+                        } else if(podsc_nums[i] == 0){
+                            memcpy(&v4odsc_tab[idx], podsc[i], sizeof(*v4odsc_tab));
+                            idx ++ ;  
+                        }
+                        free(podsc2[i]);
+                    }
+                    free(podsc2);
+                    free(podsc_nums);
+                    free(odsc_tabs[self_id_num]);
+                    odsc_tabs[self_id_num] = v4odsc_tab;
+                    odsc_nums[self_id_num] = v4odsc_num;
+                } 
             }
         }
         free(podsc);

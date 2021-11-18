@@ -2275,7 +2275,7 @@ void dht_find_other_st_entry_to_replace(struct dht_entry *de, obj_descriptor *od
     obj_desc_transpose_st(&odsc_dst_st, odsc);
 
     n = odsc->version % de->odsc_size;
-
+    ABT_mutex_lock(de->hash_mutex[n]);
     list_for_each_entry(odscl, &de->odsc_hash[n], struct obj_desc_list,
                         odsc_entry)
     {
@@ -2286,6 +2286,49 @@ void dht_find_other_st_entry_to_replace(struct dht_entry *de, obj_descriptor *od
             memcpy(odsc, &odsc_dst_st, sizeof(obj_descriptor));
         }
     }
+    ABT_mutex_unlock(de->hash_mutex[n]);
+}
+
+int dht_find_other_st_entry_to_replace_v4(struct dht_entry *de, obj_descriptor **odsc_tab[], obj_descriptor *qodsc)
+{
+    int n, ret, total_elem, num_odsc = 0;
+    long num_elem;
+    struct obj_desc_list *odscl;
+    struct bbox isect;
+    obj_descriptor qodsc_dst_st;
+    obj_desc_transpose_st(&qodsc_dst_st, qodsc);
+
+    n = qodsc->version % de->odsc_size;
+    num_elem = ssh_hash_elem_count(de->ss, &qodsc_dst_st->bb);
+    total_elem = num_elem;
+    ABT_mutex_lock(de->hash_mutex[n]);
+    list_for_each_entry(odscl, &de->odsc_hash[n], struct obj_desc_list,
+                        odsc_entry)
+    {
+        if(obj_desc_st_equals_intersect(&odscl->odsc, &qodsc_dst_st) {
+            // fprintf(stderr, "hit cache! very good!\n"
+            //                "in_odsc: %s\n"
+            //                "match_odsc: %s\n", obj_desc_sprint(odsc), obj_desc_sprint(&odscl->odsc));
+            (*odsc_tab)[num_odsc++] = &odscl->odsc;
+            bbox_intersect(&qodsc_dst_st->bb, &odscl->odsc.bb, &isect);
+            num_elem -= bbox_volume(&isect);
+        }
+    }
+    ABT_mutex_unlock(de->hash_mutex[n]);
+    // all covered
+    if(num_elem == 0) {
+        ret = num_odsc;
+    }
+    else if (num_elem > 0 || num_elem < total_elem) {
+        ret = -1;
+    }
+    else if (num_elem == total_elem) {
+        ret = 0;
+    }
+    else {
+        ret = -2;
+    }
+    return ret;
 }
 
 /*
