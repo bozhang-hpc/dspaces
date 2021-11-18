@@ -3747,8 +3747,6 @@ int dspaces_get_layout_new(dspaces_client_t client, const char *var_name, unsign
 
     num_odscs = get_odscs_layout(client, &odsc, timeout, &odsc_tab, mode);
 
-    MPI_Barrier(getvar_comm);
-
     DEBUG_OUT("Finished query - need to fetch %d objects\n", num_odscs);
     for(int i = 0; i < num_odscs; ++i) {
         DEBUG_OUT("%s\n", obj_desc_sprint(&odsc_tab[i]));
