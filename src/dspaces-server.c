@@ -4206,9 +4206,6 @@ static void odsc_layout_internal_rpc(hg_handle_t handle)
                     bbox_intersect(&in_odsc.bb, &odsc.bb, &odsc.bb);
                     podsc_nums[j] = dht_find_other_st_entry_to_replace_v4(ssd->ent_self, &podsc2[j],&odsc);
                     if(podsc_nums[j]>0) {
-                        for(int k=0; k<podsc_nums[j]; k++) {
-                            bbox_intersect(&in_odsc.bb, &podsc2[j][k]->bb, &podsc2[j][k]->bb);
-                        }
                         v4odsc_num += podsc_nums[j];
                     } else if (podsc_nums[j]==0) {
                         v4odsc_num ++;
@@ -4219,11 +4216,19 @@ static void odsc_layout_internal_rpc(hg_handle_t handle)
                 int idx = 0;
                 for(int j = 0; j < num_odsc; j++) {
                     if(podsc_nums[j] > 0){
-                        memcpy(&v4odsc_tab[idx], podsc2[j], sizeof(*v4odsc_tab)*podsc_nums[j]);
-                        idx += podsc_nums[j];  
+                       for(int k=0; k< podsc_nums[j]; k++) {
+                            obj_descriptor todsc;
+                            todsc = *podsc2[j][k];
+                            bbox_intersect(&in_odsc.bb, &todsc.bb, &todsc.bb);
+                            v4odsc_tab[idx] = todsc;
+                            idx++ ;
+                        } 
                     } else if(podsc_nums[j]==0) {
-                        memcpy(&v4odsc_tab[idx], podsc[j], sizeof(*v4odsc_tab));
-                        idx ++ ;
+                        obj_descriptor todsc;
+                        todsc = *podsc[j];
+                        bbox_intersect(&in_odsc.bb, &todsc.bb, &todsc.bb);
+                        v4odsc_tab[idx] = todsc;
+                        idx ++ ;  
                     }
                     free(podsc2[j]);
                 }
@@ -4377,9 +4382,6 @@ static int get_query_layout_odscs(dspaces_provider_t server, odsc_gdim_layout_t 
                         podsc2[i] = malloc(sizeof(**podsc2) * ssd->ent_self->odsc_num);
                         podsc_nums[i] = dht_find_other_st_entry_to_replace_v4(ssd->ent_self, &podsc2[i],odsc);
                         if(podsc_nums[i]>0) {
-                            for(int j=0; j<podsc_nums[i]; j++) {
-                                bbox_intersect(&q_odsc->bb, &podsc2[i][j]->bb, &podsc2[i][j]->bb);
-                            }
                             v4odsc_num += podsc_nums[j];
                         } else if (podsc_nums[i]==0) {
                             v4odsc_num ++;
@@ -4389,10 +4391,18 @@ static int get_query_layout_odscs(dspaces_provider_t server, odsc_gdim_layout_t 
                     int idx=0;
                     for(int i = 0; i < odsc_nums[self_id_num]; i++) {
                         if(podsc_nums[i] > 0){
-                            memcpy(&v4odsc_tab[idx], podsc2[i], sizeof(*v4odsc_tab)*podsc_nums[i]);
-                            idx += podsc_nums[i];  
+                            for(int j=0; j< podsc_nums[i]; j++) {
+                                obj_descriptor todsc;
+                                todsc = *podsc2[i][j];
+                                bbox_intersect(&q_odsc->bb, &todsc.bb, &todsc.bb);
+                                v4odsc_tab[idx] = todsc;
+                                idx++ ;
+                            }
                         } else if(podsc_nums[i] == 0){
-                            memcpy(&v4odsc_tab[idx], podsc[i], sizeof(*v4odsc_tab));
+                            obj_descriptor todsc;
+                            todsc = *podsc[i];
+                            bbox_intersect(&q_odsc->bb, &todsc.bb, &todsc.bb);
+                            v4odsc_tab[idx] = todsc;
                             idx ++ ;  
                         }
                         free(podsc2[i]);
