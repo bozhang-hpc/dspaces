@@ -2367,6 +2367,9 @@ static void obj_update_st_rpc(hg_handle_t handle)
     case DS_OBJ_NEW_ST:
         err = dht_add_entry_new_st(de, &in_odsc);
         break;
+    case DS_OBJ_NEW_V4:
+                dht_add_entry_st_v4(ssd->ent_self, odsc);
+                break;
     default:
         fprintf(stderr, "ERROR: (%s): unknown object update type.\n", __func__);
     }
