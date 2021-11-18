@@ -4106,9 +4106,8 @@ static void odsc_layout_internal_rpc(hg_handle_t handle)
     int mode;
     odsc_list_t out;
     int v4odsc_num = 0;
-    int v4hflag;
     int *podsc_nums;
-    obj_descriptor **podsc, ***pdosc2;
+    obj_descriptor **podsc, ***podsc2;
     enum storage_type src_st;
     margo_instance_id mid = margo_hg_handle_get_instance(handle);
 
@@ -4189,7 +4188,6 @@ static void odsc_layout_internal_rpc(hg_handle_t handle)
         else if (mode==4) {
             src_st = podsc[0]->src_st;
             if(src_st == in_odsc.st) {
-                v4hflag = 0;
                 for(int j = 0; j < num_odsc; j++) {
                     obj_descriptor odsc;
                     odsc = *podsc[j];
@@ -4198,7 +4196,6 @@ static void odsc_layout_internal_rpc(hg_handle_t handle)
                     odsc_tab[j] = odsc;
                 }
             } else {
-                v4hfalg = 1;
                 podsc_nums = malloc(sizeof(int) * num_odsc);
                 podsc2 = malloc(sizeof(*podsc2) * num_odsc);
                 for(int j = 0; j < num_odsc; j++) {
