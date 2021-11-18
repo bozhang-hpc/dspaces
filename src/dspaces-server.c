@@ -4362,7 +4362,7 @@ static int get_query_layout_odscs(dspaces_provider_t server, odsc_gdim_layout_t 
                     }
                 } else {
                     int *podsc_nums = malloc(sizeof(int) * odsc_nums[self_id_num]);
-                    obj_descriptor ***pdosc2 = malloc(sizeof(*podsc2) * odsc_nums[self_id_num]);
+                    obj_descriptor ***podsc2 = malloc(sizeof(*podsc2) * odsc_nums[self_id_num]);
                     int v4odsc_num=0;
                     
                     for(i = 0; i < odsc_nums[self_id_num]; i++) {
