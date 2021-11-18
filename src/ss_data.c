@@ -2299,13 +2299,13 @@ int dht_find_other_st_entry_to_replace_v4(struct dht_entry *de, obj_descriptor *
     obj_desc_transpose_st(&qodsc_dst_st, qodsc);
 
     n = qodsc->version % de->odsc_size;
-    num_elem = ssh_hash_elem_count(de->ss, &qodsc_dst_st->bb);
+    num_elem = ssh_hash_elem_count(de->ss, &qodsc_dst_st.bb);
     total_elem = num_elem;
     ABT_mutex_lock(de->hash_mutex[n]);
     list_for_each_entry(odscl, &de->odsc_hash[n], struct obj_desc_list,
                         odsc_entry)
     {
-        if(obj_desc_st_equals_intersect(&odscl->odsc, &qodsc_dst_st) {
+        if(obj_desc_st_equals_intersect(&odscl->odsc, &qodsc_dst_st)) {
             // fprintf(stderr, "hit cache! very good!\n"
             //                "in_odsc: %s\n"
             //                "match_odsc: %s\n", obj_desc_sprint(odsc), obj_desc_sprint(&odscl->odsc));
