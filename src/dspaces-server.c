@@ -4378,7 +4378,7 @@ static int get_query_layout_odscs(dspaces_provider_t server, odsc_gdim_layout_t 
                         podsc_nums[i] = dht_find_other_st_entry_to_replace_v4(ssd->ent_self, &podsc2[i],odsc);
                         if(podsc_nums[i]>0) {
                             for(int j=0; j<podsc_nums[i]; j++) {
-                                bbox_intersect(&q_odsc->bb, &podsc2[i][j]->bb, &podsc2->bb);
+                                bbox_intersect(&q_odsc->bb, &podsc2[i][j]->bb, &podsc2[i][j]->bb);
                             }
                             v4odsc_num += podsc_nums[j];
                         } else if (podsc_nums[i]==0) {
