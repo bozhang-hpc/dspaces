@@ -2310,7 +2310,7 @@ int dht_find_other_st_entry_to_replace_v4(struct dht_entry *de, obj_descriptor *
             //                "in_odsc: %s\n"
             //                "match_odsc: %s\n", obj_desc_sprint(odsc), obj_desc_sprint(&odscl->odsc));
             (*odsc_tab)[num_odsc++] = &odscl->odsc;
-            bbox_intersect(&qodsc_dst_st->bb, &odscl->odsc.bb, &isect);
+            bbox_intersect(&qodsc_dst_st.bb, &odscl->odsc.bb, &isect);
             num_elem -= bbox_volume(&isect);
         }
     }
