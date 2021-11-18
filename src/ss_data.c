@@ -2319,7 +2319,7 @@ int dht_find_other_st_entry_to_replace_v4(struct dht_entry *de, obj_descriptor *
     if(num_elem == 0) {
         ret = num_odsc;
     }
-    else if (num_elem > 0 || num_elem < total_elem) {
+    else if (num_elem > 0 && num_elem < total_elem) {
         ret = -1;
     }
     else if (num_elem == total_elem) {
