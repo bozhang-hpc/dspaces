@@ -2460,6 +2460,7 @@ int dht_add_entry_st(struct dht_entry *de, obj_descriptor *odsc)
 
                 bbox_intersect(&odsc->bb, &sub->odsc->bb, &isect);
                 sub->remaining -= bbox_volume(&isect);
+                fprintf(stderr, "line 2463: sub_remaining = %d\n", sub->remaining);
                 if(sub->remaining == 0) {
                     sub_complete = 1;
                     list_del(&sub->entry);
