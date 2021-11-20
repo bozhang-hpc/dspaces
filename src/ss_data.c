@@ -2417,6 +2417,8 @@ int dht_add_entry_st(struct dht_entry *de, obj_descriptor *odsc)
     int sub_complete = 0;
     int n, err = -ENOMEM;
 
+    fprintf(stderr, "***add_entry_st Debug0***\n");
+
     odscl = dht_find_match_st(de, odsc);
     if(odscl) {
         /* There  is allready  a descriptor  with  a different
@@ -2434,6 +2436,7 @@ int dht_add_entry_st(struct dht_entry *de, obj_descriptor *odsc)
         memcpy(&odscl->odsc, odsc, sizeof(*odsc));
         return 0;
     }
+    fprintf(stderr, "***add_entry_st Debug1***\n");
 
     n = odsc->version % de->odsc_size;
     odscl = malloc(sizeof(*odscl));
