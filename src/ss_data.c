@@ -2448,6 +2448,8 @@ int dht_add_entry_st(struct dht_entry *de, obj_descriptor *odsc)
     list_add(&odscl->odsc_entry, &de->odsc_hash[n]);
     de->odsc_num++;
 
+    fprintf(stderr, "***add_entry_st Debug2***\n");
+
     list_for_each_entry_safe(sub, tmp, &de->dht_subs[n],
                              struct dht_sub_list_entry, entry)
     {
@@ -2490,6 +2492,8 @@ int dht_add_entry_st(struct dht_entry *de, obj_descriptor *odsc)
     if(sub_complete) {
         ABT_cond_broadcast(de->hash_cond[n]);
     }
+
+    fprintf(stderr, "***add_entry_st Debug3***\n");
 
     ABT_mutex_unlock(de->hash_mutex[n]);
 
