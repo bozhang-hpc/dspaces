@@ -1547,6 +1547,8 @@ void dht_local_subscribe(struct dht_entry *de, obj_descriptor *q_odsc,
     sub.st_init_flag = 1; // add for st support
     INIT_LIST_HEAD(&sub.recv_odsc);
 
+    fprintf(stderr, "***dht_local_sub Debug0***\n");
+
     list_add(&sub.entry, &de->dht_subs[n]);
 
     do {
