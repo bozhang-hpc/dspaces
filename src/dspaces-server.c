@@ -4023,6 +4023,8 @@ static void put_layout_rpc(hg_handle_t handle)
             return;
         }
 
+        DEBUG_OUT("Update converted odsc: %s", obj_desc_sprint(&new_od->obj_desc));
+
         ABT_mutex_lock(server->ls_mutex);
         ls_add_obj_st(server->dsg->ls, new_od);
         ABT_mutex_unlock(server->ls_mutex);
