@@ -2455,7 +2455,7 @@ int dht_add_entry_st(struct dht_entry *de, obj_descriptor *odsc)
     list_for_each_entry_safe(sub, tmp, &de->dht_subs[n],
                              struct dht_sub_list_entry, entry)
     {
-        fprintf(stderr, "***checking intersection: %s***\n", bbox_sprint(sub->odsc));
+        fprintf(stderr, "***checking intersection: %s***\n", obj_desc_sprint(sub->odsc));
         if(!(sub->st_init_flag)) {
             if(obj_desc_equals_intersect(odsc, sub->odsc)) {
                 sub_odscl = malloc(sizeof(*sub_odscl));
