@@ -1547,7 +1547,7 @@ void dht_local_subscribe(struct dht_entry *de, obj_descriptor *q_odsc,
     sub.st_init_flag = 1; // add for st support
     INIT_LIST_HEAD(&sub.recv_odsc);
 
-    fprintf(stderr, "***dht_local_sub Debug0***\n");
+    fprintf(stderr, "***dht_local_sub add to bin %d***\n", n);
 
     list_add(&sub.entry, &de->dht_subs[n]);
 
@@ -2450,11 +2450,12 @@ int dht_add_entry_st(struct dht_entry *de, obj_descriptor *odsc)
     list_add(&odscl->odsc_entry, &de->odsc_hash[n]);
     de->odsc_num++;
 
-    fprintf(stderr, "***add_entry_st Debug2***\n");
+    fprintf(stderr, "***add_entry_st Debug2, checking bin %d***\n", n);
 
     list_for_each_entry_safe(sub, tmp, &de->dht_subs[n],
                              struct dht_sub_list_entry, entry)
     {
+        fprintf(stderr, "***checking intersection: %s***\n", bbox_sprint(sub->odsc));
         if(!(sub->st_init_flag)) {
             if(obj_desc_equals_intersect(odsc, sub->odsc)) {
                 sub_odscl = malloc(sizeof(*sub_odscl));
