@@ -2450,7 +2450,8 @@ int dht_add_entry_st(struct dht_entry *de, obj_descriptor *odsc)
     list_add(&odscl->odsc_entry, &de->odsc_hash[n]);
     de->odsc_num++;
 
-    fprintf(stderr, "***add_entry_st Debug2, checking bin %d***\n", n);
+    fprintf(stderr, "***add_entry_st Debug2, checking bin %d, 
+            in_odsc: %s***\n", n, obj_desc_sprint(odsc));
 
     list_for_each_entry_safe(sub, tmp, &de->dht_subs[n],
                              struct dht_sub_list_entry, entry)
