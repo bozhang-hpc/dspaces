@@ -976,13 +976,6 @@ int dspaces_check_put(dspaces_client_t client, struct dspaces_put_req *req,
     struct dspaces_put_req **ds_req_p, *ds_req_prev;
     int ret;
     hg_return_t hret;
-    obj_descriptor * odsc = (obj_descriptor*) req->in.odsc.raw_odsc;
-    if(odsc->bb.num_dims > 10 | odsc->bb.num_dims < 0) {
-        fprintf(stderr,
-                "ERROR: %s: put req corrupted: %s \n",
-                __func__, obj_desc_sprint(odsc));
-        return (-1);
-    }
 
     if(req->finalized) {
         ret = req->ret;
