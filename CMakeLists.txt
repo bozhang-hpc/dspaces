@@ -8,7 +8,7 @@
 #      -DCMAKE_PREFIX_PATH='/dir1;/dir2;/dir3'
 #
 
-cmake_minimum_required (VERSION 3.0)
+cmake_minimum_required (VERSION 3.14)
 project (dspaces VERSION 2.2.0 LANGUAGES C)
 
 cmake_policy(SET CMP0078 NEW)
@@ -87,5 +87,11 @@ if(${ENABLE_TESTS})
   add_subdirectory(tests)
 endif(${ENABLE_TESTS})
 if(${ENABLE_EXAMPLES})
-  add_subdirectory(examples)
+    configure_file(
+        ${PROJECT_SOURCE_DIR}/examples/opts.mk.in
+        ${PROJECT_BINARY_DIR}/examples/opts.mk
+        @ONLY
+    )
+    file(GLOB EXAMPLE_DIRS ${PROJECT_SOURCE_DIR}/examples/ex*)
+    file(COPY ${PROJECT_SOURCE_DIR}/examples/Makefile ${EXAMPLE_DIRS} DESTINATION ${PROJECT_BINARY_DIR}/examples)
 endif(${ENABLE_EXAMPLES})

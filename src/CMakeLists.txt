@@ -33,7 +33,7 @@ set_target_properties (dspaces
     PROPERTIES VERSION ${dspaces_VERSION}
     SOVERSION ${dspaces_VERSION_MAJOR})
 
-set(dspaces-server-src util.c bbox.c ss_data.c dspaces-server.c)
+set(dspaces-server-src util.c bbox.c ss_data.c dspaces-server.c toml.c)
 
 add_library(dspaces-server ${dspaces-server-src})
 if(HAVE_DRC)
@@ -75,7 +75,7 @@ configure_file ("dspaces.pc.in" "dspaces.pc" @ONLY)
 install (TARGETS dspaces dspaces-server EXPORT dspaces-targets
          ARCHIVE DESTINATION lib
          LIBRARY DESTINATION lib)
-install (EXPORT dspaces-targets
+install (EXPORT dspaces-targets NAMESPACE dspaces::
          DESTINATION ${dspaces-pkg}
          FILE "dspaces-targets.cmake")
 install (FILES "${CMAKE_CURRENT_BINARY_DIR}/dspaces-config.cmake"

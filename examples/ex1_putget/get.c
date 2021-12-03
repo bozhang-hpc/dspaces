@@ -45,7 +45,7 @@ int main(int argc, char **argv)
         // Usage: dspaces_get(Name of variable, version num,
         // size (in bytes of each element), dimensions for bounding box,
         // lower bound coordinates, upper bound coordinates,
-        // ptr to data buffer
+        // ptr to data buffer, flag value (-1) means wait for data indefinitely
         dspaces_get(client, var_name, timestep, sizeof(int), ndim, &lb, &ub,
                     data, -1);
 
