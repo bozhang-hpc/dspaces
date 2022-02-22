@@ -4,6 +4,8 @@ if(HAVE_DRC)
     add_definitions( -DHAVE_DRC)
 endif()
 
+find_package(CUDAToolkit)
+
 # list of source files
 set(dspaces-src util.c bbox.c ss_data.c dspaces-client.c)
 
@@ -20,8 +22,8 @@ if(HAVE_DRC)
     target_link_libraries (dspaces margo m pthread ${DRC_LIBRARIES})
     target_include_directories (dspaces PUBLIC $<INSTALL_INTERFACE:include> ${DRC_INCLUDE_DIRS})
 else()
-    target_link_libraries (dspaces margo m pthread)
-    target_include_directories (dspaces PUBLIC $<INSTALL_INTERFACE:include>)
+    target_link_libraries (dspaces margo m pthread CUDA::cudart CUDA::cuda_driver)
+    target_include_directories (dspaces PUBLIC $<INSTALL_INTERFACE:include> ${CUDAToolkit_INCLUDE_DIRS})
 endif()
 
 # local include's BEFORE, in case old incompatable .h files in prefix/include
@@ -68,6 +70,7 @@ configure_file (dspaces-config.cmake.in dspaces-config.cmake @ONLY)
 set (DEST_DIR "${CMAKE_INSTALL_PREFIX}")
 set (PRIVATE_LIBS "-ldspaces -lpthread -lmargo -labt -lmercury -lm")
 configure_file ("dspaces.pc.in" "dspaces.pc" @ONLY)
+configure_file ("dspaces-server.pc.in" "dspaces-server.pc" @ONLY)
 
 #
 # "make install" rules
@@ -84,3 +87,5 @@ install (FILES "${CMAKE_CURRENT_BINARY_DIR}/dspaces-config.cmake"
          DESTINATION ${dspaces-pkg} )
 install (FILES "${CMAKE_CURRENT_BINARY_DIR}/dspaces.pc"
 		DESTINATION "lib/pkgconfig/")
+install (FILES "${CMAKE_CURRENT_BINARY_DIR}/dspaces-server.pc"
+        DESTINATION "lib/pkgconfig/")   

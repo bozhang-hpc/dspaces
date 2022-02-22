@@ -122,18 +122,17 @@ int dspaces_put(dspaces_client_t client, const char *var_name, unsigned int ver,
  * @param[in] ub:       coordinates for the upper corner of the local
  *                  bounding box.
  * @param[in] data:     Pointer to user data buffer.
- *
  * @param[in] allocate: allocate a buffer to enable immediate reuse of data
- *
- * @param[in] check: check for any completed iputs before processing this one
+ * @param[in] check:    check for any completed iputs before processing this one
+ * @param[in] free:     free data buffer once request completes.
  *
  * @return put handle
  */
 struct dspaces_put_req *dspaces_iput(dspaces_client_t client,
                                      const char *var_name, unsigned int ver,
                                      int size, int ndim, uint64_t *lb,
-                                     uint64_t *ub, const void *data,
-                                     int allocate, int check);
+                                     uint64_t *ub, void *data,
+                                     int allocate, int check, int free);
 
 /**
  * @brief Check status of non-blocking put
@@ -377,6 +376,14 @@ int dspaces_put_meta(dspaces_client_t client, const char *name, int version,
  */
 int dspaces_get_meta(dspaces_client_t client, const char *name, int mode,
                      int current, int *version, void **data, unsigned int *len);
+
+int dspaces_cuda_put(dspaces_client_t client, const char *var_name, unsigned int ver,
+                int elem_size, int ndim, uint64_t *lb, uint64_t *ub,
+                const void *data);
+
+int dspaces_cuda_get(dspaces_client_t client, const char *var_name, unsigned int ver,
+                     int elem_size, int ndim, uint64_t *lb, uint64_t *ub, void *data,
+                     int timeout);
 
 #if defined(__cplusplus)
 }
