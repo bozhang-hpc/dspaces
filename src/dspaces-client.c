@@ -1779,6 +1779,27 @@ static int cuda_put_hybrid(dspaces_client_t client, const char *var_name, unsign
     return ret;
 }
 
+static int cuda_put_sampled(dspaces_client_t client, const char *var_name, unsigned int ver,
+                int elem_size, int ndim, uint64_t *lb, uint64_t *ub,
+                const void *data)
+{
+    /*  Choose to use conventional path or GDR path based on a score
+        Performance score - 10 or 0
+        The path that takes less time gains 10, the other path gains 0
+        Heating score - 0 to 5(max)
+        Artificially set the max to the half of the performance score
+        If the path is not chosen, heating score +1
+        Total score  = Performance Score + Heating Score
+        Use Softmax of the total score for random choosing
+    */
+
+    // TODO: keeps a history record for data in different size
+    static double host_perf_score = 0.0, gdr_perf_score = 0.0;
+    static double host_heat_score = 0.0, gdr_heat_score = 0.0;
+    double host_total_score = host_perf_score + host_heat_score;
+    double gdr_total_score = gdr_perf_score + gdr_heat_score;
+}
+
 static int cuda_put_dual_channel(dspaces_client_t client, const char *var_name, unsigned int ver,
                 int elem_size, int ndim, uint64_t *lb, uint64_t *ub,
                 const void *data)
@@ -2067,6 +2088,17 @@ static int cuda_put_dual_channel(dspaces_client_t client, const char *var_name, 
     margo_addr_free(client->mid, server_addr);
 
     return ret;
+}
+
+static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned int ver,
+                int elem_size, int ndim, uint64_t *lb, uint64_t *ub,
+                const void *data)
+{
+    /*  cuda_put_dual_channel_dual_staging
+        If the host has enough memory, offload the I/O to the host.
+            Do dual channel for gdr and device->host
+        If the host doesn't have enough memory , do gdr.
+    */
 }
 
 int dspaces_cuda_put(dspaces_client_t client, const char *var_name, unsigned int ver,
