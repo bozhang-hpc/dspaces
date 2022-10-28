@@ -2167,6 +2167,10 @@ static void query_idx2_rpc(hg_handle_t handle)
     // DEBUG_OUT("Received query for idx2 file %s with timeout %d",
     //           obj_desc_sprint(&in_odsc), timeout);
 
+    odsc_size = get_query_odscs(); // search odsc from all corresponding server peers
+    if (odsc_size == 0) { // idx file is not loaded into memory
+    } else {}
+
     // out.odsc_list.size =
     //     get_query_odscs(server, &in, timeout, &results, req_id);
 
