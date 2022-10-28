@@ -56,6 +56,7 @@ struct dspaces_provider {
     hg_id_t put_local_id;
     hg_id_t put_meta_id;
     hg_id_t query_id;
+    hg_id_t query_idx2_id;
     hg_id_t query_meta_id;
     hg_id_t get_id;
     hg_id_t get_local_id;
@@ -105,6 +106,7 @@ DECLARE_MARGO_RPC_HANDLER(odsc_internal_rpc)
 DECLARE_MARGO_RPC_HANDLER(ss_rpc)
 DECLARE_MARGO_RPC_HANDLER(kill_rpc)
 DECLARE_MARGO_RPC_HANDLER(sub_rpc)
+DECLARE_MARGO_RPC_HANDLER(query_idx2_rpc)
 
 static void put_rpc(hg_handle_t h);
 static void put_local_rpc(hg_handle_t h);
@@ -117,6 +119,7 @@ static void odsc_internal_rpc(hg_handle_t h);
 static void ss_rpc(hg_handle_t h);
 static void kill_rpc(hg_handle_t h);
 static void sub_rpc(hg_handle_t h);
+static void query_idx2_rpc(hg_handle_t h);
 // static void write_lock_rpc(hg_handle_t h);
 // static void read_lock_rpc(hg_handle_t h);
 
@@ -980,6 +983,11 @@ int dspaces_server_init(const char *listen_addr_str, MPI_Comm comm,
         DS_HG_REGISTER(hg, server->sub_id, odsc_gdim_t, void, sub_rpc);
         margo_registered_name(server->mid, "notify_rpc", &server->notify_id,
                               &flag);
+        margo_registered_name(server->mid, "query_idx2_rpc", &server->query_idx2_id,
+                              &flag);
+        // TODO: change out type
+        DS_HG_REGISTER(hg, server->query_idx2_id, idxp_gdim_t, odsc_list_t,
+                       query_idx2_rpc);
     } else {
         server->put_id = MARGO_REGISTER(server->mid, "put_rpc", bulk_gdim_t,
                                         bulk_out_t, put_rpc);
@@ -1042,6 +1050,11 @@ int dspaces_server_init(const char *listen_addr_str, MPI_Comm comm,
             MARGO_REGISTER(server->mid, "notify_rpc", odsc_list_t, void, NULL);
         margo_registered_disable_response(server->mid, server->notify_id,
                                           HG_TRUE);
+        // TODO: change out type
+        server->query_idx2_id = MARGO_REGISTER(server->mid, "query_idx2_rpc", idxp_gdim_t,
+                                          odsc_list_t, query_idx2_rpc);
+        margo_register_data(server->mid, server->query_idx2_id, (void *)server,
+                            NULL);
     }
     int err = dsg_alloc(server, conf_file, comm);
     if(err) {
@@ -2114,3 +2127,54 @@ int dspaces_server_get_objdata(dspaces_provider_t server,
 
     return (0);
 }
+
+static void query_idx2_rpc(hg_handle_t handle)
+{
+    margo_instance_id mid;
+    const struct hg_info *info;
+    dspaces_provider_t server;
+    idxp_gdim_t in;
+    odsc_list_t out;
+    struct idx_params in_idxp;
+    struct global_dimension in_gdim;
+    int timeout;
+    obj_descriptor *results;
+    hg_return_t hret;
+    static int uid = 0;
+    int req_id;
+
+    req_id = __sync_fetch_and_add(&uid, 1);
+
+    // unwrap context and input from margo
+    mid = margo_hg_handle_get_instance(handle);
+    info = margo_get_info(handle);
+    server = (dspaces_provider_t)margo_registered_data(mid, info->id);
+    hret = margo_get_input(handle, &in);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr,
+                "DATASPACES: ERROR handling %s: margo_get_input() failed with "
+                "%d.\n",
+                __func__, hret);
+        margo_destroy(handle);
+        return;
+    }
+
+    DEBUG_OUT("received idx2 query\n");
+
+    memcpy(&in_odsc, in.idxp_gdim.raw_idxp, sizeof(in_idxp));
+    memcpy(&in_gdim, in.idxp_gdim.raw_gdim, sizeof(struct global_dimension));
+    timeout = in.param;
+    // DEBUG_OUT("Received query for idx2 file %s with timeout %d",
+    //           obj_desc_sprint(&in_odsc), timeout);
+
+    // out.odsc_list.size =
+    //     get_query_odscs(server, &in, timeout, &results, req_id);
+
+    // out.odsc_list.raw_odsc = (char *)results;
+    margo_respond(handle, &out);
+    margo_free_input(handle, &in);
+    margo_destroy(handle);
+
+    free(results);
+}
+DEFINE_MARGO_RPC_HANDLER(query_idx2_rpc)

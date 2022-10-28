@@ -92,6 +92,7 @@ struct dspaces_client {
     hg_id_t get_id;
     hg_id_t get_local_id;
     hg_id_t query_id;
+    hg_id_t query_idx2_id;
     hg_id_t query_meta_id;
     hg_id_t ss_id;
     hg_id_t drain_id;
@@ -545,6 +546,8 @@ static int dspaces_init_margo(dspaces_client_t client,
         DS_HG_REGISTER(hg, client->notify_id, odsc_list_t, void, notify_rpc);
         margo_registered_name(client->mid, "query_meta_rpc",
                               &client->query_meta_id, &flag);
+        margo_registered_name(client->mid, "query_idx2_rpc", &client->query_idx2_id,
+                              &flag);
     } else {
         client->put_id = MARGO_REGISTER(client->mid, "put_rpc", bulk_gdim_t,
                                         bulk_out_t, NULL);
@@ -562,6 +565,9 @@ static int dspaces_init_margo(dspaces_client_t client,
         margo_register_data(client->mid, client->get_local_id, (void *)client,
                             NULL);
         client->query_id = MARGO_REGISTER(client->mid, "query_rpc", odsc_gdim_t,
+                                          odsc_list_t, NULL);
+        // TODO: change out type
+        client->query_idx2_id = MARGO_REGISTER(client->mid, "query_idx2_rpc", idxp_gdim_t,
                                           odsc_list_t, NULL);
         client->query_meta_id =
             MARGO_REGISTER(client->mid, "query_meta_rpc", query_meta_in_t,
@@ -2167,4 +2173,52 @@ void dspaces_kill(dspaces_client_t client)
 
     margo_addr_free(client->mid, server_addr);
     margo_destroy(h);
+}
+
+struct idx_file* dspaces_get_idx(struct idx_params *idxp)
+{
+    struct global_dimension od_gdim;
+    hg_addr_t server_addr;
+    hg_return_t hret;
+    hg_handle_t handle;
+
+    // TODO: make another metadata for idx2
+    // TODO: do we need to prepare the gdim at client?
+    idxp_gdim_t in;
+
+    // TODO: decide out type
+
+    in.idxp_gdim.idxp_size = sizeof(*idxp);
+    in.idxp_gdim.raw_idxp = (char*) idxp;
+
+    // set_global_dimension()?
+    // in.idxp_gdim.gdim_size = sizeof(od_gdim);
+    // in.idxp_gdim.raw_gdim = (char*) (&od_gdim);
+
+    get_server_address(client, &server_addr);
+
+    hret = margo_create(client->mid, server_addr, client->query_idx2_id, &handle);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: %s: margo_create() failed with %d.\n", __func__,
+                hret);
+        return (0);
+    }
+
+    hret = margo_forward(handle, &in);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: %s: margo_forward() failed with %d.\n",
+                __func__, hret);
+        margo_destroy(handle);
+        return (0);
+    }
+
+    // TODO: to be decided
+    hret = margo_get_output(handle, &out);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: %s: margo_get_output() failed with %d.\n",
+                __func__, hret);
+        margo_destroy(handle);
+        return (0);
+    }
+
 }
