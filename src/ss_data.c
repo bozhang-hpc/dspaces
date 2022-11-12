@@ -1915,3 +1915,38 @@ void dc_req_free(struct dc_request *dc_req)
     free(dc_req->margo_req);
     free(dc_req);
 }
+
+struct gpu_bulk_list_entry *lookup_gpu_bulk_list(struct list_head *gpu_bulk_list,
+                                        size_t rdma_size)
+{
+    if(!gpu_bulk_list) {
+        return NULL;
+    }
+    struct gpu_bulk_list_entry *e;
+    list_for_each_entry(e, gpu_bulk_list, struct gpu_bulk_list_entry, entry)
+    {
+        if(e->rdma_size == rdma_size) {
+            return e;
+        }
+    }
+    return NULL;
+}
+
+void free_gpu_bulk_list(struct list_head *gpu_bulk_list)
+{
+    if(!gpu_bulk_list)
+        return;
+    int cnt = 0;
+    struct gpu_bulk_list_entry *e, *t;
+    list_for_each_entry_safe(e, t, gpu_bulk_list, struct gpu_bulk_list_entry, entry)
+    {
+        list_del(&e->entry);
+        free(e);
+        cnt++;
+    }
+
+#ifdef DEBUG
+    fprintf(stderr, "%s(): number of gpu bulk transfer record is %d\n",
+            __func__, cnt);
+#endif
+}

@@ -308,6 +308,10 @@ static struct dc_gspace *dcg_alloc(dspaces_client_t client)
     INIT_LIST_HEAD(&dcg_l->locks_list);
     init_gdim_list(&dcg_l->gdim_list);
     dcg_l->hash_version = ssd_hash_version_v1; // set default hash versio
+
+    // added for gpu data movement path selection
+    INIT_LIST_HEAD(&dcg_l->gpu_bulk_list);
+
     return dcg_l;
 
 err_out:
@@ -471,6 +475,8 @@ static int dspaces_init_internal(int rank, dspaces_client_t *c)
     }
 
     client->rank = rank;
+    client->put_reqs = NULL;
+    client->put_reqs_end = NULL;
 
     // now do dcg_alloc and store gid
     client->dcg = dcg_alloc(client);
@@ -1028,6 +1034,7 @@ int dspaces_fini(dspaces_client_t client)
     DEBUG_OUT("all objects drained. Finalizing...\n");
 
     free_gdim_list(&client->dcg->gdim_list);
+    free_gpu_bulk_list(&client->dcg->gpu_bulk_list);
     free(client->server_address[0]);
     free(client->server_address);
     ls_free(client->dcg->ls);
@@ -1368,6 +1375,7 @@ static int cuda_put_pipeline(dspaces_client_t client, const char *var_name, unsi
     curet = cudaStreamSynchronize(stream);
     if(curet != cudaSuccess) {
         fprintf(stderr, "ERROR: (%s): cudaStreamSynchronize() failed, Err Code: (%s)\n", __func__, cudaGetErrorString(curet));
+        margo_bulk_free(in.handle);
         cudaStreamDestroy(stream);
         free(buffer);
         return dspaces_ERR_CUDA;
@@ -1779,7 +1787,7 @@ static int cuda_put_hybrid(dspaces_client_t client, const char *var_name, unsign
     return ret;
 }
 
-static int cuda_put_sampled(dspaces_client_t client, const char *var_name, unsigned int ver,
+static int cuda_put_heuristic(dspaces_client_t client, const char *var_name, unsigned int ver,
                 int elem_size, int ndim, uint64_t *lb, uint64_t *ub,
                 const void *data)
 {
@@ -1792,12 +1800,125 @@ static int cuda_put_sampled(dspaces_client_t client, const char *var_name, unsig
         Total score  = Performance Score + Heating Score
         Use Softmax of the total score for random choosing
     */
+    int ret;
+    struct timeval start, end;
 
-    // TODO: keeps a history record for data in different size
-    static double host_perf_score = 0.0, gdr_perf_score = 0.0;
-    static double host_heat_score = 0.0, gdr_heat_score = 0.0;
-    double host_total_score = host_perf_score + host_heat_score;
-    double gdr_total_score = gdr_perf_score + gdr_heat_score;
+    struct bbox bb = {.num_dims = ndim};
+    memset(bb.lb.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+    memset(bb.ub.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+    memcpy(bb.lb.c, lb, sizeof(uint64_t) * ndim);
+    memcpy(bb.ub.c, ub, sizeof(uint64_t) * ndim);
+
+    size_t rdma_size = elem_size * bbox_volume(&bb);
+
+    struct gpu_bulk_list_entry *e;
+    e = lookup_gpu_bulk_list(&client->dcg->gpu_bulk_list, rdma_size);
+    if(!e) { // no record for this rdma size, randomly choose one of the path
+        srand((unsigned)time(NULL));
+        double r = ((double) rand() / (RAND_MAX));
+        e = (struct gpu_bulk_list_entry *) malloc(sizeof(*e));
+        e->rdma_size = rdma_size;
+        // each entry keeps 3 performance record
+        for(int i=0; i<3; i++) {
+            e->host_time[i] = -1.0;
+            e->gdr_time[i] = -1.0;
+        }
+        e->host_heat_score = 0;
+        e->gdr_heat_score = 0;
+        if(r < 0.5) { // choose host-based path
+            gettimeofday(&start, NULL);
+            ret = cuda_put_pipeline(client, var_name, ver, elem_size, ndim, lb, ub, data);
+            gettimeofday(&end, NULL);
+            e->host_time[0] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+            e->host_heat_score = 0;
+            e->gdr_heat_score =  e->gdr_heat_score < 5 ? e->gdr_heat_score++ : 5;
+        } else { // choose gdr path
+            gettimeofday(&start, NULL);
+            ret = cuda_put_gdr(client, var_name, ver, elem_size, ndim, lb, ub, data);
+            gettimeofday(&end, NULL);
+            e->gdr_time[0] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+            e->gdr_heat_score = 0;
+            e->host_heat_score = e->host_heat_score < 5 ? e->host_heat_score++ : 5;
+        }
+        list_add(&e->entry, &client->dcg->gpu_bulk_list);
+    } else if(e->host_time[0] < 0) { // no record for host-based path, force to choose it
+        gettimeofday(&start, NULL);
+        ret = cuda_put_pipeline(client, var_name, ver, elem_size, ndim, lb, ub, data);
+        gettimeofday(&end, NULL);
+        for(int i=2; i>0; i--) { // shift the record
+            e->host_time[i] = e->host_time[i-1];
+        }
+        e->host_time[0] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+        e->host_heat_score = 0;
+        e->gdr_heat_score =  e->gdr_heat_score < 5 ? e->gdr_heat_score++ : 5;
+    } else if(e->gdr_time[0] < 0) { // no record for gdr path, force to choose it
+        gettimeofday(&start, NULL);
+        ret = cuda_put_gdr(client, var_name, ver, elem_size, ndim, lb, ub, data);
+        gettimeofday(&end, NULL);
+        for(int i=2; i>0; i--) { // shift the record
+            e->gdr_time[i] = e->gdr_time[i-1];
+        }
+        e->gdr_time[0] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+        e->gdr_heat_score = 0;
+        e->host_heat_score = e->host_heat_score < 5 ? e->host_heat_score++ : 5;
+    } else { // have both records, choose the path according to score
+        double host_perf_score, gdr_perf_score,
+               host_total_score, gdr_total_score, max_total_score;
+        double avg_host_time = 0.0, avg_gdr_time = 0.0;
+        int avg_host_cnt = 0, avg_gdr_cnt = 0;
+        double host_prob, gdr_prob;
+        for(int i=0; i<3; i++) {
+            if(e->host_time[i] > 0.0) {
+                avg_host_time += e->host_time[i];
+                avg_host_cnt++;
+            }
+            if(e->gdr_time[i] > 0.0) {
+                avg_gdr_time += e->gdr_time[i];
+                avg_gdr_cnt++;
+            }
+        }
+        avg_host_time /= avg_host_cnt;
+        avg_gdr_time /= avg_gdr_cnt;
+        if(avg_gdr_time > avg_host_time) { // host perf better
+            host_perf_score = 10;
+            gdr_perf_score = 0;
+        } else { // gdr perf better
+            host_perf_score = 0;
+            gdr_perf_score = 10;
+        }
+        host_total_score = host_perf_score + e->host_heat_score;
+        gdr_total_score = gdr_perf_score + e->gdr_heat_score;
+        max_total_score = host_total_score > gdr_total_score ? host_total_score : gdr_total_score;
+        host_prob = exp(host_total_score - max_total_score) / (exp(host_total_score -max_total_score)
+                                                            + exp(gdr_total_score -max_total_score));
+        gdr_prob = exp(gdr_total_score - max_total_score) / (exp(host_total_score -max_total_score)
+                                                            + exp(gdr_total_score -max_total_score));
+        DEBUG_OUT("host_prob = %lf, gdr_prob = %lf\n", host_prob, gdr_prob);
+        srand((unsigned)time(NULL));
+        double r = ((double) rand() / (RAND_MAX));
+        if(r < host_prob) { // choose host-based path
+            gettimeofday(&start, NULL);
+            ret = cuda_put_pipeline(client, var_name, ver, elem_size, ndim, lb, ub, data);
+            gettimeofday(&end, NULL);
+            for(int i=2; i>0; i--) { // shift the record
+                e->host_time[i] = e->host_time[i-1];
+            }
+            e->host_time[0] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+            e->host_heat_score = 0;
+            e->gdr_heat_score =  e->gdr_heat_score < 5 ? e->gdr_heat_score++ : 5;
+        } else { // choose gdr path
+            gettimeofday(&start, NULL);
+            ret = cuda_put_gdr(client, var_name, ver, elem_size, ndim, lb, ub, data);
+            gettimeofday(&end, NULL);
+            for(int i=2; i>0; i--) { // shift the record
+                e->gdr_time[i] = e->gdr_time[i-1];
+            }
+            e->gdr_time[0] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+            e->gdr_heat_score = 0;
+            e->host_heat_score = e->host_heat_score < 5 ? e->host_heat_score++ : 5;
+        }
+    }
+    return ret;
 }
 
 static int cuda_put_dual_channel(dspaces_client_t client, const char *var_name, unsigned int ver,
@@ -2090,6 +2211,35 @@ static int cuda_put_dual_channel(dspaces_client_t client, const char *var_name, 
     return ret;
 }
 
+static int finalize_req(struct dspaces_put_req *req)
+{
+    bulk_out_t out;
+    int ret;
+    hg_return_t hret;
+
+    hret = margo_get_output(req->handle, &out);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_get_output() failed\n", __func__);
+        margo_bulk_free(req->in.handle);
+        margo_destroy(req->handle);
+        return dspaces_ERR_MERCURY;
+    }
+    ret = out.ret;
+    margo_free_output(req->handle, &out);
+    margo_bulk_free(req->in.handle);
+    margo_destroy(req->handle);
+
+    if(req->buffer) {
+        free(req->buffer);
+        req->buffer = NULL;
+    }
+
+    req->finalized = 1;
+    req->ret = ret;
+
+    return ret;
+}
+
 static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned int ver,
                 int elem_size, int ndim, uint64_t *lb, uint64_t *ub,
                 const void *data)
@@ -2097,8 +2247,166 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
     /*  cuda_put_dual_channel_dual_staging
         If the host has enough memory, offload the I/O to the host.
             Do dual channel for gdr and device->host
-        If the host doesn't have enough memory , do gdr.
+        If the host doesn't have enough memory, try to free the completed iput request;
+        If the host still doesn't have enough memory, do gdr.
     */
+
+    int ret = dspaces_SUCCESS;
+    struct timeval start, end;
+
+    struct bbox bb = {.num_dims = ndim};
+    memset(bb.lb.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+    memset(bb.ub.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+    memcpy(bb.lb.c, lb, sizeof(uint64_t) * ndim);
+    memcpy(bb.ub.c, ub, sizeof(uint64_t) * ndim);
+
+    size_t rdma_size = elem_size * bbox_volume(&bb);
+
+    void* host_buf = (void*) malloc(rdma_size);
+    if(!host_buf) { // insufficient memory
+        /* Passively free host memory*/
+        /* Try to free some iput request & host_buf */
+        // Check for completed iputs
+        int flag;
+        struct dspaces_put_req *ds_req, *ds_req_prev, **ds_req_p, **ds_req_head;
+        ds_req_prev = NULL;
+        ds_req_p = &client->put_reqs;
+        while(*ds_req_p) { // not empty
+            ds_req = *ds_req_p;
+            flag = 0;
+            if(!ds_req->finalized) {
+                margo_test(ds_req->req, &flag);
+                if(flag) { // finished, remove this req
+                    finalize_req(ds_req);
+                    if(*ds_req_p == client->put_reqs) { // delete head
+                        client->put_reqs = ds_req->next;
+                    } else { // delete others
+                        ds_req_prev->next = ds_req->next;
+                    }
+                    /* iterate to next req */
+                    ds_req_p = &ds_req->next;
+                    if(!ds_req->next) { // check if is tail, before delete
+                        client->put_reqs_end = ds_req_prev;
+                    }
+                    free(ds_req);
+                } else { // not finished, move to next req, update prev_ptr because there is no delete
+                    ds_req_prev = ds_req;
+                    ds_req_p = &ds_req->next;
+                }
+            } else { // finalized, remove this req
+                
+                if(*ds_req_p == client->put_reqs) { // delete head
+                        client->put_reqs = ds_req->next;
+                    } else { // delete others
+                        ds_req_prev->next = ds_req->next;
+                    }
+                /* iterate to next req */
+                ds_req_p = &ds_req->next;
+                if(!ds_req->next) { // check if is tail, before delete
+                        client->put_reqs_end = ds_req_prev;
+                }
+                free(ds_req);
+            }
+        }
+
+        /* Try to allocate the host_buf again */
+        host_buf = (void*) malloc(rdma_size);
+        if(!host_buf) { // go to Dual Channel
+            ret = cuda_put_dual_channel(client, var_name, ver, elem_size, ndim, lb, ub, data);
+        }
+    } else { // GPU->host + put local + iput
+        // TODO: put_local && drain
+        /* CUDA Async MemCpy*/
+        cudaStream_t stream;
+        CUDA_ASSERTRT(cudaStreamCreate(&stream));
+        cudaError_t curet;
+        curet = cudaMemcpyAsync(host_buf, data, rdma_size, cudaMemcpyDeviceToHost, stream);
+        if(curet != cudaSuccess) {
+            fprintf(stderr, "ERROR: (%s): cudaMemcpyAsync() failed, Err Code: (%s)\n",
+                    __func__, cudaGetErrorString(curet));
+            cudaStreamDestroy(stream);
+            free(host_buf);
+            return dspaces_ERR_CUDA;
+        }
+
+        /* dspaces_iput*/
+        hg_addr_t server_addr;
+        hg_return_t hret;
+        struct dspaces_put_req *iput_req;
+        obj_descriptor odsc = {.version = ver,
+                           .owner = {0},
+                           .st = st,
+                           .flags = 0,
+                           .size = elem_size};
+        memcpy(&odsc.bb, &bb, sizeof(struct bbox));
+        strncpy(odsc.name, var_name, sizeof(odsc.name) - 1);
+        odsc.name[sizeof(odsc.name) - 1] = '\0';
+        struct global_dimension odsc_gdim;
+        set_global_dimension(&(client->dcg->gdim_list), var_name,
+                            &(client->dcg->default_gdim), &odsc_gdim);
+        iput_req->in.odsc.size = sizeof(odsc);
+        iput_req->in.odsc.raw_odsc = (char *)(&odsc);
+        iput_req->in.odsc.gdim_size = sizeof(struct global_dimension);
+        iput_req->in.odsc.raw_gdim = (char *)(&odsc_gdim);
+        hg_size_t hg_rdma_size = rdma_size;
+        iput_req->buffer = host_buf;
+
+        hret = margo_bulk_create(client->mid, 1, (void **)&host_buf, &hg_rdma_size,
+                                HG_BULK_READ_ONLY, &iput_req->in.handle);
+        if(hret != HG_SUCCESS) {
+            fprintf(stderr, "ERROR: (%s): margo_bulk_create() failed\n", __func__);
+            cudaStreamDestroy(stream);
+            free(host_buf);
+            return dspaces_ERR_MERCURY;
+        }
+
+        get_server_address(client, &server_addr);
+
+        hret = margo_create(client->mid, server_addr, client->put_id, &iput_req->handle);
+        if(hret != HG_SUCCESS) {
+            fprintf(stderr, "ERROR: (%s): margo_create() failed\n", __func__);
+            cudaStreamDestroy(stream);
+            free(host_buf);
+            margo_bulk_free(iput_req->in.handle);
+            return dspaces_ERR_MERCURY;
+        }
+
+        curet = cudaStreamSynchronize(stream);
+        if(curet != cudaSuccess) {
+            fprintf(stderr, "ERROR: (%s): cudaStreamSynchronize() failed, Err Code: (%s)\n",
+                             __func__, cudaGetErrorString(curet));
+            cudaStreamDestroy(stream);
+            free(host_buf);
+            margo_bulk_free(iput_req->in.handle);
+            return dspaces_ERR_CUDA;
+        }
+
+        DEBUG_OUT("sending object %s \n", obj_desc_sprint(&odsc));
+
+        hret = margo_iforward(iput_req->handle, &iput_req->in, &iput_req->req);
+        if(hret != HG_SUCCESS) {
+            fprintf(stderr, "ERROR: (%s): margo_iforward() failed\n", __func__);
+            cudaStreamDestroy(stream);
+            free(host_buf);
+            margo_bulk_free(iput_req->in.handle);
+            margo_destroy(iput_req->handle);
+            return dspaces_ERR_MERCURY;
+        }
+
+        margo_addr_free(client->mid, server_addr);
+
+        /* Add req to list tail */
+        iput_req->next = NULL;
+        if(client->put_reqs_end) {
+            client->put_reqs_end->next = iput_req;
+            client->put_reqs_end = iput_req;
+        } else {
+            client->put_reqs = client->put_reqs_end = iput_req;
+        }
+
+    }
+
+    return ret;
 }
 
 int dspaces_cuda_put(dspaces_client_t client, const char *var_name, unsigned int ver,
@@ -2154,35 +2462,6 @@ int dspaces_put(dspaces_client_t client, const char *var_name, unsigned int ver,
     } else {
         ret = dspaces_cpu_put(client, var_name, ver, elem_size, ndim, lb, ub, data);
     }
-    return ret;
-}
-
-static int finalize_req(struct dspaces_put_req *req)
-{
-    bulk_out_t out;
-    int ret;
-    hg_return_t hret;
-
-    hret = margo_get_output(req->handle, &out);
-    if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_get_output() failed\n", __func__);
-        margo_bulk_free(req->in.handle);
-        margo_destroy(req->handle);
-        return dspaces_ERR_MERCURY;
-    }
-    ret = out.ret;
-    margo_free_output(req->handle, &out);
-    margo_bulk_free(req->in.handle);
-    margo_destroy(req->handle);
-
-    if(req->buffer) {
-        free(req->buffer);
-        req->buffer = NULL;
-    }
-
-    req->finalized = 1;
-    req->ret = ret;
-
     return ret;
 }
 

@@ -125,6 +125,15 @@ struct meta_sub_list_entry {
     struct list_head entry;
 };
 
+struct gpu_bulk_list_entry {
+    struct list_head entry;
+    size_t rdma_size;
+    double host_time[3];
+    double gdr_time[3];
+    int host_heat_score;
+    int gdr_heat_score;
+};
+
 typedef struct {
     int num_obj;
     int size_hash;
@@ -414,5 +423,8 @@ char **addr_str_buf_to_list(char *buf, int num_addrs);
 struct dc_request *dc_req_alloc(struct obj_data *od);
 struct dc_request *dc_req_find(struct list_head *dc_req_list, obj_descriptor *odsc);
 void dc_req_free(struct dc_request *dc_req);
+struct gpu_bulk_list_entry *lookup_gpu_bulk_list(struct list_head *gpu_bulk_list,
+                                        size_t rdma_size);
+void free_gpu_bulk_list(struct list_head *gpu_bulk_list);
 
 #endif /* __SS_DATA_H_ */

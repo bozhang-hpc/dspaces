@@ -81,6 +81,9 @@ struct dc_gspace {
     /* List of 'struct gdim_list_entry' */
     struct list_head gdim_list;
 
+    /* List of 'struct gpu_bulk_list_entry' */
+    struct list_head gpu_bulk_list;
+
     enum sspace_hash_version hash_version;
     int max_versions;
     // for dimes like client storage
