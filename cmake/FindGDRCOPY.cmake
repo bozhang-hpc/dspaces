@@ -13,7 +13,7 @@ find_library(GDRCOPY_LIBRARY NAMES gdrapi
 set(GDRCOPY_INCLUDE_DIRS ${GDRCOPY_INCLUDE_DIR})
 set(GDRCOPY_LIBRARIES ${GDRCOPY_LIBRARY})
 include(FindPackageHandleStandardArgs)
-# handle the QUIETLY and REQUIRED arguments and set DRC_FOUND to TRUE
+# handle the QUIETLY and REQUIRED arguments and set GDR_FOUND to TRUE
 # if all listed variables are TRUE
 find_package_handle_standard_args(GDRCOPY DEFAULT_MSG
                                   GDRCOPY_INCLUDE_DIR GDRCOPY_LIBRARY)
