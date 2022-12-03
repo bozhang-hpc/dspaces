@@ -1,6 +1,8 @@
 #include "stdlib.h"
 #include "stdio.h"
 #include "stdint.h"
+#include "netcdf.h"
+#include "ss_data.h"
 #include "netcdf_wrapper.h"
 
 int netcdf_open_rd(char* filepath, int* ncid)
