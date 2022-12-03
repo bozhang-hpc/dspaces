@@ -2182,3 +2182,98 @@ static void query_idx2_rpc(hg_handle_t handle)
     free(results);
 }
 DEFINE_MARGO_RPC_HANDLER(query_idx2_rpc)
+
+int netcdf_read_var_allts(dspaces_provider_t server, int ncid, int varid)
+{
+    int ret = dspaces_SUCCESS;
+
+    /* NetCDF variables*/
+    char nc_filepath[128], nc_varname[128];
+    int nc_ndims, nc_time_idx, nts;
+    size_t *nc_dimlen;
+
+    /* Margo variables*/
+    hg_addr_t owner_addr;
+    size_t owner_addr_size = 128;
+
+    /* dspaces variables*/
+    char ds_varname[128];
+    int ds_ndims;
+    size_t elem_size, *ds_dimlen;
+    obj_descriptor odsc;
+    struct global_dimension odsc_gdim;
+    struct obj_data** od_list;
+
+    /* Get filepath & varname */
+    ret = netcdf_inq_path(ncid, nc_filepath);
+    ret = netcdf_inq_varname(ncid, varid, nc_varname);
+
+    /* Get ndim of the variable, rm time dim */
+    ret = netcdf_inq_var_ndim(ncid, varid, &nc_ndims);
+    ds_ndims = nc_ndims-1;
+
+    /* Get total timestep of the variable */
+    ret = netcdf_inq_var_timestep(ncid, varid, &nc_time_idx, &nts);
+
+    /* Get elem size from nc_var_type */
+    ret = netcdf_inq_var_elemsize(ncid, varid, &elem_size);
+
+    /* Covert nc dim len of the variable to dspaces bbox*/
+    nc_dimlen = (int*) malloc(nc_ndims*sizeof(int));
+    ds_dimlen = (int*) malloc(ds_ndims*sizeof(int));
+    ret = netcdf_inq_vardimlen(ncid, varid, nc_dimlen);
+    // Remove time dim from nc_dimlen
+    memcpy(ds_dimlen, nc_dimlen, ds_ndims*sizeof(size_t));
+    for(int i=nc_time_idx; i<ds_ndims; i++) {
+        ds_dimlen[i] = nc_dimlen[i+1];
+    }
+
+    /* create dspaces data object and iterate for all timesteps*/
+    margo_addr_self(server->mid, &owner_addr);
+    margo_addr_to_string(server->mid, odsc.owner, &owner_addr_size,
+                         owner_addr);
+    margo_addr_free(server->mid, owner_addr);
+
+    odsc.st = column_major; // what we have as put default
+    odsc.flags = 0; // default server storage
+    odsc.size = elem_size;
+    odsc.bb.num_dims = ds_ndims;
+    memset(odsc.bb.lb.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+    memset(odsc.bb.ub.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+    for(int i=0; i<ds_ndims; i++) {
+        odsc.bb.lb.c[i] = 0;
+        odsc.bb.ub.c[i] = ds_dimlen[i] - 1;
+    }
+    sprintf(ds_varname, "%s/%s", nc_filepath, nc_varname);
+    strncpy(odsc.name, ds_varname, sizeof(odsc.name) - 1);
+    odsc.name[sizeof(odsc.name) - 1] = '\0';
+
+    set_global_dimension(&(server->dsg->gdim_list), ds_varname,
+                         &(server->dsg->default_gdim), &odsc_gdim);
+
+    od_list = (struct obj_data**) malloc(nts*sizeof(struct obj_data*));
+    for(int i=0; i<nts; i++) {
+        odsc.version = i;
+        od_list[i] = obj_data_alloc(&odsc);
+        if(!od_list[i]) {
+            fprintf(stderr, "ERROR: (%s): object allocation failed!\n", __func__);
+        }
+        memcpy(&od_list[i]->gdim, &odsc_gdim, sizeof(struct global_dimension));
+
+        /* Read NetCDF data to od */
+        ret = netcdf_read_var_ts(ncid, varid, nc_ndims, nc_dimlen,
+                                 nc_time_idx, i, od_list[i]->data);
+
+        ABT_mutex_lock(server->ls_mutex);
+        ls_add_obj(server->dsg->ls, od_list[i]);
+        ABT_mutex_unlock(server->ls_mutex);
+
+        DEBUG_OUT("Added obj_data to storage %s\n", obj_desc_sprint(&od_list[i]->obj_desc));
+
+        obj_update_dht(server, od_list[i], DS_OBJ_NEW);
+        DEBUG_OUT("Finished obj_update_dht from netcdf_load_var_allts()\n");
+    }
+    free(nc_dimlen);
+    free(ds_dimlen);
+    free(od)
+}

@@ -50,6 +50,9 @@ struct ds_gspace {
     /* Default global data domain dimension */
     struct global_dimension default_gdim;
 
+    /* List of 'struct gdim_list_entry'. For server file loading. */
+    struct list_head gdim_list;
+
     /* List of dynamically added shared space. */
     struct list_head sspace_list;
 
