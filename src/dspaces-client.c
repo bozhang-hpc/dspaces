@@ -8,6 +8,7 @@
 #include "dspacesp.h"
 #include "gspace.h"
 #include "ss_data.h"
+// #include "idx_wrapper.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -92,6 +93,7 @@ struct dspaces_client {
     hg_id_t get_id;
     hg_id_t get_local_id;
     hg_id_t query_id;
+    hg_id_t query_idx1_id;
     hg_id_t query_idx2_id;
     hg_id_t query_meta_id;
     hg_id_t ss_id;
@@ -546,6 +548,8 @@ static int dspaces_init_margo(dspaces_client_t client,
         DS_HG_REGISTER(hg, client->notify_id, odsc_list_t, void, notify_rpc);
         margo_registered_name(client->mid, "query_meta_rpc",
                               &client->query_meta_id, &flag);
+        margo_registered_name(client->mid, "query_idx1_rpc", &client->query_idx1_id,
+                              &flag);
         margo_registered_name(client->mid, "query_idx2_rpc", &client->query_idx2_id,
                               &flag);
     } else {
@@ -566,9 +570,10 @@ static int dspaces_init_margo(dspaces_client_t client,
                             NULL);
         client->query_id = MARGO_REGISTER(client->mid, "query_rpc", odsc_gdim_t,
                                           odsc_list_t, NULL);
-        // TODO: change out type
-        client->query_idx2_id = MARGO_REGISTER(client->mid, "query_idx2_rpc", idxp_gdim_t,
-                                          odsc_list_t, NULL);
+        client->query_idx1_id = MARGO_REGISTER(client->mid, "query_idx1_rpc",
+                                            odsc_gdim_t, odsc_list_t, NULL);
+        // client->query_idx2_id = MARGO_REGISTER(client->mid, "query_idx2_rpc",
+        //                                     idxp_decode_t, odsc_list_t, NULL);
         client->query_meta_id =
             MARGO_REGISTER(client->mid, "query_meta_rpc", query_meta_in_t,
                            query_meta_out_t, NULL);
@@ -2175,35 +2180,99 @@ void dspaces_kill(dspaces_client_t client)
     margo_destroy(h);
 }
 
-struct idx_file* dspaces_get_idx(struct idx_params *idxp)
+// static int get_idx_odscs(dspaces_client_t client, obj_descriptor *odsc, int timeout,
+//                             obj_descriptor **odsc_tab)
+// {
+//     int num_odscs;
+//     hg_addr_t server_addr;
+//     hg_return_t hret;
+//     hg_handle_t handle;
+
+//     idxp_decode_t in;
+//     odsc_list_t out;
+
+//     in.idxp_dec_hdr.idxp_decode_size = sizeof(dspaces_idxp);
+//     in.idxp_dec_hdr.raw_idxp_decode = (char*)(&dspaces_idxp);
+
+//     /* gdim is set to be 2D with the preset value
+//          in dataspaces.conf as default */
+
+//     get_server_address(client, &server_addr);
+
+//     hret = margo_create(client->mid, server_addr, client->query_idx2_id, &handle);
+//     if(hret != HG_SUCCESS) {
+//         fprintf(stderr, "ERROR: %s: margo_create() failed with %d.\n", __func__,
+//                 hret);
+//         return (0);
+//     }
+
+//     hret = margo_forward(handle, &in);
+//     if(hret != HG_SUCCESS) {
+//         fprintf(stderr, "ERROR: %s: margo_forward() failed with %d.\n",
+//                 __func__, hret);
+//         margo_destroy(handle);
+//         return (0);
+//     }
+
+//     hret = margo_get_output(handle, &out);
+//     if(hret != HG_SUCCESS) {
+//         fprintf(stderr, "ERROR: %s: margo_get_output() failed with %d.\n",
+//                 __func__, hret);
+//         margo_destroy(handle);
+//         return (0);
+//     }
+
+    
+// }
+
+static obj_descriptor idx1p_to_odsc(dspaces_idx1_params idx1p) {
+    obj_descriptor odsc = {.version = idx1p.timestep,
+                           .st = st,
+                           .flags = 0,
+                           .size = idx1p.element_size,
+                           .resolution = idx1p.resolution,
+                           .bb = {
+                               .num_dims = idx1p.ndims,
+                           }};
+    memset(odsc.bb.lb.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+    memset(odsc.bb.ub.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+
+    memcpy(odsc.bb.lb.c, &idx1p.lb, sizeof(uint64_t) * idx1p.ndims);
+    memcpy(odsc.bb.ub.c, &idx1p.ub, sizeof(uint64_t) * idx1p.ndims);
+
+    sprintf(odsc.name, "%s/%s:%s",idx1p.dir, idx1p.filename, idx1p.varname);
+
+    return odsc;
+}
+
+static int get_idx1_odscs(dspaces_client_t client, obj_descriptor *odsc,
+                            obj_descriptor **odsc_tab)
 {
     struct global_dimension od_gdim;
+    int num_odscs;
     hg_addr_t server_addr;
     hg_return_t hret;
     hg_handle_t handle;
 
-    // TODO: make another metadata for idx2
-    // TODO: do we need to prepare the gdim at client?
-    idxp_gdim_t in;
+    odsc_gdim_t in;
+    odsc_list_t out;
 
-    // TODO: decide out type
+    in.odsc_gdim.size = sizeof(*odsc);
+    in.odsc_gdim.raw_odsc = (char *)odsc;
 
-    in.idxp_gdim.idxp_size = sizeof(*idxp);
-    in.idxp_gdim.raw_idxp = (char*) idxp;
-
-    // set_global_dimension()?
-    // in.idxp_gdim.gdim_size = sizeof(od_gdim);
-    // in.idxp_gdim.raw_gdim = (char*) (&od_gdim);
+    set_global_dimension(&(client->dcg->gdim_list), odsc->name,
+                         &(client->dcg->default_gdim), &od_gdim);
+    in.odsc_gdim.gdim_size = sizeof(od_gdim);
+    in.odsc_gdim.raw_gdim = (char *)(&od_gdim);
 
     get_server_address(client, &server_addr);
 
-    hret = margo_create(client->mid, server_addr, client->query_idx2_id, &handle);
+    hret = margo_create(client->mid, server_addr, client->query_idx1_id, &handle);
     if(hret != HG_SUCCESS) {
         fprintf(stderr, "ERROR: %s: margo_create() failed with %d.\n", __func__,
                 hret);
         return (0);
     }
-
     hret = margo_forward(handle, &in);
     if(hret != HG_SUCCESS) {
         fprintf(stderr, "ERROR: %s: margo_forward() failed with %d.\n",
@@ -2211,8 +2280,6 @@ struct idx_file* dspaces_get_idx(struct idx_params *idxp)
         margo_destroy(handle);
         return (0);
     }
-
-    // TODO: to be decided
     hret = margo_get_output(handle, &out);
     if(hret != HG_SUCCESS) {
         fprintf(stderr, "ERROR: %s: margo_get_output() failed with %d.\n",
@@ -2221,4 +2288,36 @@ struct idx_file* dspaces_get_idx(struct idx_params *idxp)
         return (0);
     }
 
+    num_odscs = (out.odsc_list.size) / sizeof(obj_descriptor);
+    *odsc_tab = malloc(out.odsc_list.size);
+    memcpy(*odsc_tab, out.odsc_list.raw_odsc, out.odsc_list.size);
+    margo_free_output(handle, &out);
+    margo_addr_free(client->mid, server_addr);
+    margo_destroy(handle);
+
+    return (num_odscs);
+}
+
+/* Query one IDX file per function call*/
+int dspaces_get_idx1(dspaces_client_t client, dspaces_idx1_params idx1p, void* data)
+{
+    int ret = dspaces_SUCCESS;
+    int num_odscs;
+    obj_descriptor qodsc, *odsc_tab;
+    
+    qodsc = idx1p_to_odsc(idx1p);
+    num_odscs = get_idx1_odscs(client, &qodsc, &odsc_tab);
+
+    DEBUG_OUT("Finished idx1 query - need to fetch %d objects\n", num_odscs);
+    for(int i = 0; i < num_odscs; ++i) {
+        DEBUG_OUT("%s\n", obj_desc_sprint(&odsc_tab[i]));
+    }
+
+    // send request to get the obj_desc
+    if(num_odscs != 0) {
+        get_data(client, num_odscs, qodsc, odsc_tab, data);
+        free(odsc_tab);
+    }
+
+    return ret;
 }

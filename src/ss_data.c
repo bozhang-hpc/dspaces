@@ -1921,3 +1921,29 @@ char **addr_str_buf_to_list(char *buf, int num_addrs)
     }
     return ret;
 }
+
+/*
+ *   Test if two idx object descriptors have the same name & versions
+ *     & compression params & downsampling factors and
+ *     their bounding boxes intersect.
+ *     */
+int idx_obj_desc_equals_intersect(obj_descriptor *odsc1, obj_descriptor *odsc2)
+{
+    // TODO: add compression params & downsampling factors
+    if(strcmp(odsc1->name, odsc2->name) == 0 &&
+       odsc1->version == odsc2->version &&
+       odsc1->resolution == odsc2->resolution &&
+       bbox_does_intersect(&odsc1->bb, &odsc2->bb))
+        return 1;
+    return 0;
+}
+
+int idx_obj_desc_equals_include(obj_descriptor *odsc1, obj_descriptor *odsc2)
+{
+    if(strcmp(odsc1->name, odsc2->name) == 0 &&
+       odsc1->version == odsc2->version &&
+       odsc1->resolution == odsc2->resolution &&
+       bbox_include(&odsc1->bb, &odsc2->bb))
+        return 1;
+    return 0;
+}

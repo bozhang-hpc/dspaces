@@ -59,6 +59,9 @@ struct ds_gspace {
     /* Pending object descriptors for draining. */
     struct list_head obj_desc_drain_list;
 
+    /* List of idx1 file that is being loaded */
+    struct list_head idx1_loading_list;
+
     int rank;
     int size_sp;
     char **server_address;

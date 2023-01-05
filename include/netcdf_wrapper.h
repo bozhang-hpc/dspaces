@@ -3,6 +3,9 @@
 /* Open a NetCDF file, return its ncid. */
 int netcdf_open_rd(char* filepath, int* ncid);
 
+/* close a NetCDF file */
+int netcdf_close(int ncid);
+
 /* Inquire the NetCDF file path based on its ncid. */
 int netcdf_inq_path(int ncid, char* filepath);
 

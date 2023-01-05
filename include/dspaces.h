@@ -380,6 +380,19 @@ int dspaces_put_meta(dspaces_client_t client, const char *name, int version,
 int dspaces_get_meta(dspaces_client_t client, const char *name, int mode,
                      int current, int *version, void **data, unsigned int *len);
 
+typedef struct {
+    char dir[128];
+    char filename[128];
+    char varname[64];
+    size_t element_size;
+    unsigned int timestep;
+    int resolution;
+    int ndims;
+    // idx1 has up to 5D support
+    int lb[5];
+    int ub[5];
+} dspaces_idx1_params;
+
 #if defined(__cplusplus)
 }
 #endif

@@ -46,6 +46,10 @@ typedef struct {
 
     /* Size of one element of a data object. */
     size_t size;
+
+    /* idx1 resolution */
+    // TODO: have a dedicated odsc struct for idx1
+    int resolution;
 } obj_descriptor;
 
 struct meta_data {
@@ -370,5 +374,12 @@ struct lock_data *get_lock(struct list_head *list, char *name);
 struct lock_data *create_lock(struct list_head *list, char *name);
 
 char **addr_str_buf_to_list(char *buf, int num_addrs);
+
+void dht_local_subscribe(struct dht_entry *de, obj_descriptor *q_odsc,
+                         obj_descriptor ***odsc_tab, int *tab_entries,
+                         long remaining, int timeout);
+
+int idx_obj_desc_equals_intersect(obj_descriptor *odsc1, obj_descriptor *odsc2);
+int idx_obj_desc_equals_include(obj_descriptor *odsc1, obj_descriptor *odsc2);
 
 #endif /* __SS_DATA_H_ */
