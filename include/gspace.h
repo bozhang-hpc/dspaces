@@ -84,6 +84,9 @@ struct dc_gspace {
     /* List of 'struct gpu_bulk_list_entry' */
     struct list_head gpu_bulk_list;
 
+    /* Pending requests for iput+drain in dual-channel-dual-staging put. */
+    struct list_head putlocal_subdrain_list;
+
     enum sspace_hash_version hash_version;
     int max_versions;
     // for dimes like client storage

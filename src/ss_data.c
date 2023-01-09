@@ -1950,3 +1950,38 @@ void free_gpu_bulk_list(struct list_head *gpu_bulk_list)
             __func__, cnt);
 #endif
 }
+
+struct subdrain_list_entry*
+    lookup_putlocal_subdrain_list(struct list_head *plsd_list, obj_descriptor odsc)
+{
+    if(!plsd_list) {
+        return NULL;
+    }
+    struct subdrain_list_entry *e;
+    list_for_each_entry(e, plsd_list, struct subdrain_list_entry, entry)
+    {
+        if(obj_desc_equals_no_owner(&e->odsc, &odsc)) {
+            return e;
+        }
+    }
+    return NULL;
+}
+
+void free_putlocal_subdrain_list(struct list_head *plsd_list)
+{
+    if(!plsd_list)
+        return;
+    int cnt = 0;
+    struct subdrain_list_entry *e, *t;
+    list_for_each_entry_safe(e, t, plsd_list, struct subdrain_list_entry, entry)
+    {
+        list_del(&e->entry);
+        free(e);
+        cnt++;
+    }
+
+#ifdef DEBUG
+    fprintf(stderr, "%s(): number of gpu bulk transfer record is %d\n",
+            __func__, cnt);
+#endif
+}

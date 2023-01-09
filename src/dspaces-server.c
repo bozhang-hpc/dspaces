@@ -65,6 +65,8 @@ struct dspaces_provider {
     hg_id_t sub_id;
     hg_id_t notify_id;
     hg_id_t put_dc_id;
+    hg_id_t putlocal_subdrain_id;
+    hg_id_t notify_drain_id;
     struct ds_gspace *dsg;
     char **server_address;
     char **node_names;
@@ -105,6 +107,7 @@ DECLARE_MARGO_RPC_HANDLER(ss_rpc)
 DECLARE_MARGO_RPC_HANDLER(kill_rpc)
 DECLARE_MARGO_RPC_HANDLER(sub_rpc)
 DECLARE_MARGO_RPC_HANDLER(put_dc_rpc)
+DECLARE_MARGO_RPC_HANDLER(putlocal_subdrain_rpc)
 
 static void put_rpc(hg_handle_t h);
 static void put_local_rpc(hg_handle_t h);
@@ -118,6 +121,7 @@ static void ss_rpc(hg_handle_t h);
 static void kill_rpc(hg_handle_t h);
 static void sub_rpc(hg_handle_t h);
 static void put_dc_rpc(hg_handle_t h);
+static void putlocal_subdrain_rpc(hg_handle_t h);
 // static void write_lock_rpc(hg_handle_t h);
 // static void read_lock_rpc(hg_handle_t h);
 
@@ -959,6 +963,12 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm,
                               &flag);
         margo_registered_name(server->mid, "put_dc_rpc", &server->put_dc_id, &flag);
         DS_HG_REGISTER(hg, server->put_dc_id, dc_bulk_gdim_t, bulk_out_t, put_dc_rpc);
+        margo_registered_name(server->mid, "putlocal_subdrain_rpc",
+                                &server->putlocal_subdrain_id, &flag);
+        DS_HG_REGISTER(hg, server->putlocal_subdrain_id, bulk_gdim_t, bulk_out_t,
+                        putlocal_subdrain_rpc);
+        margo_registered_name(server->mid, "notify_drain_rpc",
+                              &server->notify_drain_id, &flag);
     } else {
         server->put_id = MARGO_REGISTER(server->mid, "put_rpc", bulk_gdim_t,
                                         bulk_out_t, put_rpc);
@@ -1024,6 +1034,15 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm,
         server->put_dc_id = MARGO_REGISTER(server->mid, "put_dc_rpc", dc_bulk_gdim_t,
                                         bulk_out_t, put_dc_rpc);
         margo_register_data(server->mid, server->put_dc_id, (void *)server, NULL);
+        server->putlocal_subdrain_id =
+            MARGO_REGISTER(server->mid, "putlocal_subdrain_rpc", bulk_gdim_t,
+                                        bulk_out_t, putlocal_subdrain_rpc);
+        margo_register_data(server->mid, server->putlocal_subdrain_id,
+                            (void *)server, NULL);
+        server->notify_drain_id =
+            MARGO_REGISTER(server->mid, "notify_drain_rpc", bulk_in_t, void, NULL);
+        margo_registered_disable_response(server->mid, server->notify_drain_id,
+                                          HG_TRUE);
     }
     int err = dsg_alloc(server, conf_file, comm);
     if(err) {
@@ -2280,3 +2299,246 @@ int dspaces_server_get_objdata(dspaces_provider_t server,
 
     return (0);
 }
+
+// static void put_drain_rpc(hg_handle_t handle)
+// {
+//     hg_return_t hret;
+//     bulk_gdim_t in;
+//     hg_bulk_t bulk_handle;
+//     hg_addr_t client_addr;
+//     hg_handle_t notify_drainh;
+//     margo_request req;
+//     bulk_in_t notice;
+
+//     margo_instance_id mid = margo_hg_handle_get_instance(handle);
+
+//     const struct hg_info *info = margo_get_info(handle);
+//     dspaces_provider_t server =
+//         (dspaces_provider_t)margo_registered_data(mid, info->id);
+
+//     if(server->f_kill == 0) {
+//         fprintf(stderr, "WARNING: put_drain rpc received when server is finalizing. "
+//                         "This will likely cause problems...\n");
+//     }
+
+//     hret = margo_get_input(handle, &in);
+//     if(hret != HG_SUCCESS) {
+//         fprintf(stderr,
+//                 "DATASPACES: ERROR handling %s: margo_get_input() failed with "
+//                 "%d.\n",
+//                 __func__, hret);
+//         margo_destroy(handle);
+//         return;
+//     }
+
+//     obj_descriptor in_odsc;
+//     memcpy(&in_odsc, in.odsc.raw_odsc, sizeof(in_odsc));
+
+//     // get client addr here before update the owner
+//     margo_addr_lookup(server->mid, in_odsc.owner, &client_addr);
+
+//     // set the owner to be this server address
+//     hg_addr_t owner_addr;
+//     size_t owner_addr_size = 128;
+
+//     margo_addr_self(server->mid, &owner_addr);
+//     margo_addr_to_string(server->mid, in_odsc.owner, &owner_addr_size,
+//                          owner_addr);
+//     margo_addr_free(server->mid, owner_addr);
+
+//     struct obj_data *od;
+//     od = obj_data_alloc(&in_odsc);
+//     memcpy(&od->gdim, in.odsc.raw_gdim, sizeof(struct global_dimension));
+
+//     if(!od)
+//         fprintf(stderr, "ERROR: (%s): object allocation failed!\n", __func__);
+
+//     // do write lock
+
+//     hg_size_t size = (in_odsc.size) * bbox_volume(&(in_odsc.bb));
+
+//     hret = margo_bulk_create(mid, 1, (void **)&(od->data), &size,
+//                              HG_BULK_WRITE_ONLY, &bulk_handle);
+
+//     if(hret != HG_SUCCESS) {
+//         fprintf(stderr, "ERROR: (%s): margo_bulk_create failed!\n", __func__);
+//         out.ret = dspaces_ERR_MERCURY;
+//         margo_respond(handle, &out);
+//         margo_free_input(handle, &in);
+//         margo_destroy(handle);
+//         return;
+//     }
+
+//     hret = margo_bulk_transfer(mid, HG_BULK_PULL, info->addr, in.handle, 0,
+//                                bulk_handle, 0, size);
+//     if(hret != HG_SUCCESS) {
+//         fprintf(stderr, "ERROR: (%s): margo_bulk_transfer failed!\n", __func__);
+//         out.ret = dspaces_ERR_MERCURY;
+//         margo_respond(handle, &out);
+//         margo_free_input(handle, &in);
+//         margo_bulk_free(bulk_handle);
+//         margo_destroy(handle);
+//         return;
+//     }
+
+//     ABT_mutex_lock(server->ls_mutex);
+//     ls_add_obj(server->dsg->ls, od);
+//     ABT_mutex_unlock(server->ls_mutex);
+
+//     DEBUG_OUT("Received obj %s\n", obj_desc_sprint(&od->obj_desc));
+
+//     // now update the dht
+//     //out.ret = dspaces_SUCCESS;
+//     margo_bulk_free(bulk_handle);
+//     //margo_respond(handle, &out);
+//     margo_free_input(handle, &in);
+//     margo_destroy(handle);
+
+//     obj_update_dht(server, od, DS_OBJ_OWNER);
+//     DEBUG_OUT("Finished obj_put_update_owner from put_rpc\n");
+
+//     notice.odsc.size = sizeof(obj_descriptor);
+//     notice.odsc.raw_odsc = (char*)(&in_odsc);
+
+//     margo_create(server->mid, client_addr, server->notify_drain_id, &notify_drainh);
+//     margo_iforward(notify_drainh, &notice, &req);
+//     margo_addr_free(server->mid, client_addr);
+//     margo_destroy(notify_drainh);
+
+//     margo_free_input(handle, &in);
+//     margo_destroy(handle);
+// }
+// DEFINE_MARGO_RPC_HANDLER(put_drain_rpc)
+
+static void putlocal_subdrain_rpc(hg_handle_t handle)
+{
+    hg_return_t hret;
+    bulk_gdim_t in;
+    bulk_out_t out;
+    hg_bulk_t bulk_handle;
+    hg_addr_t client_addr, server_addr;
+    hg_handle_t notifyh;
+    margo_request req;
+    bulk_in_t notice;
+    size_t owner_addr_size = 128;
+    
+
+    margo_instance_id mid = margo_hg_handle_get_instance(handle);
+
+    const struct hg_info *info = margo_get_info(handle);
+    dspaces_provider_t server =
+        (dspaces_provider_t)margo_registered_data(mid, info->id);
+
+    if(server->f_kill == 0) {
+        fprintf(stderr,
+                "WARNING: (%s): got put rpc with local storage, but server is "
+                "shutting down. This will likely cause problems...\n",
+                __func__);
+    }
+
+    hret = margo_get_input(handle, &in);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr,
+                "DATASPACES: ERROR handling %s: margo_get_input() failed with "
+                "%d.\n",
+                __func__, hret);
+        margo_destroy(handle);
+        return;
+    }
+
+    obj_descriptor in_odsc, server_odsc;
+    memcpy(&in_odsc, in.odsc.raw_odsc, sizeof(obj_descriptor));
+
+    /* Update put_local dht */
+    struct obj_data *client_od, *server_od;
+    client_od = obj_data_alloc_no_data(&in_odsc, NULL);
+    memcpy(&client_od->gdim, in.odsc.raw_gdim, sizeof(struct global_dimension));
+
+    if(!client_od)
+        fprintf(stderr, "ERROR: (%s): failed to allocate local object data!\n",
+                __func__);
+
+    DEBUG_OUT("Received obj %s  in putlocal_subdrain_rpc\n",
+              obj_desc_sprint(&client_od->obj_desc));
+
+    // now update the dht
+    obj_update_dht(server, client_od, DS_OBJ_NEW);
+    DEBUG_OUT("Finished obj_put_local_update in putlocal_subdrain_rpc\n");
+
+    // respond to the client after update dht for put_local
+    out.ret = dspaces_SUCCESS;
+    margo_respond(handle, &out);
+
+    free(client_od);
+
+    /* Update put_local dht end */
+
+    /* Drain data from local client */
+
+    // setup server odsc
+    memcpy(&server_odsc, &in_odsc, sizeof(obj_descriptor));
+    // set the owner to be this server address
+    margo_addr_self(server->mid, &server_addr);
+    margo_addr_to_string(server->mid, server_odsc.owner, &owner_addr_size,
+                         server_addr);
+    margo_addr_free(server->mid, server_addr);
+
+    server_od = obj_data_alloc(&server_odsc);
+    memcpy(&server_od->gdim, in.odsc.raw_gdim, sizeof(struct global_dimension));
+
+    if(!server_od)
+        fprintf(stderr, "ERROR: (%s): failed to allocate server object data!\n",
+                __func__);
+
+    hg_size_t rdma_size = (server_odsc.size) * bbox_volume(&(server_odsc.bb));
+    hret = margo_bulk_create(mid, 1, (void **)&(server_od->data), &rdma_size,
+                             HG_BULK_WRITE_ONLY, &bulk_handle);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_bulk_create failed!\n", __func__);
+        margo_free_input(handle, &in);
+        margo_destroy(handle);
+        return;
+    }
+
+    hret = margo_bulk_transfer(mid, HG_BULK_PULL, info->addr, in.handle, 0,
+                               bulk_handle, 0, rdma_size);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_bulk_transfer failed!\n", __func__);
+        margo_free_input(handle, &in);
+        margo_bulk_free(bulk_handle);
+        margo_destroy(handle);
+        return;
+    }
+
+    ABT_mutex_lock(server->ls_mutex);
+    ls_add_obj(server->dsg->ls, server_od);
+    ABT_mutex_unlock(server->ls_mutex);
+
+    DEBUG_OUT("Received bulk data for %s\n", obj_desc_sprint(&server_od->obj_desc));
+
+    margo_free_input(handle, &in);
+    margo_bulk_free(bulk_handle);
+
+    obj_update_dht(server, server_od, DS_OBJ_OWNER);
+    DEBUG_OUT("Finished obj_put_update_owner from putlocal_subdrain_rpc\n");
+
+    /* Drain data from local client end */
+
+    /* Notify client */
+
+    // get client addr
+    margo_addr_lookup(server->mid, in_odsc.owner, &client_addr);
+
+    notice.odsc.size = sizeof(obj_descriptor);
+    notice.odsc.raw_odsc = (char*)(&in_odsc);
+
+    margo_create(server->mid, client_addr, server->notify_drain_id, &notifyh);
+    margo_iforward(notifyh, &notice, &req);
+    margo_addr_free(server->mid, client_addr);
+    margo_destroy(notifyh);
+
+    /* Notify client end */
+
+    margo_destroy(handle);
+}
+DEFINE_MARGO_RPC_HANDLER(putlocal_subdrain_rpc)

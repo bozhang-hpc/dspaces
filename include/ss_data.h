@@ -134,6 +134,14 @@ struct gpu_bulk_list_entry {
     int gdr_heat_score;
 };
 
+struct subdrain_list_entry {
+    struct list_head entry;
+    obj_descriptor odsc;
+    size_t get_count;
+    ABT_cond delete_cond;
+    void *buffer;
+};
+
 typedef struct {
     int num_obj;
     int size_hash;
@@ -426,5 +434,8 @@ void dc_req_free(struct dc_request *dc_req);
 struct gpu_bulk_list_entry *lookup_gpu_bulk_list(struct list_head *gpu_bulk_list,
                                         size_t rdma_size);
 void free_gpu_bulk_list(struct list_head *gpu_bulk_list);
+struct subdrain_list_entry* lookup_putlocal_subdrain_list(struct list_head *plsd_list,
+                                        obj_descriptor odsc);
+void free_putlocal_subdrain_list(struct list_head *plsd_list);
 
 #endif /* __SS_DATA_H_ */
