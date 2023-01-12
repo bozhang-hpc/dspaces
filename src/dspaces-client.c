@@ -645,11 +645,11 @@ static int dspaces_init_gpu(dspaces_client_t client)
     const char *envcudagetmode = getenv("DSPACES_CUDA_GET_MODE");
 
     // Default Put Mode: 0 - Hybrid, Others: 1 - Baseline, 2 - Pipeline, 3 - GDR, 4 - GDRCopy
-    // 5 - Dual Channel
+    // 5 - Heuristic, 6 - Dual Channel, 7 - Dual Channel Dual Staging
     if(envcudaputmode) {
         int cudaputmode = atoi(envcudaputmode);
         // mode check 0-4
-        if(cudaputmode >=0 && cudaputmode < 6) {
+        if(cudaputmode >=0 && cudaputmode < 8) {
             client->cuda_info.cuda_put_mode = cudaputmode;
         } else {
             client->cuda_info.cuda_put_mode = 0;
@@ -716,7 +716,13 @@ static int dspaces_init_gpu(dspaces_client_t client)
         sprintf(hint, "GDRCopy");
         break;
     case 5:
+        sprintf(hint, "Heuristic");
+        break;
+    case 6:
         sprintf(hint, "Dual Channel");
+        break;
+    case 7:
+        sprintf(hint, "Dual Channel Dual Staging");
         break;
     default:
         sprintf(hint, "Error");
@@ -2591,7 +2597,13 @@ int dspaces_cuda_put(dspaces_client_t client, const char *var_name, unsigned int
         break;
 #endif
     case 5:
+        ret = cuda_put_heuristic(client, var_name, ver, elem_size, ndim, lb, ub, data);
+        break;
+    case 6:
         ret = cuda_put_dual_channel(client, var_name, ver, elem_size, ndim, lb, ub, data);
+        break;
+    case 7:
+        ret = cuda_put_dcds(client, var_name, ver, elem_size, ndim, lb, ub, data);
         break;
     default:
         ret = cuda_put_hybrid(client, var_name, ver, elem_size, ndim, lb, ub, data);
