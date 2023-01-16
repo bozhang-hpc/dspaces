@@ -41,9 +41,10 @@
 #define DSPACES_DEFAULT_NUM_HANDLERS 4
 
 int netcdf_read_var_in_file(dspaces_provider_t server, char* filepath, char* varname);
+int idx1_init_load(dspaces_provider_t server, char* idxfpath);
 
 // TODO !
-// static enum storage_type st = column_major;
+static enum storage_type st = column_major;
 
 typedef enum obj_update_type { DS_OBJ_NEW, DS_OBJ_OWNER } obj_update_t;
 
@@ -878,8 +879,6 @@ int dspaces_server_init(const char *listen_addr_str, MPI_Comm comm,
     MPI_Comm_dup(comm, &server->comm);
     MPI_Comm_rank(comm, &server->rank);
 
-    server->idx1_load_rank = server->rank;
-
     margo_set_environment(NULL);
     sprintf(margo_conf, "{ \"use_progress_thread\" : true, \"rpc_thread_count\" : %d }", num_handlers);
     hii.request_post_init = 1024;
@@ -1126,6 +1125,8 @@ int dspaces_server_init(const char *listen_addr_str, MPI_Comm comm,
     *sv = server;
 
     netcdf_read_var_in_file(server, "/home/zhangbo/Codes/netcdf_read_test/data/tas_Amon_NorESM2-LM_historical_r1i1p1f1_gn_185001-201412.nc", "tas");
+    idx1_init_load(server, "/home/zhangbo/Data/NASA/LLC4320_test/llc4320_x_y_depth.idx");
+    server->idx1_load_rank = server->rank;
 
     is_initialized = 1;
 
@@ -2394,6 +2395,65 @@ int netcdf_read_var_in_file(dspaces_provider_t server, char* filepath, char* var
     return ret;
 }
 
+int idx1_init_load(dspaces_provider_t server, char* idxfpath)
+{
+    int ret = dspaces_SUCCESS;
+
+    struct idx1_dataset* idset = idx1_load_dataset(idxfpath);
+
+    int ts_start, ts_end, ts_step;
+
+    obj_descriptor odsc_tmp = {.st = st,
+                               .flags = 0,
+                               .size = idx1_get_dtype_size(idset),
+                               .resolution = idx1_get_max_resolution(idset),
+                               .bb = {
+                                    .num_dims = idx1_get_ndims(idset),
+                                }};
+    memset(odsc_tmp.bb.lb.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+    memset(odsc_tmp.bb.ub.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+    idx1_get_lower_bound(idset, odsc_tmp.bb.lb.c);
+    idx1_get_upper_bound(idset, odsc_tmp.bb.ub.c);
+
+
+    // sprintf(odsc.name, "%s/%s:%s",idx1p.dir, idx1p.filename, idx1p.varname);
+    int num_fields = idx1_get_field_num(idset);
+    idx1_get_timesteps(idset, &ts_start, &ts_end, &ts_step);
+
+    // ts_step could only be 1 ?
+    obj_descriptor **odsc_tab =
+        (obj_descriptor**) malloc((ts_end-ts_start+1)*sizeof(obj_descriptor*));
+    struct obj_data*** od_tab = 
+        (struct obj_data***) malloc((ts_end-ts_start+1)*sizeof(struct obj_data**));
+
+    obj_descriptor *odsc;
+    struct obj_data *od;
+
+    for(int i=ts_start; i<ts_end; i+=ts_step) {
+        odsc_tab[i-ts_start] =
+            (obj_descriptor*) malloc(num_fields*sizeof(obj_descriptor));
+        od_tab[i-ts_start] =
+            (struct obj_data**) malloc(num_fields*sizeof(struct obj_data*));
+        for(int j=0; j<num_fields; j++) {
+            odsc = &odsc_tab[i-ts_start][j];
+            od = od_tab[i-ts_start][j];
+            memcpy(odsc, &odsc_tmp, sizeof(obj_descriptor));
+            odsc->version = i;
+            sprintf(odsc->name, "%s:%s", idxfpath, idx1_get_field_name(idset, j));
+            od = obj_data_alloc_no_data(odsc, NULL);
+            od->data = idx1_read(idset, idx1_get_field_name(idset, j),
+                                    odsc->bb.num_dims, odsc->size, odsc->bb.lb.c,
+                                    odsc->bb.ub.c, i, odsc->resolution);
+            ABT_mutex_lock(server->ls_mutex);
+            ls_add_obj(server->dsg->ls, od);
+            ABT_mutex_unlock(server->ls_mutex);                     
+
+            obj_update_dht(server, od, DS_OBJ_NEW);
+        }
+    }
+    return ret;
+}
+
 static struct obj_data* idx1_load(dspaces_provider_t server,
         obj_descriptor *q_odsc, struct global_dimension* q_gdim)
 {
@@ -2424,7 +2484,7 @@ static struct obj_data* idx1_load(dspaces_provider_t server,
         return NULL;
     }
 
-    od = obj_data_alloc(q_odsc);
+    od = obj_data_alloc_no_data(q_odsc, NULL);
     if(!od) {
         fprintf(stderr, "ERROR: (%s): object allocation failed!\n", __func__);
     }
@@ -2434,8 +2494,10 @@ static struct obj_data* idx1_load(dspaces_provider_t server,
     char* fieldname = pcolon ? pcolon + 1 : NULL;
     size_t filepath_len = (fieldname - q_odsc->name)+1;
     char* filepath = strndup(q_odsc->name, filepath_len);
+
+    struct idx1_dataset* idset = idx1_load_dataset(filepath);
     /* start to load idx*/
-    od->data = read_idx1(filepath, fieldname, q_odsc->bb.num_dims,
+    od->data = idx1_read(idset, fieldname, q_odsc->bb.num_dims,
                         q_odsc->size, q_odsc->bb.lb.c, q_odsc->bb.ub.c,
                         q_odsc->version, q_odsc->resolution);
     if(!od->data) {

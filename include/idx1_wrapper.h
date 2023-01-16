@@ -8,6 +8,7 @@
 #include <mercury_macros.h>
 #include <mercury_proc_string.h>
 
+struct idx1_dataset;
 typedef struct {
     char dir[128];
     char filename[128];
@@ -67,8 +68,18 @@ static inline hg_return_t hg_proc_idx1p_hdr_with_gdim(hg_proc_t proc, void *arg)
 
 MERCURY_GEN_PROC(idx1p_gdim_t, ((idx1p_hdr_with_gdim)(idx1p_gdim))((int32_t)(param)))
 
-void* read_idx1(char* filepath, char* fieldname, int ndims,
-                size_t elemsize, uint64_t* lb, uint64_t* ub, 
+struct idx1_dataset* idx1_load_dataset(char* filepath);
+size_t idx1_get_dtype_size(struct idx1_dataset *idset);
+int idx1_get_max_resolution(struct idx1_dataset *idset);
+int idx1_get_ndims(struct idx1_dataset *idset);
+void idx1_get_lower_bound(struct idx1_dataset *idset, uint64_t *lb);
+void idx1_get_upper_bound(struct idx1_dataset *idset, uint64_t *ub);
+int idx1_get_field_num(struct idx1_dataset *idset);
+const char* idx1_get_field_name(struct idx1_dataset *idset, int fidx);
+void idx1_get_timesteps(struct idx1_dataset *idset,
+                        int* ts_start, int* ts_end, int* ts_step);
+void* idx1_read(struct idx1_dataset* idset, const char* fieldname, int ndims, 
+                size_t elemsize, uint64_t* lb, uint64_t* ub,
                 unsigned int ts, int resolution);
 
 #endif
