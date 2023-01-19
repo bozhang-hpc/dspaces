@@ -5,6 +5,7 @@
  * See COPYRIGHT in top-level directory.
  */
 #include "dspaces-server.h"
+#include "dspaces-storage.h"
 #include "dspaces.h"
 #include "dspacesp.h"
 #include "gspace.h"
@@ -56,6 +57,7 @@ struct addr_list_entry {
 };
 
 struct dspaces_provider {
+    struct list_head dirs;
     margo_instance_id mid;
     hg_id_t put_id;
     hg_id_t put_local_id;
@@ -253,15 +255,20 @@ static int parse_conf(const char *fname)
     return 0;
 }
 
-static int parse_conf_toml(const char *fname)
+static int parse_conf_toml(const char *fname, struct list_head *dir_list)
 {
     FILE *fin;
     toml_table_t *conf;
+    toml_table_t *storage;
+    toml_table_t *conf_dir;
     toml_table_t *server;
     toml_datum_t dat;
     toml_array_t *arr;
+    struct dspaces_dir *dir;
+    struct dspaces_file *file;
     char errbuf[200];
     int ndim = 0;
+    int ndir, nfile;
     int i, j, n;
 
     fin = fopen(fname, "r");
@@ -309,6 +316,49 @@ static int parse_conf_toml(const char *fname)
             if(dat.ok) {
                 *(int *)options[i].pval = dat.u.i;
             }
+        }
+    }
+
+    storage = toml_table_in(conf, "storage");
+    if(storage) {
+        ndir = toml_table_ntab(storage);
+        for(i = 0; i < ndir; i++) {
+            dir = malloc(sizeof(*dir));
+            dir->name = strdup(toml_key_in(storage, i));
+            conf_dir = toml_table_in(storage, dir->name);
+            dat = toml_string_in(conf_dir, "directory");
+            dir->path = strdup(dat.u.s);
+            free(dat.u.s);
+            if(0 != (arr = toml_array_in(conf_dir, "files"))) {
+                INIT_LIST_HEAD(&dir->files);
+                nfile = toml_array_nelem(arr);
+                for(j = 0; j < nfile; j++) {
+                    dat = toml_string_at(arr, j);
+                    file = malloc(sizeof(*file));
+                    file->type = DS_FILE_NC;
+                    file->name = strdup(dat.u.s);
+                    free(dat.u.s);
+                    list_add(&file->entry, &dir->files);
+                }
+            } else {
+                dat = toml_string_in(conf_dir, "files");
+                if(dat.ok) {
+                    if(strcmp(dat.u.s, "all") == 0) {
+                        dir->cont_type = DS_FILE_ALL;
+                    } else {
+                        fprintf(stderr,
+                                "ERROR: %s: invalid value for "
+                                "storage.%s.files: %s\n",
+                                __func__, dir->name, dat.u.s);
+                    }
+                    free(dat.u.s);
+                } else {
+                    fprintf(stderr,
+                            "ERROR: %s: no readable 'files' key for '%s'.\n",
+                            __func__, dir->name);
+                }
+            }
+            list_add(&dir->entry, dir_list);
         }
     }
 
@@ -498,11 +548,13 @@ static int dsg_alloc(dspaces_provider_t server, const char *conf_name,
     ds_conf.hash_version = ssd_hash_version_auto;
     ds_conf.num_apps = 1;
 
+    INIT_LIST_HEAD(&server->dirs);
+
     ext = strrchr(conf_name, '.');
     if(!ext || strcmp(ext, ".toml") != 0) {
         err = parse_conf(conf_name);
     } else {
-        err = parse_conf_toml(conf_name);
+        err = parse_conf_toml(conf_name, &server->dirs);
     }
     if(err < 0) {
         goto err_out;
@@ -880,8 +932,11 @@ int dspaces_server_init(const char *listen_addr_str, MPI_Comm comm,
     MPI_Comm_rank(comm, &server->rank);
 
     margo_set_environment(NULL);
-    sprintf(margo_conf, "{ \"use_progress_thread\" : true, \"rpc_thread_count\" : %d }", num_handlers);
+    sprintf(margo_conf,
+            "{ \"use_progress_thread\" : true, \"rpc_thread_count\" : %d }",
+            num_handlers);
     hii.request_post_init = 1024;
+    hii.auto_sm = 0;
     mii.hg_init_info = &hii;
     mii.json_config = margo_conf;
     ABT_init(0, NULL);
@@ -916,7 +971,6 @@ int dspaces_server_init(const char *listen_addr_str, MPI_Comm comm,
     drc_cookie = drc_get_first_cookie(drc_credential_info);
     sprintf(drc_key_str, "%u", drc_cookie);
 
-    struct hg_init_info hii;
     memset(&hii, 0, sizeof(hii));
     hii.na_init_info.auth_key = drc_key_str;
 
@@ -931,13 +985,20 @@ int dspaces_server_init(const char *listen_addr_str, MPI_Comm comm,
         }
     }
 
-    server->mid = margo_init_opt(listen_addr_str, MARGO_SERVER_MODE, &hii, 1,
-                                 num_handlers);
- 
+    server->mid = margo_init_ext(listen_addr_str, MARGO_SERVER_MODE, &mii);
+
 #else
 
-    server->mid =
-        margo_init_ext(listen_addr_str, MARGO_SERVER_MODE, &mii);
+    server->mid = margo_init_ext(listen_addr_str, MARGO_SERVER_MODE, &mii);
+    if(server->f_debug) {
+        if(!server->rank) {
+            char *margo_json = margo_get_config(server->mid);
+            fprintf(stderr, "%s", margo_json);
+            free(margo_json);
+        }
+        margo_set_log_level(server->mid, MARGO_LOG_TRACE);
+    }
+    MPI_Barrier(comm);
 
 #endif /* HAVE_DRC */
     DEBUG_OUT("did margo init\n");
@@ -1721,18 +1782,25 @@ static void query_meta_rpc(hg_handle_t handle)
     if(mdata) {
         DEBUG_OUT("found version %d, length %d.", mdata->version,
                   mdata->length);
-        out.size = mdata->length;
+        out.mdata.len = mdata->length;
+        out.mdata.buf = malloc(mdata->length);
+        memcpy(out.mdata.buf, mdata->data, mdata->length);
+        /*
         hret = margo_bulk_create(mid, 1, (void **)&mdata->data, &out.size,
                                  HG_BULK_READ_ONLY, &out.handle);
+        if(hret != HG_SUCCESS) {
+            fprintf(stderr, "margo_bulk_create failed with %d\n", hret);
+        }
+        */
         out.version = mdata->version;
     } else {
-        out.size = 0;
+        out.mdata.len = 0;
         out.version = -1;
     }
 
     margo_respond(handle, &out);
     margo_free_input(handle, &in);
-    margo_bulk_free(out.handle);
+    // margo_bulk_free(out.handle);
     margo_destroy(handle);
 }
 DEFINE_MARGO_RPC_HANDLER(query_meta_rpc)
