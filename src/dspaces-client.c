@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -24,18 +25,36 @@
 
 #include <mpi.h>
 
-#define DEBUG_OUT(...)                                                         \
+#ifdef USE_APEX
+#include <apex.h>
+#define APEX_FUNC_TIMER_START(fn)                                              \
+    apex_profiler_handle profiler0 = apex_start(APEX_FUNCTION_ADDRESS, &fn);
+#define APEX_NAME_TIMER_START(num, name)                                       \
+    apex_profiler_handle profiler##num = apex_start(APEX_NAME_STRING, name);
+#define APEX_TIMER_STOP(num) apex_stop(profiler##num);
+#else
+#define APEX_FUNC_TIMER_START(fn) (void)0;
+#define APEX_NAME_TIMER_START(num, name) (void)0;
+#define APEX_TIMER_STOP(num) (void)0;
+#endif
+
+#define DEBUG_OUT(dstr, ...)                                                   \
     do {                                                                       \
         if(client->f_debug) {                                                  \
-            fprintf(stderr, "Rank %i: %s, line %i (%s): ", client->rank,       \
-                    __FILE__, __LINE__, __func__);                             \
-            fprintf(stderr, __VA_ARGS__);                                      \
+            ABT_unit_id tid;                                                   \
+            ABT_thread_self_id(&tid);                                          \
+            fprintf(stderr,                                                    \
+                    "Rank %i: TID: %" PRIu64 " %s, line %i (%s): " dstr,       \
+                    client->rank, tid, __FILE__, __LINE__, __func__,           \
+                    ##__VA_ARGS__);                                            \
         }                                                                      \
     } while(0);
 
 #define SUB_HASH_SIZE 16
+#define MB (1024 * 1024)
+#define BULK_TRANSFER_MAX (128 * MB)
 
-// static int g_is_initialized = 0;
+static int g_is_initialized = 0;
 
 static enum storage_type st = column_major;
 
@@ -170,7 +189,7 @@ static void choose_server(dspaces_client_t client)
     }
 }
 
-static int get_ss_info(dspaces_client_t client)
+static int get_ss_info(dspaces_client_t client, ss_info_hdr *ss_data)
 {
     hg_return_t hret;
     hg_handle_t handle;
@@ -201,22 +220,51 @@ static int get_ss_info(dspaces_client_t client)
         margo_destroy(handle);
         return dspaces_ERR_MERCURY;
     }
-    ss_info_hdr ss_data;
-    memcpy(&ss_data, out.ss_buf.raw_odsc, sizeof(ss_info_hdr));
-
-    client->dcg->ss_info.num_dims = ss_data.num_dims;
-    client->dcg->ss_info.num_space_srv = ss_data.num_space_srv;
-    memcpy(&(client->dcg->ss_domain), &(ss_data.ss_domain),
-           sizeof(struct bbox));
-    client->dcg->max_versions = ss_data.max_versions;
-    client->dcg->hash_version = ss_data.hash_version;
-    memcpy(&(client->dcg->default_gdim), &(ss_data.default_gdim),
-           sizeof(struct global_dimension));
+    memcpy(ss_data, out.ss_buf.raw_odsc, sizeof(ss_info_hdr));
 
     margo_free_output(handle, &out);
     margo_destroy(handle);
     margo_addr_free(client->mid, server_addr);
-    return ret;
+
+    return (ret);
+}
+
+static void install_ss_info(dspaces_client_t client, ss_info_hdr *ss_data)
+{
+    client->dcg->ss_info.num_dims = ss_data->num_dims;
+    client->dcg->ss_info.num_space_srv = ss_data->num_space_srv;
+    memcpy(&(client->dcg->ss_domain), &(ss_data->ss_domain),
+           sizeof(struct bbox));
+    client->dcg->max_versions = ss_data->max_versions;
+    client->dcg->hash_version = ss_data->hash_version;
+    memcpy(&(client->dcg->default_gdim), &(ss_data->default_gdim),
+           sizeof(struct global_dimension));
+}
+
+static int init_ss_info(dspaces_client_t client)
+{
+    ss_info_hdr ss_data;
+    int ret;
+
+    ret = get_ss_info(client, &ss_data);
+    install_ss_info(client, &ss_data);
+}
+
+static int init_ss_info_mpi(dspaces_client_t client, MPI_Comm comm)
+{
+    ss_info_hdr ss_data;
+    int rank, ret;
+
+    MPI_Comm_rank(comm, &rank);
+    if(!rank) {
+        ret = get_ss_info(client, &ss_data);
+    }
+    MPI_Bcast(&ret, 1, MPI_INT, 0, comm);
+    if(ret == dspaces_SUCCESS) {
+        MPI_Bcast(&ss_data, sizeof(ss_data), MPI_BYTE, 0, comm);
+        install_ss_info(client, &ss_data);
+    }
+    return (ret);
 }
 
 static struct dc_gspace *dcg_alloc(dspaces_client_t client)
@@ -376,9 +424,8 @@ static int read_conf_mpi(dspaces_client_t client, MPI_Comm comm,
 static int dspaces_init_internal(int rank, dspaces_client_t *c)
 {
     const char *envdebug = getenv("DSPACES_DEBUG");
-    static int is_initialized = 0;
 
-    if(is_initialized) {
+    if(g_is_initialized) {
         fprintf(stderr,
                 "DATASPACES: WARNING: %s: multiple instantiations of the "
                 "dataspaces client are not supported.\n",
@@ -401,7 +448,7 @@ static int dspaces_init_internal(int rank, dspaces_client_t *c)
     if(!(client->dcg))
         return dspaces_ERR_ALLOCATION;
 
-    is_initialized = 1;
+    g_is_initialized = 1;
 
     *c = client;
 
@@ -412,9 +459,19 @@ static int dspaces_init_margo(dspaces_client_t client,
                               const char *listen_addr_str)
 {
     hg_class_t *hg;
+    struct hg_init_info hii = {0};
+    char margo_conf[1024];
+    struct margo_init_info mii = {0};
+
     int i;
 
     margo_set_environment(NULL);
+    sprintf(margo_conf,
+            "{ \"use_progress_thread\" : false, \"rpc_thread_count\" : 0}");
+    hii.request_post_init = 1024;
+    hii.auto_sm = 0;
+    mii.hg_init_info = &hii;
+    mii.json_config = margo_conf;
     ABT_init(0, NULL);
 
 #ifdef HAVE_DRC
@@ -432,16 +489,22 @@ static int dspaces_init_margo(dspaces_client_t client,
     drc_cookie = drc_get_first_cookie(drc_credential_info);
     sprintf(drc_key_str, "%u", drc_cookie);
 
-    struct hg_init_info hii;
-    memset(&hii, 0, sizeof(hii));
     hii.na_init_info.auth_key = drc_key_str;
 
     client->mid =
-        margo_init_opt(listen_addr_str, MARGO_SERVER_MODE, &hii, 0, 0);
+        margo_init_ext(listen_addr_str, MARGO_SERVER_MODE, &mii);
 
 #else
 
-    client->mid = margo_init(listen_addr_str, MARGO_SERVER_MODE, 0, 0);
+    client->mid = margo_init_ext(listen_addr_str, MARGO_SERVER_MODE, &mii);
+    if(client->f_debug) {
+        if(!client->rank) {
+            char *margo_json = margo_get_config(client->mid);
+            fprintf(stderr, "%s", margo_json);
+            free(margo_json);
+        }
+        margo_set_log_level(client->mid, MARGO_LOG_TRACE);
+    }
 
 #endif /* HAVE_DRC */
 
@@ -554,7 +617,6 @@ static int dspaces_post_init(dspaces_client_t client)
 {
     choose_server(client);
 
-    get_ss_info(client);
     DEBUG_OUT("Total max versions on the client side is %d\n",
               client->dcg->max_versions);
 
@@ -585,6 +647,8 @@ int dspaces_init(int rank, dspaces_client_t *c)
 
     free(listen_addr_str);
 
+    choose_server(client);
+    init_ss_info(client);
     dspaces_post_init(client);
 
     *c = client;
@@ -613,12 +677,16 @@ int dspaces_init_mpi(MPI_Comm comm, dspaces_client_t *c)
     dspaces_init_margo(client, listen_addr_str);
     free(listen_addr_str);
 
+    choose_server(client);
+    init_ss_info_mpi(client, comm);
     dspaces_post_init(client);
 
     *c = client;
 
     return (dspaces_SUCCESS);
 }
+
+int dspaces_server_count(dspaces_client_t client) { return (client->size_sp); }
 
 static void free_done_list(dspaces_client_t client)
 {
@@ -673,6 +741,8 @@ int dspaces_fini(dspaces_client_t client)
     margo_finalize(client->mid);
 
     free(client);
+
+    g_is_initialized = 0;
 
     return dspaces_SUCCESS;
 }
@@ -1038,6 +1108,7 @@ static int get_data(dspaces_client_t client, int num_odscs,
                     obj_descriptor req_obj, obj_descriptor *odsc_tab,
                     void *data)
 {
+    struct timeval start, stop;
     bulk_in_t *in;
     in = (bulk_in_t *)malloc(sizeof(bulk_in_t) * num_odscs);
 
@@ -1048,6 +1119,8 @@ static int get_data(dspaces_client_t client, int num_odscs,
     hg_handle_t *hndl;
     hndl = (hg_handle_t *)malloc(sizeof(hg_handle_t) * num_odscs);
     serv_req = (margo_request *)malloc(sizeof(margo_request) * num_odscs);
+
+    gettimeofday(&start, NULL);
 
     for(int i = 0; i < num_odscs; ++i) {
         od[i] = obj_data_alloc(&odsc_tab[i]);
@@ -1096,6 +1169,16 @@ static int get_data(dspaces_client_t client, int num_odscs,
     free(serv_req);
     free(in);
     free(return_od);
+
+    gettimeofday(&stop, NULL);
+
+    if(client->f_debug) {
+        uint64_t req_size = obj_data_size(&req_obj);
+        long dsec = stop.tv_sec - start.tv_sec;
+        long dusec = stop.tv_usec - start.tv_usec;
+        float transfer_time = (float)dsec + (dusec / 1000000.0);
+        DEBUG_OUT("got %" PRIu64 " bytes in %f sec\n", req_size, transfer_time);
+    }
 
     return 0;
 }
@@ -1460,9 +1543,10 @@ int dspaces_get_meta(dspaces_client_t client, const char *name, int mode,
 
     DEBUG_OUT("Replied with version %d.\n", out.version);
 
-    if(out.size) {
-        DEBUG_OUT("fetching %zi bytes.\n", out.size);
-        *data = malloc(out.size);
+    if(out.mdata.len) {
+        DEBUG_OUT("fetching %zi bytes.\n", out.mdata.len);
+        *data = malloc(out.mdata.len);
+        /*
         hret = margo_bulk_create(client->mid, 1, data, &out.size,
                                  HG_BULK_WRITE_ONLY, &bulk_handle);
         if(hret != HG_SUCCESS) {
@@ -1478,6 +1562,8 @@ int dspaces_get_meta(dspaces_client_t client, const char *name, int mode,
                     __func__, hret);
             goto err_bulk;
         }
+        */
+        memcpy(*data, out.mdata.buf, out.mdata.len);
         DEBUG_OUT("metadata for '%s', version %d retrieved successfully.\n",
                   name, out.version);
     } else {
@@ -1485,10 +1571,10 @@ int dspaces_get_meta(dspaces_client_t client, const char *name, int mode,
         *data = NULL;
     }
 
-    *len = out.size;
+    *len = out.mdata.len;
     *version = out.version;
 
-    margo_bulk_free(bulk_handle);
+    // margo_bulk_free(bulk_handle);
     margo_free_output(handle, &out);
     margo_destroy(handle);
 
@@ -1512,8 +1598,12 @@ static void get_local_rpc(hg_handle_t handle)
     hg_return_t hret;
     bulk_in_t in;
     bulk_out_t out;
+    hg_size_t remaining, xfer_size;
+    margo_request *reqs;
     hg_bulk_t bulk_handle;
+    int i;
 
+    APEX_FUNC_TIMER_START(get_local_rpc);
     margo_instance_id mid = margo_hg_handle_get_instance(handle);
 
     const struct hg_info *info = margo_get_info(handle);
@@ -1537,14 +1627,15 @@ static void get_local_rpc(hg_handle_t handle)
     DEBUG_OUT("%s\n", obj_desc_sprint(&in_odsc));
 
     struct obj_data *od, *from_obj;
-
+    APEX_NAME_TIMER_START(1, "get_local_ls_find");
     from_obj = ls_find(client->dcg->ls, &in_odsc);
     if(!from_obj)
         fprintf(stderr,
                 "DATASPACES: WARNING handling %s: Object not found in local "
                 "storage\n",
                 __func__);
-
+    APEX_TIMER_STOP(1);
+    APEX_NAME_TIMER_START(2, "get_local_obj_alloc");
     od = obj_data_alloc(&in_odsc);
     if(!od)
         fprintf(stderr,
@@ -1556,13 +1647,17 @@ static void get_local_rpc(hg_handle_t handle)
             stderr,
             "DATASPACES: ERROR handling %s: object data allocation failed\n",
             __func__);
-
+    APEX_TIMER_STOP(2);
+    APEX_NAME_TIMER_START(3, "get_local_ssd_copy");
     ssd_copy(od, from_obj);
+    APEX_TIMER_STOP(3);
     DEBUG_OUT("After ssd_copy\n");
 
     hg_size_t size = (in_odsc.size) * bbox_volume(&(in_odsc.bb));
     void *buffer = (void *)od->data;
 
+    DEBUG_OUT("creating buffer of size %zi\n", size);
+    APEX_NAME_TIMER_START(4, "get_local_bulk_create");
     hret = margo_bulk_create(mid, 1, (void **)&buffer, &size, HG_BULK_READ_ONLY,
                              &bulk_handle);
 
@@ -1576,9 +1671,45 @@ static void get_local_rpc(hg_handle_t handle)
         margo_destroy(handle);
         return;
     }
+    APEX_TIMER_STOP(4);
 
-    hret = margo_bulk_transfer(mid, HG_BULK_PUSH, info->addr, in.handle, 0,
-                               bulk_handle, 0, size);
+    APEX_NAME_TIMER_START(5, "get_local_bulk_transfer");
+    if(size <= BULK_TRANSFER_MAX) {
+        hret = margo_bulk_transfer(mid, HG_BULK_PUSH, info->addr, in.handle, 0,
+                                   bulk_handle, 0, size);
+    } else {
+        remaining = size;
+        int num_reqs = (size + BULK_TRANSFER_MAX - 1) / BULK_TRANSFER_MAX;
+        DEBUG_OUT("transferring in %i steps\n", num_reqs);
+        reqs = malloc(sizeof(*reqs) * num_reqs);
+        int req_id = 0;
+        size_t offset = 0;
+        while(remaining) {
+            DEBUG_OUT("%li bytes left to transfer\n", remaining);
+            offset = size - remaining;
+            xfer_size =
+                (remaining > BULK_TRANSFER_MAX) ? BULK_TRANSFER_MAX : remaining;
+            hret = margo_bulk_itransfer(mid, HG_BULK_PUSH, info->addr,
+                                        in.handle, offset, bulk_handle, offset,
+                                        xfer_size, &reqs[req_id++]);
+            if(hret != HG_SUCCESS) {
+                fprintf(stderr, "margo_bulk_itransfer %i failed!\n",
+                        req_id - 1);
+                break;
+            }
+            remaining -= xfer_size;
+        }
+        // if anything is left, we bailed with an error
+        if(!remaining) {
+            for(i = 0; i < num_reqs; i++) {
+                hret = margo_wait(reqs[i]);
+                if(hret != HG_SUCCESS) {
+                    fprintf(stderr, "margo_wait %i failed\n", i);
+                    break;
+                }
+            }
+        }
+    }
     if(hret != HG_SUCCESS) {
         fprintf(stderr,
                 "DATASPACES: ERROR handling %s: margo_bulk_transfer() failed "
@@ -1591,12 +1722,15 @@ static void get_local_rpc(hg_handle_t handle)
         margo_destroy(handle);
         return;
     }
+    APEX_TIMER_STOP(5);
     margo_bulk_free(bulk_handle);
     out.ret = dspaces_SUCCESS;
     obj_data_free(od);
     margo_respond(handle, &out);
     margo_free_input(handle, &in);
     margo_destroy(handle);
+    DEBUG_OUT("complete\n");
+    APEX_TIMER_STOP(0);
 }
 DEFINE_MARGO_RPC_HANDLER(get_local_rpc)
 
@@ -1775,7 +1909,7 @@ static void notify_rpc(hg_handle_t handle)
     subh = dspaces_get_sub(client, sub_id);
     if(subh->status == DSPACES_SUB_WAIT) {
         ABT_mutex_unlock(client->sub_mutex);
-
+        subh->status = DSPACES_SUB_TRANSFER;
         num_odscs = (in.odsc_list.size) / sizeof(obj_descriptor);
         odsc_tab = malloc(in.odsc_list.size);
         memcpy(odsc_tab, in.odsc_list.raw_odsc, in.odsc_list.size);
@@ -1796,6 +1930,10 @@ static void notify_rpc(hg_handle_t handle)
         if(num_odscs) {
             get_data(client, num_odscs, subh->q_odsc, odsc_tab, data);
         }
+        if(!data) {
+            fprintf(stderr, "ERROR: %s: data allocated, but is null.\n",
+                    __func__);
+        }
     } else {
         fprintf(stderr,
                 "WARNING: got notification, but sub status was not "
@@ -1810,11 +1948,13 @@ static void notify_rpc(hg_handle_t handle)
     margo_destroy(handle);
 
     ABT_mutex_lock(client->sub_mutex);
-    if(subh->status == DSPACES_SUB_WAIT) {
+    if(subh->status == DSPACES_SUB_TRANSFER) {
         subh->req->buf = data;
         subh->status = DSPACES_SUB_RUNNING;
     } else if(data) {
         // subscription was cancelled
+        DEBUG_OUT("transfer complete, but sub was cancelled? (status %d)\n",
+                  subh->status);
         free(data);
         data = NULL;
     }
@@ -1822,6 +1962,8 @@ static void notify_rpc(hg_handle_t handle)
 
     if(data) {
         subh->result = subh->cb(client, subh->req, subh->arg);
+    } else {
+        DEBUG_OUT("no data, skipping callback.\n");
     }
 
     ABT_mutex_lock(client->sub_mutex);
@@ -1835,6 +1977,8 @@ static void notify_rpc(hg_handle_t handle)
         free(odsc_tab);
     }
     free_sub_req(subh->req);
+
+    DEBUG_OUT("finished notification handling.\n");
 }
 DEFINE_MARGO_RPC_HANDLER(notify_rpc)
 
@@ -1969,12 +2113,15 @@ int dspaces_check_sub(dspaces_client_t client, dspaces_sub_t subh, int wait,
         DEBUG_OUT("blocking on notification for subscription %d.\n", subh->id);
         ABT_mutex_lock(client->sub_mutex);
         while(subh->status == DSPACES_SUB_WAIT ||
+              subh->status == DSPACES_SUB_TRANSFER ||
               subh->status == DSPACES_SUB_RUNNING) {
             ABT_cond_wait(client->sub_cond, client->sub_mutex);
         }
         ABT_mutex_unlock(client->sub_mutex);
     }
 
+    // This is a concurrency bug. The status could change to DONE with result
+    // unset.
     if(subh->status == DSPACES_SUB_DONE) {
         *result = subh->result;
     }
@@ -2006,7 +2153,8 @@ int dspaces_cancel_sub(dspaces_client_t client, dspaces_sub_t subh)
         return (DSPACES_SUB_INVALID);
     }
     ABT_mutex_lock(client->sub_mutex);
-    if(subh->status == DSPACES_SUB_WAIT) {
+    if(subh->status == DSPACES_SUB_WAIT ||
+       subh->status == DSPACES_SUB_TRANSFER) {
         subh->status = DSPACES_SUB_CANCELLED;
     }
     ABT_mutex_unlock(client->sub_mutex);

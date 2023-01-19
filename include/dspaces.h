@@ -45,6 +45,8 @@ int dspaces_init(int rank, dspaces_client_t *client);
  */
 int dspaces_init_mpi(MPI_Comm comm, dspaces_client_t *c);
 
+int dspaces_server_count(dspaces_client_t client);
+
 void dspaces_define_gdim(dspaces_client_t client, const char *var_name,
                          int ndim, uint64_t *gdim);
 
@@ -264,9 +266,10 @@ typedef struct dspaces_sub_handle *dspaces_sub_t;
 #define DSPACES_SUB_DONE 0
 #define DSPACES_SUB_WAIT 1
 #define DSPACES_SUB_ERR 2
-#define DSPACES_SUB_RUNNING 3
-#define DSPACES_SUB_INVALID 4
-#define DSPACES_SUB_CANCELLED 5
+#define DSPACES_SUB_TRANSFER 3
+#define DSPACES_SUB_RUNNING 4
+#define DSPACES_SUB_INVALID 5
+#define DSPACES_SUB_CANCELLED 6
 
 /**
  * @brief subscribe to data objects with callback

@@ -5,6 +5,7 @@
  * See COPYRIGHT in top-level directory.
  */
 #include "dspaces-server.h"
+#include "dspaces-storage.h"
 #include "dspaces.h"
 #include "dspacesp.h"
 #include "gspace.h"
@@ -24,12 +25,15 @@
 #include <rdmacred.h>
 #endif /* HAVE_DRC */
 
-#define DEBUG_OUT(...)                                                         \
+#define DEBUG_OUT(dstr, ...)                                                   \
     do {                                                                       \
         if(server->f_debug) {                                                  \
-            fprintf(stderr, "Rank %i: %s, line %i (%s): ", server->rank,       \
-                    __FILE__, __LINE__, __func__);                             \
-            fprintf(stderr, __VA_ARGS__);                                      \
+            ABT_unit_id tid;                                                   \
+            ABT_thread_self_id(&tid);                                          \
+            fprintf(stderr,                                                    \
+                    "Rank %i: TID: %" PRIu64 " %s, line %i (%s): " dstr,       \
+                    server->rank, tid, __FILE__, __LINE__, __func__,           \
+                    ##__VA_ARGS__);                                            \
         }                                                                      \
     } while(0);
 
@@ -48,6 +52,7 @@ struct addr_list_entry {
 };
 
 struct dspaces_provider {
+    struct list_head dirs;
     margo_instance_id mid;
     hg_id_t put_id;
     hg_id_t put_local_id;
@@ -231,15 +236,20 @@ static int parse_conf(const char *fname)
     return 0;
 }
 
-static int parse_conf_toml(const char *fname)
+static int parse_conf_toml(const char *fname, struct list_head *dir_list)
 {
     FILE *fin;
     toml_table_t *conf;
+    toml_table_t *storage;
+    toml_table_t *conf_dir;
     toml_table_t *server;
     toml_datum_t dat;
     toml_array_t *arr;
+    struct dspaces_dir *dir;
+    struct dspaces_file *file;
     char errbuf[200];
     int ndim = 0;
+    int ndir, nfile;
     int i, j, n;
 
     fin = fopen(fname, "r");
@@ -290,16 +300,65 @@ static int parse_conf_toml(const char *fname)
         }
     }
 
+    storage = toml_table_in(conf, "storage");
+    if(storage) {
+        ndir = toml_table_ntab(storage);
+        for(i = 0; i < ndir; i++) {
+            dir = malloc(sizeof(*dir));
+            dir->name = strdup(toml_key_in(storage, i));
+            conf_dir = toml_table_in(storage, dir->name);
+            dat = toml_string_in(conf_dir, "directory");
+            dir->path = strdup(dat.u.s);
+            free(dat.u.s);
+            if(0 != (arr = toml_array_in(conf_dir, "files"))) {
+                INIT_LIST_HEAD(&dir->files);
+                nfile = toml_array_nelem(arr);
+                for(j = 0; j < nfile; j++) {
+                    dat = toml_string_at(arr, j);
+                    file = malloc(sizeof(*file));
+                    file->type = DS_FILE_NC;
+                    file->name = strdup(dat.u.s);
+                    free(dat.u.s);
+                    list_add(&file->entry, &dir->files);
+                }
+            } else {
+                dat = toml_string_in(conf_dir, "files");
+                if(dat.ok) {
+                    if(strcmp(dat.u.s, "all") == 0) {
+                        dir->cont_type = DS_FILE_ALL;
+                    } else {
+                        fprintf(stderr,
+                                "ERROR: %s: invalid value for "
+                                "storage.%s.files: %s\n",
+                                __func__, dir->name, dat.u.s);
+                    }
+                    free(dat.u.s);
+                } else {
+                    fprintf(stderr,
+                            "ERROR: %s: no readable 'files' key for '%s'.\n",
+                            __func__, dir->name);
+                }
+            }
+            list_add(&dir->entry, dir_list);
+        }
+    }
+
     toml_free(conf);
 }
 
-static int init_sspace(struct bbox *default_domain, struct ds_gspace *dsg_l)
+static int init_sspace(dspaces_provider_t server, struct bbox *default_domain,
+                       struct ds_gspace *dsg_l)
 {
     int err = -ENOMEM;
     dsg_l->ssd = ssd_alloc(default_domain, dsg_l->size_sp, ds_conf.max_versions,
                            ds_conf.hash_version);
     if(!dsg_l->ssd)
         goto err_out;
+
+    if(ds_conf.hash_version == ssd_hash_version_auto) {
+        DEBUG_OUT("server selected hash version %i for default space\n",
+                  dsg_l->ssd->hash_version);
+    }
 
     err = ssd_init(dsg_l->ssd, dsg_l->rank);
     if(err < 0)
@@ -438,6 +497,8 @@ error:
     return (ret);
 }
 
+const char *hash_strings[] = {"Dynamic", "SFC", "Bisection"};
+
 void print_conf()
 {
     int i;
@@ -451,8 +512,7 @@ void print_conf()
     }
     printf(")\n");
     printf(" MAX STORED VERSIONS: %i\n", ds_conf.max_versions);
-    printf(" HASH TYPE: %s\n",
-           (ds_conf.hash_version == 1) ? "SFC" : "Bisection");
+    printf(" HASH TYPE: %s\n", hash_strings[ds_conf.hash_version]);
     printf(" APPS EXPECTED: %i\n", ds_conf.num_apps);
     printf("=========================\n");
 }
@@ -466,14 +526,16 @@ static int dsg_alloc(dspaces_provider_t server, const char *conf_name,
 
     /* Default values */
     ds_conf.max_versions = 1;
-    ds_conf.hash_version = ssd_hash_version_v1;
+    ds_conf.hash_version = ssd_hash_version_auto;
     ds_conf.num_apps = 1;
+
+    INIT_LIST_HEAD(&server->dirs);
 
     ext = strrchr(conf_name, '.');
     if(!ext || strcmp(ext, ".toml") != 0) {
         err = parse_conf(conf_name);
     } else {
-        err = parse_conf_toml(conf_name);
+        err = parse_conf_toml(conf_name, &server->dirs);
     }
     if(err < 0) {
         goto err_out;
@@ -488,10 +550,15 @@ static int dsg_alloc(dspaces_provider_t server, const char *conf_name,
             __func__, BBOX_MAX_NDIM, ds_conf.ndim, conf_name);
         err = -EINVAL;
         goto err_out;
+    } else if(ds_conf.ndim == 0) {
+        DEBUG_OUT(
+            "no global coordinates provided. Setting trivial placeholder.\n");
+        ds_conf.ndim = 1;
+        ds_conf.dims.c[0] = 1;
     }
 
     // Check hash version
-    if((ds_conf.hash_version < ssd_hash_version_v1) ||
+    if((ds_conf.hash_version < ssd_hash_version_auto) ||
        (ds_conf.hash_version >= _ssd_hash_version_count)) {
         fprintf(stderr, "%s(): ERROR unknown hash version %d in file '%s'\n",
                 __func__, ds_conf.hash_version, conf_name);
@@ -522,7 +589,7 @@ static int dsg_alloc(dspaces_provider_t server, const char *conf_name,
 
     write_conf(server, comm);
 
-    err = init_sspace(&domain, dsg_l);
+    err = init_sspace(server, &domain, dsg_l);
     if(err < 0) {
         goto err_free;
     }
@@ -613,6 +680,11 @@ static struct sspace *lookup_sspace(dspaces_provider_t server,
         return dsg_l->ssd;
     }
 
+    if(ds_conf.hash_version == ssd_hash_version_auto) {
+        DEBUG_OUT("server selected hash version %i for var %s\n",
+                  ssd_entry->ssd->hash_version, var_name);
+    }
+
     DEBUG_OUT("doing ssd init\n");
     err = ssd_init(ssd_entry->ssd, dsg_l->rank);
     if(err < 0) {
@@ -638,8 +710,9 @@ static int obj_update_dht(dspaces_provider_t server, struct obj_data *od,
     /* Compute object distribution to nodes in the space. */
     num_de = ssd_hash(ssd, &odsc->bb, dht_tab);
     if(num_de == 0) {
-        fprintf(stderr, "'%s()': this should not happen, num_de == 0 ?!\n",
-                __func__);
+        fprintf(stderr,
+                "'%s()': this should not happen, num_de == 0 ?! od = %s\n",
+                __func__, obj_desc_sprint(odsc));
     }
     /* Update object descriptors on the corresponding nodes. */
     for(i = 0; i < num_de; i++) {
@@ -792,7 +865,7 @@ static void drain_thread(void *arg)
     }
 }
 
-int dspaces_server_init(char *listen_addr_str, MPI_Comm comm,
+int dspaces_server_init(const char *listen_addr_str, MPI_Comm comm,
                         const char *conf_file, dspaces_provider_t *sv)
 {
     const char *envdebug = getenv("DSPACES_DEBUG");
@@ -804,6 +877,10 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm,
     hg_bool_t flag;
     hg_id_t id;
     int num_handlers = DSPACES_DEFAULT_NUM_HANDLERS;
+    struct hg_init_info hii = {0};
+    char margo_conf[1024];
+    struct margo_init_info mii = {0};
+    int ret;
 
     if(is_initialized) {
         fprintf(stderr,
@@ -826,6 +903,7 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm,
     }
 
     if(envdrain) {
+        DEBUG_OUT("enabling data draining.\n");
         server->f_drain = 1;
     }
 
@@ -833,6 +911,13 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm,
     MPI_Comm_rank(comm, &server->rank);
 
     margo_set_environment(NULL);
+    sprintf(margo_conf,
+            "{ \"use_progress_thread\" : true, \"rpc_thread_count\" : %d }",
+            num_handlers);
+    hii.request_post_init = 1024;
+    hii.auto_sm = 0;
+    mii.hg_init_info = &hii;
+    mii.json_config = margo_conf;
     ABT_init(0, NULL);
 
 #ifdef HAVE_DRC
@@ -865,7 +950,6 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm,
     drc_cookie = drc_get_first_cookie(drc_credential_info);
     sprintf(drc_key_str, "%u", drc_cookie);
 
-    struct hg_init_info hii;
     memset(&hii, 0, sizeof(hii));
     hii.na_init_info.auth_key = drc_key_str;
 
@@ -880,21 +964,27 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm,
         }
     }
 
-    server->mid = margo_init_opt(listen_addr_str, MARGO_SERVER_MODE, &hii, 1,
-                                 num_handlers);
+    server->mid = margo_init_ext(listen_addr_str, MARGO_SERVER_MODE, &mii);
 
 #else
 
-    server->mid =
-        margo_init(listen_addr_str, MARGO_SERVER_MODE, 1, num_handlers);
+    server->mid = margo_init_ext(listen_addr_str, MARGO_SERVER_MODE, &mii);
+    if(server->f_debug) {
+        if(!server->rank) {
+            char *margo_json = margo_get_config(server->mid);
+            fprintf(stderr, "%s", margo_json);
+            free(margo_json);
+        }
+        margo_set_log_level(server->mid, MARGO_LOG_TRACE);
+    }
+    MPI_Barrier(comm);
 
 #endif /* HAVE_DRC */
-
+    DEBUG_OUT("did margo init\n");
     if(!server->mid) {
         fprintf(stderr, "ERROR: %s: margo_init() failed.\n", __func__);
         return (dspaces_ERR_MERCURY);
     }
-
     server->listen_addr_str = strdup(listen_addr_str);
 
     ABT_mutex_create(&server->odsc_mutex);
@@ -1119,7 +1209,7 @@ static int server_destroy(dspaces_provider_t server)
 
     // Hack to avoid possible argobots race condition. Need to track this down
     // at some point.
-    sleep(1);
+    sleep(5);
 
     free_sspace(server->dsg);
     ls_free(server->dsg->ls);
@@ -1132,7 +1222,7 @@ static int server_destroy(dspaces_provider_t server)
     MPI_Comm_free(&server->comm);
     DEBUG_OUT("finalizing server.\n");
     margo_finalize(server->mid);
-
+    DEBUG_OUT("finalized server.\n");
     return 0;
 }
 
@@ -1386,7 +1476,7 @@ static int get_query_odscs(dspaces_provider_t server, odsc_gdim_t *query,
     int self_id_num = -1;
     int total_odscs = 0;
     int *odsc_nums;
-    obj_descriptor **odsc_tabs, **podsc;
+    obj_descriptor **odsc_tabs, **podsc = NULL;
     obj_descriptor *odsc_curr;
     margo_request *serv_reqs;
     hg_handle_t *hndls;
@@ -1435,8 +1525,7 @@ static int get_query_odscs(dspaces_provider_t server, odsc_gdim_t *query,
     }
 
     if(self_id_num > -1) {
-        podsc = malloc(sizeof(*podsc) * ssd->ent_self->odsc_num);
-        DEBUG_OUT("finding local entries.\n");
+        DEBUG_OUT("finding local entries for req_id %i.\n", req_id);
         odsc_nums[self_id_num] =
             dht_find_entry_all(ssd->ent_self, q_odsc, &podsc, timeout);
         DEBUG_OUT("%d odscs found in %d\n", odsc_nums[self_id_num],
@@ -1462,12 +1551,13 @@ static int get_query_odscs(dspaces_provider_t server, odsc_gdim_t *query,
         if(i == self_id_num) {
             continue;
         }
-        DEBUG_OUT("waiting for %d\n", i);
+        DEBUG_OUT("req_id %i waiting for %d\n", req_id, i);
         margo_wait(serv_reqs[i]);
         margo_get_output(hndls[i], &dht_resp);
         if(dht_resp.odsc_list.size != 0) {
             odsc_nums[i] = dht_resp.odsc_list.size / sizeof(obj_descriptor);
-            DEBUG_OUT("received %d odscs from peer %d\n", odsc_nums[i], i);
+            DEBUG_OUT("received %d odscs from peer %d for req_id %i\n",
+                      odsc_nums[i], i, req_id);
             total_odscs += odsc_nums[i];
             odsc_tabs[i] = malloc(sizeof(**odsc_tabs) * odsc_nums[i]);
             memcpy(odsc_tabs[i], dht_resp.odsc_list.raw_odsc,
@@ -1509,7 +1599,8 @@ static int get_query_odscs(dspaces_provider_t server, odsc_gdim_t *query,
     }
 
     for(i = 0; i < total_odscs; i++) {
-        DEBUG_OUT("odscs in response: %s\n", obj_desc_sprint(&(*results)[i]));
+        DEBUG_OUT("odsc %i in response for req_id %i: %s\n", i, req_id,
+                  obj_desc_sprint(&(*results)[i]));
     }
 
     free(de_tab);
@@ -1628,18 +1719,25 @@ static void query_meta_rpc(hg_handle_t handle)
     if(mdata) {
         DEBUG_OUT("found version %d, length %d.", mdata->version,
                   mdata->length);
-        out.size = mdata->length;
+        out.mdata.len = mdata->length;
+        out.mdata.buf = malloc(mdata->length);
+        memcpy(out.mdata.buf, mdata->data, mdata->length);
+        /*
         hret = margo_bulk_create(mid, 1, (void **)&mdata->data, &out.size,
                                  HG_BULK_READ_ONLY, &out.handle);
+        if(hret != HG_SUCCESS) {
+            fprintf(stderr, "margo_bulk_create failed with %d\n", hret);
+        }
+        */
         out.version = mdata->version;
     } else {
-        out.size = 0;
+        out.mdata.len = 0;
         out.version = -1;
     }
 
     margo_respond(handle, &out);
     margo_free_input(handle, &in);
-    margo_bulk_free(out.handle);
+    // margo_bulk_free(out.handle);
     margo_destroy(handle);
 }
 DEFINE_MARGO_RPC_HANDLER(query_meta_rpc)
@@ -1723,8 +1821,9 @@ static void odsc_internal_rpc(hg_handle_t handle)
     odsc_gdim_t in;
     int timeout;
     odsc_list_t out;
-    obj_descriptor **podsc;
+    obj_descriptor **podsc = NULL;
     margo_instance_id mid = margo_hg_handle_get_instance(handle);
+    margo_request req;
 
     const struct hg_info *info = margo_get_info(handle);
     dspaces_provider_t server =
@@ -1754,7 +1853,6 @@ static void odsc_internal_rpc(hg_handle_t handle)
     ABT_mutex_lock(server->sspace_mutex);
     struct sspace *ssd = lookup_sspace(server, in_odsc.name, &od_gdim);
     ABT_mutex_unlock(server->sspace_mutex);
-    podsc = malloc(sizeof(*podsc) * ssd->ent_self->odsc_num);
     int num_odsc;
     num_odsc = dht_find_entry_all(ssd->ent_self, &in_odsc, &podsc, timeout);
     DEBUG_OUT("found %d DHT entries.\n", num_odsc);
@@ -1779,13 +1877,14 @@ static void odsc_internal_rpc(hg_handle_t handle)
         }
         out.odsc_list.size = num_odsc * sizeof(obj_descriptor);
         out.odsc_list.raw_odsc = (char *)odsc_tab;
-        margo_respond(handle, &out);
+        margo_irespond(handle, &out, &req);
+        DEBUG_OUT("sent response...waiting on request handle\n");
         margo_free_input(handle, &in);
+        margo_wait(req);
+        DEBUG_OUT("request handle complete.\n");
         margo_destroy(handle);
     }
-    for(int i = 0; i < num_odsc; ++i) {
-        DEBUG_OUT("send odsc: %s\n", obj_desc_sprint(&odsc_tab[i]));
-    }
+    DEBUG_OUT("complete\n");
 
     free(podsc);
 }
@@ -1952,6 +2051,7 @@ static void kill_rpc(hg_handle_t handle)
     if(do_kill) {
         server_destroy(server);
     }
+    DEBUG_OUT("finished with kill handling.\n");
 }
 DEFINE_MARGO_RPC_HANDLER(kill_rpc)
 
@@ -1991,6 +2091,7 @@ static void sub_rpc(hg_handle_t handle)
     margo_addr_lookup(server->mid, in_odsc.owner, &client_addr);
     margo_create(server->mid, client_addr, server->notify_id, &notifyh);
     margo_iforward(notifyh, &notice, &req);
+    DEBUG_OUT("send reply for req_id %i\n", req_id);
     margo_addr_free(server->mid, client_addr);
     margo_destroy(notifyh);
 
@@ -2003,6 +2104,7 @@ DEFINE_MARGO_RPC_HANDLER(sub_rpc)
 
 void dspaces_server_fini(dspaces_provider_t server)
 {
+    DEBUG_OUT("waiting for finalize to occur\n");
     margo_wait_for_finalize(server->mid);
     free(server);
 }
