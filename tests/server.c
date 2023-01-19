@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "idx1_wrapper.h"
 
 int main(int argc, char **argv)
 {
@@ -37,12 +38,15 @@ int main(int argc, char **argv)
     color = 1;
     MPI_Comm_split(MPI_COMM_WORLD, color, rank, &gcomm);
 
+    idx1_init(argc, argv);
+
     ret = dspaces_server_init(listen_addr_str, gcomm, conf_file, &s);
     if(ret != 0)
         return ret;
 
     // make margo wait for finalize
     dspaces_server_fini(s);
+    idx1_finalize();
 
     if(rank == 0) {
         fprintf(stdout, "Server is all done!\n");

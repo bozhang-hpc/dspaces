@@ -6,6 +6,17 @@ struct idx1_dataset {
     Visus::SharedPtr<Visus::Dataset> dataset;
 };
 
+extern "C" void idx1_init(int argc, char** argv)
+{
+    const char* idx_argv[] = {argv[0]};
+    Visus::SetCommandLine(argc, idx_argv);
+    Visus::DbModule::attach();
+}
+
+extern "C" void idx1_finalize()
+{
+    Visus::DbModule::detach();
+}
 extern "C" struct idx1_dataset* idx1_load_dataset(char* filepath)
 {
     std::string fp(filepath);

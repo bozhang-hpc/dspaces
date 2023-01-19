@@ -68,6 +68,8 @@ static inline hg_return_t hg_proc_idx1p_hdr_with_gdim(hg_proc_t proc, void *arg)
 
 MERCURY_GEN_PROC(idx1p_gdim_t, ((idx1p_hdr_with_gdim)(idx1p_gdim))((int32_t)(param)))
 
+void idx1_init(int argc, char** argv);
+void idx1_finalize();
 struct idx1_dataset* idx1_load_dataset(char* filepath);
 size_t idx1_get_dtype_size(struct idx1_dataset *idset);
 int idx1_get_max_resolution(struct idx1_dataset *idset);
