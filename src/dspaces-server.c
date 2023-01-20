@@ -22,6 +22,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <dirent.h>
 
 #ifdef HAVE_DRC
 #include <rdmacred.h>
@@ -42,7 +43,8 @@
 #define DSPACES_DEFAULT_NUM_HANDLERS 4
 
 int netcdf_read_var_in_file(dspaces_provider_t server, char* filepath, char* varname);
-int idx1_init_load(dspaces_provider_t server, char* idxfpath);
+// int idx1_init_load(dspaces_provider_t server, char* idxfpath);
+int idx1_init_load_files(dspaces_provider_t server);
 
 // TODO !
 static enum storage_type st = column_major;
@@ -270,6 +272,9 @@ static int parse_conf_toml(const char *fname, struct list_head *dir_list)
     int ndim = 0;
     int ndir, nfile;
     int i, j, n;
+    DIR* dirp;
+    struct dirent *dire;
+    char* ext;
 
     fin = fopen(fname, "r");
     if(!fin) {
@@ -335,16 +340,50 @@ static int parse_conf_toml(const char *fname, struct list_head *dir_list)
                 for(j = 0; j < nfile; j++) {
                     dat = toml_string_at(arr, j);
                     file = malloc(sizeof(*file));
-                    file->type = DS_FILE_NC;
                     file->name = strdup(dat.u.s);
                     free(dat.u.s);
+                    ext = strrchr(file->name, '.');
+                    if(strcmp(ext, ".nc") == 0) {
+                        file->type = DS_FILE_NC;
+                    } else if(strcmp(ext, ".idx") == 0) {
+                        file->type = DS_FILE_IDX;
+                    }
                     list_add(&file->entry, &dir->files);
                 }
             } else {
                 dat = toml_string_in(conf_dir, "files");
                 if(dat.ok) {
                     if(strcmp(dat.u.s, "all") == 0) {
-                        dir->cont_type = DS_FILE_ALL;
+                        // dir->cont_type = DS_FILE_ALL;
+                        dirp = opendir(dir->path);
+                        if(dirp) {
+                            INIT_LIST_HEAD(&dir->files);
+                            while((dire = readdir(dirp)) != NULL) {
+                                if(dire->d_type == DT_REG) {
+                                    file = malloc(sizeof(*file));
+                                    ext = strrchr(file->name, '.');
+                                    if(strcmp(ext, ".nc") == 0) {
+                                        file->type = DS_FILE_NC;
+                                    } else if(strcmp(ext, ".idx") == 0) {
+                                        file->type = DS_FILE_IDX;
+                                    }
+                                    file->type = DS_FILE_IDX;
+                                    file->name = strdup(dire->d_name);
+                                    list_add(&file->entry, &dir->files);
+                                } else {
+                                    fprintf(stderr,
+                                    "Warning: %s: Non-Regular file at "
+                                    "storage dir:%s.files: %s Skip!\n",
+                                    __func__, dir->name, dire->d_name);
+                                }
+                            }
+                        } else {
+                            fprintf(stderr,
+                                "ERROR: %s: invalid value for "
+                                "storage dir:%s.\n",
+                                __func__, dir->name);
+                        }
+
                     } else {
                         fprintf(stderr,
                                 "ERROR: %s: invalid value for "
@@ -1185,8 +1224,8 @@ int dspaces_server_init(const char *listen_addr_str, MPI_Comm comm,
 
     *sv = server;
 
-    netcdf_read_var_in_file(server, "/home/zhangbo/Codes/netcdf_read_test/data/tas_Amon_NorESM2-LM_historical_r1i1p1f1_gn_185001-201412.nc", "tas");
-    idx1_init_load(server, "/home/zhangbo/Data/NASA/LLC4320_test/llc4320_x_y_depth.idx");
+    //netcdf_read_var_in_file(server, "/home/zhangbo/Codes/netcdf_read_test/data/tas_Amon_NorESM2-LM_historical_r1i1p1f1_gn_185001-201412.nc", "tas");
+    idx1_init_load_files(server);
     server->idx1_load_rank = server->rank;
 
     is_initialized = 1;
@@ -2463,7 +2502,7 @@ int netcdf_read_var_in_file(dspaces_provider_t server, char* filepath, char* var
     return ret;
 }
 
-int idx1_init_load(dspaces_provider_t server, char* idxfpath)
+int idx1_init_load_single_file(dspaces_provider_t server, char* idxfpath)
 {
     int ret = dspaces_SUCCESS;
 
@@ -2483,6 +2522,12 @@ int idx1_init_load(dspaces_provider_t server, char* idxfpath)
     idx1_get_lower_bound(idset, odsc_tmp.bb.lb.c);
     idx1_get_upper_bound(idset, odsc_tmp.bb.ub.c);
 
+    hg_addr_t owner_addr;
+    size_t owner_addr_size = 128;
+    margo_addr_self(server->mid, &owner_addr);
+    margo_addr_to_string(server->mid, odsc_tmp.owner, &owner_addr_size,
+                         owner_addr);
+    margo_addr_free(server->mid, owner_addr);
 
     // sprintf(odsc.name, "%s/%s:%s",idx1p.dir, idx1p.filename, idx1p.varname);
     int num_fields = idx1_get_field_num(idset);
@@ -2517,13 +2562,34 @@ int idx1_init_load(dspaces_provider_t server, char* idxfpath)
             ABT_mutex_unlock(server->ls_mutex);                     
 
             obj_update_dht(server, od, DS_OBJ_NEW);
+            DEBUG_OUT("idx1 load finished for %s\n", obj_desc_sprint(odsc));
+        }
+    }
+    return ret;
+}
+
+int idx1_init_load_files(dspaces_provider_t server)
+{
+    int ret = dspaces_SUCCESS;
+    struct dspaces_dir *dir;
+    struct dspaces_file *file;
+    char idx1path[256];
+
+    list_for_each_entry(dir, &(server->dirs), struct dspaces_dir, entry)
+    {
+        list_for_each_entry(file, &(dir->files), struct dspaces_file, entry)
+        {
+            if(file->type == DS_FILE_IDX) {
+                sprintf(idx1path, "%s/%s", dir->path, file->name);
+                ret = idx1_init_load_single_file(server, idx1path);
+            }
         }
     }
     return ret;
 }
 
 static struct obj_data* idx1_load(dspaces_provider_t server,
-        obj_descriptor *q_odsc, struct global_dimension* q_gdim)
+        obj_descriptor *in_odsc, struct global_dimension* q_gdim)
 {
     struct obj_data* od;
     int found = 0;
@@ -2535,7 +2601,7 @@ static struct obj_data* idx1_load(dspaces_provider_t server,
     {   
         // if has some odsc in the list include the in_odsc
         // then do nothing & return
-        if(idx_obj_desc_equals_include(&odscl->odsc, q_odsc)) { 
+        if(idx_obj_desc_equals_include(&odscl->odsc, in_odsc)) { 
             found = 1;
             break;
         }
@@ -2543,7 +2609,7 @@ static struct obj_data* idx1_load(dspaces_provider_t server,
     }
     if(!found) { // add this in_odsc to the list
         e = (struct obj_desc_list*) malloc(sizeof(struct obj_desc_list));
-        memcpy(&e->odsc, &q_odsc, sizeof(obj_descriptor));
+        memcpy(&e->odsc, &in_odsc, sizeof(obj_descriptor));
         list_add(&e->odsc_entry, &(server->dsg->idx1_loading_list));
     }
     ABT_mutex_unlock(server->idx1_mutex);
@@ -2552,22 +2618,22 @@ static struct obj_data* idx1_load(dspaces_provider_t server,
         return NULL;
     }
 
-    od = obj_data_alloc_no_data(q_odsc, NULL);
+    od = obj_data_alloc_no_data(in_odsc, NULL);
     if(!od) {
         fprintf(stderr, "ERROR: (%s): object allocation failed!\n", __func__);
     }
     memcpy(&od->gdim, q_gdim, sizeof(struct global_dimension));
 
-    char* pcolon = strrchr(q_odsc->name, ':');
+    char* pcolon = strrchr(in_odsc->name, ':');
     char* fieldname = pcolon ? pcolon + 1 : NULL;
-    size_t filepath_len = (fieldname - q_odsc->name)+1;
-    char* filepath = strndup(q_odsc->name, filepath_len);
+    size_t filepath_len = (fieldname - in_odsc->name)+1;
+    char* filepath = strndup(in_odsc->name, filepath_len);
 
     struct idx1_dataset* idset = idx1_load_dataset(filepath);
     /* start to load idx*/
-    od->data = idx1_read(idset, fieldname, q_odsc->bb.num_dims,
-                        q_odsc->size, q_odsc->bb.lb.c, q_odsc->bb.ub.c,
-                        q_odsc->version, q_odsc->resolution);
+    od->data = idx1_read(idset, fieldname, in_odsc->bb.num_dims,
+                        in_odsc->size, in_odsc->bb.lb.c, in_odsc->bb.ub.c,
+                        in_odsc->version, in_odsc->resolution);
     if(!od->data) {
         return NULL;
     }
@@ -2580,8 +2646,6 @@ static void idx1_load_rpc(hg_handle_t handle)
     hg_return_t hret;
     //TODO: Maybe don't need gdim?
     odsc_gdim_t in;
-    // // int out
-    // bulk_out_t out;
     struct obj_data *in_od = NULL;
 
     margo_instance_id mid = margo_hg_handle_get_instance(handle);
@@ -2609,8 +2673,14 @@ static void idx1_load_rpc(hg_handle_t handle)
     memcpy(&in_odsc, in.odsc_gdim.raw_odsc, sizeof(in_odsc));
     memcpy(&in_gdim, in.odsc_gdim.raw_gdim, sizeof(in_gdim));
 
-    // actual load
+    hg_addr_t owner_addr;
+    size_t owner_addr_size = 128;
+    margo_addr_self(server->mid, &owner_addr);
+    margo_addr_to_string(server->mid, in_odsc.owner, &owner_addr_size,
+                         owner_addr);
+    margo_addr_free(server->mid, owner_addr);
 
+    // actual load
     in_od = idx1_load(server, &in_odsc, &in_gdim);
     if(!in_od) {
         fprintf(stderr, "ERROR: (%s): idx1_load() failed!\n",
@@ -2650,9 +2720,11 @@ static int dht_find_idx_entry_all(dspaces_provider_t server, struct dht_entry *d
     obj_descriptor **odsc_tab_pos;
     struct obj_desc_ptr_list *sub_odscl, *sub_tmp;
     struct obj_data *in_od = NULL;
-    hg_addr_t load_server_addr;
+    hg_addr_t load_server_addr, owner_addr;
     hg_handle_t handle;
     odsc_gdim_t in;
+    obj_descriptor in_odsc;
+    size_t owner_addr_size = 128;
 
     n = q_odsc->version % de->odsc_size;
     if(sub) {
@@ -2683,7 +2755,13 @@ static int dht_find_idx_entry_all(dspaces_provider_t server, struct dht_entry *d
                 list_add(&sub_le.entry, &de->dht_subs[n]);
                 // then unlock the mutex, load data, update dht,
                 ABT_mutex_unlock(de->hash_mutex[n]);
-                in_od = idx1_load(server, q_odsc, q_gdim);
+                // have in_odsc's owner set to be this server
+                memcpy(&in_odsc, q_odsc, sizeof(obj_descriptor));
+                margo_addr_self(server->mid, &owner_addr);
+                margo_addr_to_string(server->mid, in_odsc.owner, &owner_addr_size,
+                         owner_addr);
+                margo_addr_free(server->mid, owner_addr);
+                in_od = idx1_load(server, &in_odsc, q_gdim);
                 if(!in_od) {
                     fprintf(stderr, "ERROR: (%s): idx1_load() failed!\n",
                              __func__);
