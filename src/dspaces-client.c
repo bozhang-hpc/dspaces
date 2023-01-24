@@ -2559,6 +2559,7 @@ static void notify_drain_rpc(hg_handle_t handle)
     ABT_cond_free(&e->delete_cond);
     list_del(&e->entry);
     free(e);
+    client->local_put_count--;
 
     ABT_mutex_unlock(client->putlocal_subdrain_mutex);
 
