@@ -1931,8 +1931,10 @@ int idx_obj_desc_equals_intersect(obj_descriptor *odsc1, obj_descriptor *odsc2)
     // TODO: add compression params & downsampling factors
     if(strcmp(odsc1->name, odsc2->name) == 0 &&
        odsc1->version == odsc2->version &&
-       odsc1->resolution == odsc2->resolution &&
-       bbox_does_intersect(&odsc1->bb, &odsc2->bb))
+       bbox_does_intersect(&odsc1->bb, &odsc2->bb) &&
+       ((odsc1->resolution == odsc2->resolution) ||
+       (odsc1->resolution == -1 && odsc2->flag_max_res) ||
+       (odsc2->resolution == -1 && odsc1->flag_max_res)))
         return 1;
     return 0;
 }
@@ -1941,8 +1943,10 @@ int idx_obj_desc_equals_include(obj_descriptor *odsc1, obj_descriptor *odsc2)
 {
     if(strcmp(odsc1->name, odsc2->name) == 0 &&
        odsc1->version == odsc2->version &&
-       odsc1->resolution == odsc2->resolution &&
-       bbox_include(&odsc1->bb, &odsc2->bb))
+       bbox_include(&odsc1->bb, &odsc2->bb) &&
+       ((odsc1->resolution == odsc2->resolution) ||
+       (odsc1->resolution == -1 && odsc2->flag_max_res) ||
+       (odsc2->resolution == -1 && odsc1->flag_max_res)))
         return 1;
     return 0;
 }

@@ -2251,17 +2251,17 @@ static obj_descriptor idx1p_to_odsc(dspaces_idx1_params idx1p) {
                            .flags = 0,
                            .size = idx1p.element_size,
                            .resolution = idx1p.resolution,
+                           .flag_max_res = 0,
                            .bb = {
                                .num_dims = idx1p.ndims,
                            }};
     memset(odsc.bb.lb.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
     memset(odsc.bb.ub.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
 
-    memcpy(odsc.bb.lb.c, &idx1p.lb, sizeof(uint64_t) * idx1p.ndims);
-    memcpy(odsc.bb.ub.c, &idx1p.ub, sizeof(uint64_t) * idx1p.ndims);
+    memcpy(odsc.bb.lb.c, idx1p.lb, sizeof(uint64_t) * idx1p.ndims);
+    memcpy(odsc.bb.ub.c, idx1p.ub, sizeof(uint64_t) * idx1p.ndims);
 
     sprintf(odsc.name, "%s/%s:%s",idx1p.dir, idx1p.filename, idx1p.varname);
-
     return odsc;
 }
 
@@ -2326,6 +2326,7 @@ int dspaces_get_idx1(dspaces_client_t client, dspaces_idx1_params idx1p, void* d
     obj_descriptor qodsc, *odsc_tab;
     
     qodsc = idx1p_to_odsc(idx1p);
+    DEBUG_OUT("Querying %s\n", obj_desc_sprint(&qodsc));
     num_odscs = get_idx1_odscs(client, &qodsc, &odsc_tab);
 
     DEBUG_OUT("Finished idx1 query - need to fetch %d objects\n", num_odscs);

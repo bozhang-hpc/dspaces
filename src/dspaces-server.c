@@ -2514,6 +2514,7 @@ int idx1_init_load_single_file(dspaces_provider_t server, char* idxfpath)
                                .flags = 0,
                                .size = idx1_get_dtype_size(idset),
                                .resolution = idx1_get_max_resolution(idset),
+                               .flag_max_res = 1,
                                .bb = {
                                     .num_dims = idx1_get_ndims(idset),
                                 }};
@@ -2542,6 +2543,7 @@ int idx1_init_load_single_file(dspaces_provider_t server, char* idxfpath)
     obj_descriptor *odsc;
     struct obj_data *od;
 
+
     for(int i=ts_start; i<ts_end; i+=ts_step) {
         odsc_tab[i-ts_start] =
             (obj_descriptor*) malloc(num_fields*sizeof(obj_descriptor));
@@ -2554,6 +2556,8 @@ int idx1_init_load_single_file(dspaces_provider_t server, char* idxfpath)
             odsc->version = i;
             sprintf(odsc->name, "%s:%s", idxfpath, idx1_get_field_name(idset, j));
             od = obj_data_alloc_no_data(odsc, NULL);
+            set_global_dimension(&(server->dsg->gdim_list), odsc->name,
+                         &(server->dsg->default_gdim), &od->gdim);
             od->data = idx1_read(idset, idx1_get_field_name(idset, j),
                                     odsc->bb.num_dims, odsc->size, odsc->bb.lb.c,
                                     odsc->bb.ub.c, i, odsc->resolution);
@@ -3051,6 +3055,7 @@ static void query_idx1_rpc(hg_handle_t handle)
     odsc_gdim_t in;
     odsc_list_t out;
     dspaces_idx1_params in_dspaces_idx1p;
+    obj_descriptor in_odsc;
     struct global_dimension in_gdim;
     int timeout;
     obj_descriptor *results;
@@ -3074,7 +3079,8 @@ static void query_idx1_rpc(hg_handle_t handle)
         return;
     }
 
-    DEBUG_OUT("received idx1 query\n");
+    memcpy(&in_odsc, in.odsc_gdim.raw_odsc, sizeof(in_odsc));
+    DEBUG_OUT("received idx1 query for %s\n", obj_desc_sprint(&in_odsc));
 
     // always wait
     timeout = -1;

@@ -50,6 +50,7 @@ typedef struct {
     /* idx1 resolution */
     // TODO: have a dedicated odsc struct for idx1
     int resolution;
+    int flag_max_res;
 } obj_descriptor;
 
 struct meta_data {

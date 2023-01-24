@@ -389,9 +389,11 @@ typedef struct {
     int resolution;
     int ndims;
     // idx1 has up to 5D support
-    int lb[5];
-    int ub[5];
+    uint64_t lb[5];
+    uint64_t ub[5];
 } dspaces_idx1_params;
+
+int dspaces_get_idx1(dspaces_client_t client, dspaces_idx1_params idx1p, void* data);
 
 #if defined(__cplusplus)
 }
