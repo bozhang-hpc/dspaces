@@ -791,8 +791,8 @@ static int dspaces_init_margo(dspaces_client_t client,
         margo_init_opt(listen_addr_str, MARGO_SERVER_MODE, &hii, 0, 0);
 
 #else
-    struct hg_init_info hii;
-    memset(&hii, 0, sizeof(hii));
+    struct hg_init_info hii = HG_INIT_INFO_INITIALIZER;
+    hii.no_multi_recv = true;
     if(client->cuda_info.cuda_put_mode == 1 && client->cuda_info.cuda_get_mode != 2) {
         hii.no_bulk_eager=0;
         hii.na_init_info.request_mem_device = false;

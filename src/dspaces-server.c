@@ -893,9 +893,10 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm,
                                  num_handlers);
 
 #else
-
+    struct hg_init_info hii = HG_INIT_INFO_INITIALIZER;
+    hii.no_multi_recv = true;
     server->mid =
-        margo_init(listen_addr_str, MARGO_SERVER_MODE, 1, num_handlers);
+        margo_init_opt(listen_addr_str, MARGO_SERVER_MODE, &hii, 1, num_handlers);
 
 #endif /* HAVE_DRC */
 
