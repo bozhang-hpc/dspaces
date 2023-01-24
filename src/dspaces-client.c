@@ -22,6 +22,7 @@
 #include <sys/time.h>
 #include <math.h>
 #include <stdbool.h>
+#include <time.h>
 
 #ifdef HAVE_DRC
 #include <rdmacred.h>
