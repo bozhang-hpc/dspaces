@@ -1,5 +1,6 @@
 #include <Visus/IdxDataset.h>
 #include <vector>
+#include <inttypes.h>
 
 struct idx1_dataset {
     idx1_dataset(Visus::SharedPtr<Visus::Dataset> dataset_) : dataset(dataset_) {}
@@ -57,7 +58,7 @@ extern "C" void idx1_get_upper_bound(struct idx1_dataset *idset, uint64_t *ub)
         ub = (uint64_t*) malloc(ndims* sizeof(uint64_t));
     }
     for(int i=0; i<ndims; i++) {
-        ub[i] = idset->dataset->getLogicBox().p2.get(i);
+        ub[i] = idset->dataset->getLogicBox().p2.get(i)-1;
     }
 }
 
@@ -113,14 +114,19 @@ extern "C" void* idx1_read(idx1_dataset* idset, const char* fieldname, int ndims
 
     size_t data_size = elemsize;
     for(int i=0; i<ndims; i++) {
+        printf("%zu x % " PRId64 "\n", data_size, ub[i]-lb[i]+1);
         data_size *= ub[i]-lb[i]+1;
     }
     //read data from disk
     if(!idset->dataset->executeBoxQuery(access, query)) {
+        printf("OpenVisus Box Query Failed\n");
         return NULL;
     }
 
-    if(!query->buffer.c_size() == data_size) {
+    printf("Query resolution = %d\n", query->getCurrentResolution());
+    if(query->buffer.c_size() != data_size) {
+        printf("OpenVisus Box Query Data Size Wrong, data_size = %zu, buffer_size = % " PRId64 "\n", 
+            data_size, query->buffer.c_size());
         return NULL;
     }
 

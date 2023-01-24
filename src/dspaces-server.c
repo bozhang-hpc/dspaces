@@ -2523,6 +2523,8 @@ int idx1_init_load_single_file(dspaces_provider_t server, char* idxfpath)
     idx1_get_lower_bound(idset, odsc_tmp.bb.lb.c);
     idx1_get_upper_bound(idset, odsc_tmp.bb.ub.c);
 
+    printf("max resolution= %d\n", odsc_tmp.resolution);
+
     hg_addr_t owner_addr;
     size_t owner_addr_size = 128;
     margo_addr_self(server->mid, &owner_addr);
