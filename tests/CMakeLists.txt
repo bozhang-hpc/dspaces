@@ -10,6 +10,9 @@ target_link_libraries(test_writer dspaces)
 add_executable(terminator terminator.c)
 target_link_libraries(terminator dspaces)
 
+add_executable(test_get_idx1 test_get_idx1.c)
+target_link_libraries(test_get_idx1 dspaces OpenVisus::Kernel OpenVisus::Db)
+
 if(DSPACES_HAVE_FORTRAN)
     add_executable(test_writer_f test_writer.f90)
     target_link_libraries(test_writer_f dspaces_fortran)
