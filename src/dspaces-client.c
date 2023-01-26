@@ -2625,7 +2625,7 @@ int dspaces_cuda_put(dspaces_client_t client, const char *var_name, unsigned int
         if(is_aligned(data, GPU_PAGE_SIZE)) {
             ret = cuda_put_gdrcopy(client, var_name, ver, elem_size, ndim, lb, ub, data);
         } else {
-            ret = cuda_put_hybrid(client, var_name, ver, elem_size, ndim, lb, ub, data);
+            ret = cuda_put_hybrid(client, var_name, ver, elem_size, ndim, lb, ub, data, itime);
         }
         break;
 #endif
