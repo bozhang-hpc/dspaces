@@ -1276,7 +1276,7 @@ int dspaces_cpu_put(dspaces_client_t client, const char *var_name, unsigned int 
 
 static int cuda_put_baseline(dspaces_client_t client, const char *var_name, unsigned int ver,
                 int elem_size, int ndim, uint64_t *lb, uint64_t *ub,
-                const void *data)
+                const void *data, double* itime)
 {
     hg_addr_t server_addr;
     hg_handle_t handle;
@@ -1369,7 +1369,7 @@ static int cuda_put_baseline(dspaces_client_t client, const char *var_name, unsi
 
 static int cuda_put_pipeline(dspaces_client_t client, const char *var_name, unsigned int ver,
                 int elem_size, int ndim, uint64_t *lb, uint64_t *ub,
-                const void *data)
+                const void *data, double* itime)
 {
     hg_addr_t server_addr;
     hg_handle_t handle;
@@ -1377,6 +1377,9 @@ static int cuda_put_pipeline(dspaces_client_t client, const char *var_name, unsi
     bulk_gdim_t in;
     bulk_out_t out;
     int ret = dspaces_SUCCESS;
+    struct timeval start, end;
+    double timer = 0; // timer in millisecond
+    gettimeofday(&start, NULL);
 
     obj_descriptor odsc = {.version = ver,
                            .owner = {0},
@@ -1449,6 +1452,10 @@ static int cuda_put_pipeline(dspaces_client_t client, const char *var_name, unsi
         free(buffer);
         return dspaces_ERR_CUDA;
     }
+
+    gettimeofday(&end, NULL);
+    timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+    *itime = timer;
 
     hret = margo_forward(handle, &in);
     if(hret != HG_SUCCESS) {
@@ -1728,7 +1735,7 @@ static inline int is_aligned(const void *ptr, size_t page_size)
 
 static int cuda_put_hybrid(dspaces_client_t client, const char *var_name, unsigned int ver,
                 int elem_size, int ndim, uint64_t *lb, uint64_t *ub,
-                const void *data)
+                const void *data, double* itime)
 {
     hg_addr_t server_addr;
     hg_handle_t handle;
@@ -1736,6 +1743,9 @@ static int cuda_put_hybrid(dspaces_client_t client, const char *var_name, unsign
     bulk_gdim_t in;
     bulk_out_t out;
     int ret = dspaces_SUCCESS;
+    struct timeval start, end;
+    double timer = 0; // timer in millisecond
+    gettimeofday(&start, NULL);
 
     obj_descriptor odsc = {.version = ver,
                            .owner = {0},
@@ -1822,6 +1832,10 @@ static int cuda_put_hybrid(dspaces_client_t client, const char *var_name, unsign
         }
     }
 
+    gettimeofday(&end, NULL);
+    timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+    *itime = timer;
+
     hret = margo_forward(handle, &in);
     if(hret != HG_SUCCESS) {
         fprintf(stderr, "ERROR: (%s): margo_forward() failed\n", __func__);
@@ -1858,7 +1872,7 @@ static int cuda_put_hybrid(dspaces_client_t client, const char *var_name, unsign
 
 static int cuda_put_heuristic(dspaces_client_t client, const char *var_name, unsigned int ver,
                 int elem_size, int ndim, uint64_t *lb, uint64_t *ub,
-                const void *data)
+                const void *data, double* itime)
 {
     /*  Choose to use conventional path or GDR path based on a score
         Performance score - 10 or 0
@@ -1896,7 +1910,7 @@ static int cuda_put_heuristic(dspaces_client_t client, const char *var_name, uns
         e->gdr_heat_score = 0;
         if(r < 0.5) { // choose host-based path
             gettimeofday(&start, NULL);
-            ret = cuda_put_pipeline(client, var_name, ver, elem_size, ndim, lb, ub, data);
+            ret = cuda_put_pipeline(client, var_name, ver, elem_size, ndim, lb, ub, data, itime);
             gettimeofday(&end, NULL);
             e->host_time[0] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
             e->host_heat_score = 0;
@@ -1912,7 +1926,7 @@ static int cuda_put_heuristic(dspaces_client_t client, const char *var_name, uns
         list_add(&e->entry, &client->dcg->gpu_bulk_list);
     } else if(e->host_time[0] < 0) { // no record for host-based path, force to choose it
         gettimeofday(&start, NULL);
-        ret = cuda_put_pipeline(client, var_name, ver, elem_size, ndim, lb, ub, data);
+        ret = cuda_put_pipeline(client, var_name, ver, elem_size, ndim, lb, ub, data, itime);
         gettimeofday(&end, NULL);
         for(int i=2; i>0; i--) { // shift the record
             e->host_time[i] = e->host_time[i-1];
@@ -1967,7 +1981,7 @@ static int cuda_put_heuristic(dspaces_client_t client, const char *var_name, uns
         double r = ((double) rand() / (RAND_MAX));
         if(r < host_prob) { // choose host-based path
             gettimeofday(&start, NULL);
-            ret = cuda_put_pipeline(client, var_name, ver, elem_size, ndim, lb, ub, data);
+            ret = cuda_put_pipeline(client, var_name, ver, elem_size, ndim, lb, ub, data, itime);
             gettimeofday(&end, NULL);
             for(int i=2; i>0; i--) { // shift the record
                 e->host_time[i] = e->host_time[i-1];
@@ -1992,7 +2006,7 @@ static int cuda_put_heuristic(dspaces_client_t client, const char *var_name, uns
 
 static int cuda_put_dual_channel(dspaces_client_t client, const char *var_name, unsigned int ver,
                 int elem_size, int ndim, uint64_t *lb, uint64_t *ub,
-                const void *data)
+                const void *data, double* itime)
 {
     /* 1 - Device -> Host cudaMemcpyAsync()
        2 - Device -> Remote Staging margo_iforward()
@@ -2007,6 +2021,9 @@ static int cuda_put_dual_channel(dspaces_client_t client, const char *var_name, 
     dc_bulk_gdim_t gdr_in, host_in;
     bulk_out_t gdr_out, host_out;
     int ret = dspaces_SUCCESS;
+    struct timeval start, end;
+    double timer = 0; // timer in millisecond
+    gettimeofday(&start, NULL);
 
     obj_descriptor odsc = {.version = ver,
                            .owner = {0},
@@ -2143,6 +2160,10 @@ static int cuda_put_dual_channel(dspaces_client_t client, const char *var_name, 
         return dspaces_ERR_CUDA;
     }
 
+    gettimeofday(&end, NULL);
+    timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+    *itime = timer;
+
     hret = margo_iforward(host_handle, &host_in, &host_req);
     if(hret != HG_SUCCESS) {
         fprintf(stderr, "ERROR: (%s): margo_iforward() failed\n", __func__);
@@ -2155,7 +2176,7 @@ static int cuda_put_dual_channel(dspaces_client_t client, const char *var_name, 
         return dspaces_ERR_MERCURY;
     }
 
-    struct timeval start, end;
+    // struct timeval start, end;
     double gdr_timer, host_timer, wait_timer = 0; // timer in ms
     double epsilon = 1e-3; // 1us
     double lr = 1.0;
@@ -2311,7 +2332,7 @@ static int finalize_req(struct dspaces_put_req *req)
 
 static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned int ver,
                 int elem_size, int ndim, uint64_t *lb, uint64_t *ub,
-                const void *data)
+                const void *data, double* itime)
 {
     /*  cuda_put_dual_channel_dual_staging
         If the host has enough memory, offload the I/O to the host.
@@ -2322,6 +2343,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
 
     int ret = dspaces_SUCCESS;
     struct timeval start, end;
+    double timer = 0; // timer in millisecond
 
     struct bbox bb = {.num_dims = ndim};
     memset(bb.lb.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
@@ -2338,9 +2360,10 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
            is finished. Client doesn't have to actively free host memory.
            Client can just wait the notification from server to free the
            host memory. So insufficient memory will directly go dual channel. */
-        ret = cuda_put_dual_channel(client, var_name, ver, elem_size, ndim, lb, ub, data);
+        ret = cuda_put_dual_channel(client, var_name, ver, elem_size, ndim, lb, ub, data, itime);
     } else { // GPU->host + put_local_sub_drain
         /* CUDA Async MemCpy */
+        gettimeofday(&start, NULL);
         cudaStream_t stream;
         CUDA_ASSERTRT(cudaStreamCreate(&stream));
         cudaError_t curet;
@@ -2463,6 +2486,10 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             return dspaces_ERR_CUDA;
         }
 
+        gettimeofday(&end, NULL);
+        timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+        *itime = timer;
+
         /* putlocal_subdrain RPC */
         hret = margo_forward(handle, &in);
         if(hret != HG_SUCCESS) {
@@ -2574,20 +2601,20 @@ DEFINE_MARGO_RPC_HANDLER(notify_drain_rpc)
 
 int dspaces_cuda_put(dspaces_client_t client, const char *var_name, unsigned int ver,
                 int elem_size, int ndim, uint64_t *lb, uint64_t *ub,
-                const void *data)
+                const void *data, double* itime)
 {
     int ret = dspaces_SUCCESS;
 
     switch (client->cuda_info.cuda_put_mode)
     {
     case 0:
-        ret = cuda_put_hybrid(client, var_name, ver, elem_size, ndim, lb, ub, data);
+        ret = cuda_put_hybrid(client, var_name, ver, elem_size, ndim, lb, ub, data, itime);
         break;
     case 1:
-        ret = cuda_put_baseline(client, var_name, ver, elem_size, ndim, lb, ub, data);
+        ret = cuda_put_baseline(client, var_name, ver, elem_size, ndim, lb, ub, data, itime);
         break;
     case 2:
-        ret = cuda_put_pipeline(client, var_name, ver, elem_size, ndim, lb, ub, data);
+        ret = cuda_put_pipeline(client, var_name, ver, elem_size, ndim, lb, ub, data, itime);
         break;
     case 3:
         ret = cuda_put_gdr(client, var_name, ver, elem_size, ndim, lb, ub, data);
@@ -2603,16 +2630,16 @@ int dspaces_cuda_put(dspaces_client_t client, const char *var_name, unsigned int
         break;
 #endif
     case 5:
-        ret = cuda_put_heuristic(client, var_name, ver, elem_size, ndim, lb, ub, data);
+        ret = cuda_put_heuristic(client, var_name, ver, elem_size, ndim, lb, ub, data, itime);
         break;
     case 6:
-        ret = cuda_put_dual_channel(client, var_name, ver, elem_size, ndim, lb, ub, data);
+        ret = cuda_put_dual_channel(client, var_name, ver, elem_size, ndim, lb, ub, data, itime);
         break;
     case 7:
-        ret = cuda_put_dcds(client, var_name, ver, elem_size, ndim, lb, ub, data);
+        ret = cuda_put_dcds(client, var_name, ver, elem_size, ndim, lb, ub, data, itime);
         break;
     default:
-        ret = cuda_put_hybrid(client, var_name, ver, elem_size, ndim, lb, ub, data);
+        ret = cuda_put_hybrid(client, var_name, ver, elem_size, ndim, lb, ub, data, itime);
         break;
     }
 
@@ -2624,10 +2651,11 @@ int dspaces_put(dspaces_client_t client, const char *var_name, unsigned int ver,
                 const void *data)
 {
     int ret;
+    double itime;
     struct cudaPointerAttributes ptr_attr;
     CUDA_ASSERTRT(cudaPointerGetAttributes(&ptr_attr, data));
     if(ptr_attr.type == cudaMemoryTypeDevice) {
-        ret = dspaces_cuda_put(client, var_name, ver, elem_size, ndim, lb, ub, data);
+        ret = dspaces_cuda_put(client, var_name, ver, elem_size, ndim, lb, ub, data, &itime);
     } else {
         ret = dspaces_cpu_put(client, var_name, ver, elem_size, ndim, lb, ub, data);
     }
