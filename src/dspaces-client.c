@@ -1237,7 +1237,7 @@ int dspaces_cpu_put(dspaces_client_t client, const char *var_name, unsigned int 
     hret = margo_bulk_create(client->mid, 1, (void **)&data, &rdma_size,
                              HG_BULK_READ_ONLY, &in.handle);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_bulk_create() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_bulk_create() failed! Err Code: %d\n", __func__, hret);
         return dspaces_ERR_MERCURY;
     }
 
@@ -1245,14 +1245,14 @@ int dspaces_cpu_put(dspaces_client_t client, const char *var_name, unsigned int 
 
     hret = margo_create(client->mid, server_addr, client->put_id, &handle);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_create() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_create() failed! Err Code: %d\n", __func__, hret);
         margo_bulk_free(in.handle);
         return dspaces_ERR_MERCURY;
     }
 
     hret = margo_forward(handle, &in);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_forward() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_forward() failed! Err Code: %d\n", __func__, hret);
         margo_bulk_free(in.handle);
         margo_destroy(handle);
         return dspaces_ERR_MERCURY;
@@ -1260,7 +1260,7 @@ int dspaces_cpu_put(dspaces_client_t client, const char *var_name, unsigned int 
 
     hret = margo_get_output(handle, &out);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_get_output() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_get_output() failed! Err Code: %d\n", __func__, hret);
         margo_bulk_free(in.handle);
         margo_destroy(handle);
         return dspaces_ERR_MERCURY;
@@ -1328,7 +1328,7 @@ static int cuda_put_baseline(dspaces_client_t client, const char *var_name, unsi
     hret = margo_bulk_create(client->mid, 1, (void **)&buffer, &rdma_size,
                              HG_BULK_READ_ONLY, &in.handle);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_bulk_create() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_bulk_create() failed! Err Code: %d\n", __func__, hret);
         return dspaces_ERR_MERCURY;
     }
 
@@ -1336,14 +1336,14 @@ static int cuda_put_baseline(dspaces_client_t client, const char *var_name, unsi
 
     hret = margo_create(client->mid, server_addr, client->put_id, &handle);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_create() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_create() failed! Err Code: %d\n", __func__, hret);
         margo_bulk_free(in.handle);
         return dspaces_ERR_MERCURY;
     }
 
     hret = margo_forward(handle, &in);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_forward() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_forward() failed! Err Code: %d\n", __func__, hret);
         margo_bulk_free(in.handle);
         margo_destroy(handle);
         return dspaces_ERR_MERCURY;
@@ -1351,7 +1351,7 @@ static int cuda_put_baseline(dspaces_client_t client, const char *var_name, unsi
 
     hret = margo_get_output(handle, &out);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_get_output() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_get_output() failed! Err Code: %d\n", __func__, hret);
         margo_bulk_free(in.handle);
         margo_destroy(handle);
         return dspaces_ERR_MERCURY;
@@ -1427,7 +1427,7 @@ static int cuda_put_pipeline(dspaces_client_t client, const char *var_name, unsi
     hret = margo_bulk_create(client->mid, 1, (void **)&buffer, &hg_rdma_size,
                              HG_BULK_READ_ONLY, &in.handle);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_bulk_create() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_bulk_create() failed! Err Code: %d\n", __func__, hret);
         cudaStreamDestroy(stream);
         free(buffer);
         return dspaces_ERR_MERCURY;
@@ -1437,7 +1437,7 @@ static int cuda_put_pipeline(dspaces_client_t client, const char *var_name, unsi
 
     hret = margo_create(client->mid, server_addr, client->put_id, &handle);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_create() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_create() failed! Err Code: %d\n", __func__, hret);
         margo_bulk_free(in.handle);
         cudaStreamDestroy(stream);
         free(buffer);
@@ -1459,7 +1459,7 @@ static int cuda_put_pipeline(dspaces_client_t client, const char *var_name, unsi
 
     hret = margo_forward(handle, &in);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_forward() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_forward() failed! Err Code: %d\n", __func__, hret);
         margo_bulk_free(in.handle);
         margo_destroy(handle);
         cudaStreamDestroy(stream);
@@ -1469,7 +1469,7 @@ static int cuda_put_pipeline(dspaces_client_t client, const char *var_name, unsi
 
     hret = margo_get_output(handle, &out);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_get_output() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_get_output() failed! Err Code: %d\n", __func__, hret);
         margo_bulk_free(in.handle);
         margo_destroy(handle);
         cudaStreamDestroy(stream);
@@ -1539,7 +1539,7 @@ static int cuda_put_gdr(dspaces_client_t client, const char *var_name, unsigned 
     hret = margo_bulk_create_attr(client->mid, 1, (void **)&data, &rdma_size,
                                   HG_BULK_READ_ONLY, &bulk_attr, &in.handle);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_bulk_create() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_bulk_create() failed! Err Code: %d\n", __func__, hret);
         return dspaces_ERR_MERCURY;
     }
 
@@ -1547,14 +1547,14 @@ static int cuda_put_gdr(dspaces_client_t client, const char *var_name, unsigned 
 
     hret = margo_create(client->mid, server_addr, client->put_id, &handle);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_create() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_create() failed! Err Code: %d\n", __func__, hret);
         margo_bulk_free(in.handle);
         return dspaces_ERR_MERCURY;
     }
 
     hret = margo_forward(handle, &in);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_forward() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_forward() failed! Err Code: %d\n", __func__, hret);
         margo_bulk_free(in.handle);
         margo_destroy(handle);
         return dspaces_ERR_MERCURY;
@@ -1562,7 +1562,7 @@ static int cuda_put_gdr(dspaces_client_t client, const char *var_name, unsigned 
 
     hret = margo_get_output(handle, &out);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_get_output() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_get_output() failed! Err Code: %d\n", __func__, hret);
         margo_bulk_free(in.handle);
         margo_destroy(handle);
         return dspaces_ERR_MERCURY;
@@ -1687,7 +1687,7 @@ static int cuda_put_gdrcopy(dspaces_client_t client, const char *var_name, unsig
     hret = margo_bulk_create(client->mid, 1, (void **)&buffer, &rdma_size,
                              HG_BULK_READ_ONLY, &in.handle);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_bulk_create() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_bulk_create() failed! Err Code: %d\n", __func__, hret);
         return dspaces_ERR_MERCURY;
     }
 
@@ -1695,14 +1695,14 @@ static int cuda_put_gdrcopy(dspaces_client_t client, const char *var_name, unsig
 
     hret = margo_create(client->mid, server_addr, client->put_id, &handle);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_create() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_create() failed! Err Code: %d\n", __func__, hret);
         margo_bulk_free(in.handle);
         return dspaces_ERR_MERCURY;
     }
 
     hret = margo_forward(handle, &in);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_forward() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_forward() failed! Err Code: %d\n", __func__, hret);
         margo_bulk_free(in.handle);
         margo_destroy(handle);
         return dspaces_ERR_MERCURY;
@@ -1710,7 +1710,7 @@ static int cuda_put_gdrcopy(dspaces_client_t client, const char *var_name, unsig
 
     hret = margo_get_output(handle, &out);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_get_output() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_get_output() failed! Err Code: %d\n", __func__, hret);
         margo_bulk_free(in.handle);
         margo_destroy(handle);
         return dspaces_ERR_MERCURY;
@@ -1805,7 +1805,7 @@ static int cuda_put_hybrid(dspaces_client_t client, const char *var_name, unsign
     }
 
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_bulk_create() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_bulk_create() failed! Err Code: %d\n", __func__, hret);
         cudaStreamDestroy(stream);
         free(h_buffer);
         return dspaces_ERR_MERCURY;
@@ -1815,7 +1815,7 @@ static int cuda_put_hybrid(dspaces_client_t client, const char *var_name, unsign
 
     hret = margo_create(client->mid, server_addr, client->put_id, &handle);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_create() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_create() failed! Err Code: %d\n", __func__, hret);
         margo_bulk_free(in.handle);
         cudaStreamDestroy(stream);
         free(h_buffer);
@@ -1838,7 +1838,7 @@ static int cuda_put_hybrid(dspaces_client_t client, const char *var_name, unsign
 
     hret = margo_forward(handle, &in);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_forward() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_forward() failed! Err Code: %d\n", __func__, hret);
         margo_bulk_free(in.handle);
         margo_destroy(handle);
         cudaStreamDestroy(stream);
@@ -1848,7 +1848,7 @@ static int cuda_put_hybrid(dspaces_client_t client, const char *var_name, unsign
 
     hret = margo_get_output(handle, &out);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_get_output() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_get_output() failed! Err Code: %d\n", __func__, hret);
         margo_bulk_free(in.handle);
         margo_destroy(handle);
         cudaStreamDestroy(stream);
@@ -2093,7 +2093,7 @@ static int cuda_put_dual_channel(dspaces_client_t client, const char *var_name, 
     hret = margo_bulk_create_attr(client->mid, 1, (void **)&data, &hg_gdr_rdma_size,
                                 HG_BULK_READ_ONLY, &bulk_attr, &gdr_in.handle);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_bulk_create_attr() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_bulk_create_attr() failed! Err Code: %d\n", __func__, hret);
         free(h_buffer);
         cudaStreamDestroy(stream);
         return dspaces_ERR_MERCURY;
@@ -2101,7 +2101,7 @@ static int cuda_put_dual_channel(dspaces_client_t client, const char *var_name, 
 
     hret = margo_create(client->mid, server_addr, client->put_dc_id, &gdr_handle);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_create() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_create() failed! Err Code: %d\n", __func__, hret);
         free(h_buffer);
         cudaStreamDestroy(stream);
         margo_bulk_free(gdr_in.handle);
@@ -2110,7 +2110,7 @@ static int cuda_put_dual_channel(dspaces_client_t client, const char *var_name, 
 
     hret = margo_iforward(gdr_handle, &gdr_in, &gdr_req);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_iforward() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_iforward() failed! Err Code: %d\n", __func__, hret);
         free(h_buffer);
         cudaStreamDestroy(stream);
         margo_bulk_free(gdr_in.handle);
@@ -2129,7 +2129,7 @@ static int cuda_put_dual_channel(dspaces_client_t client, const char *var_name, 
     hret = margo_bulk_create(client->mid, 1, (void **)&h_buffer, &hg_host_rdma_size,
                                     HG_BULK_READ_ONLY, &host_in.handle);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_bulk_create() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_bulk_create() failed! Err Code: %d\n", __func__, hret);
         free(h_buffer);
         cudaStreamDestroy(stream);
         margo_bulk_free(gdr_in.handle);
@@ -2139,7 +2139,7 @@ static int cuda_put_dual_channel(dspaces_client_t client, const char *var_name, 
 
     hret = margo_create(client->mid, server_addr, client->put_dc_id, &host_handle);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_create() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_create() failed! Err Code: %d\n", __func__, hret);
         free(h_buffer);
         cudaStreamDestroy(stream);
         margo_bulk_free(gdr_in.handle);
@@ -2166,7 +2166,7 @@ static int cuda_put_dual_channel(dspaces_client_t client, const char *var_name, 
 
     hret = margo_iforward(host_handle, &host_in, &host_req);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_iforward() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_iforward() failed! Err Code: %d\n", __func__, hret);
         free(h_buffer);
         cudaStreamDestroy(stream);
         margo_bulk_free(gdr_in.handle);
@@ -2207,8 +2207,8 @@ static int cuda_put_dual_channel(dspaces_client_t client, const char *var_name, 
     hret = margo_wait(*req0);
     gettimeofday(&end, NULL);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_wait(): %s failed\n", __func__,
-                            wait_flag == 0 ? "gdr_req":"host_req");
+        fprintf(stderr, "ERROR: (%s): margo_wait(): %s failed! Err Code: %d\n", __func__,
+                            wait_flag == 0 ? "gdr_req":"host_req", hret);
         free(h_buffer);
         cudaStreamDestroy(stream);
         margo_bulk_free(gdr_in.handle);
@@ -2223,8 +2223,8 @@ static int cuda_put_dual_channel(dspaces_client_t client, const char *var_name, 
     hret = margo_wait(*req1);
     gettimeofday(&end, NULL);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_wait(): %s failed\n", __func__,
-                            wait_flag == 0 ? "host_req":"gdr_req");
+        fprintf(stderr, "ERROR: (%s): margo_wait(): %s failed! Err Code: %d\n", __func__,
+                            wait_flag == 0 ? "host_req":"gdr_req", hret);
         free(h_buffer);
         cudaStreamDestroy(stream);
         margo_bulk_free(gdr_in.handle);
@@ -2260,7 +2260,7 @@ static int cuda_put_dual_channel(dspaces_client_t client, const char *var_name, 
 
     hret = margo_get_output(gdr_handle, &gdr_out);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_get_output() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_get_output() failed! Err Code: %d\n", __func__, hret);
         free(h_buffer);
         cudaStreamDestroy(stream);
         margo_bulk_free(gdr_in.handle);
@@ -2272,7 +2272,7 @@ static int cuda_put_dual_channel(dspaces_client_t client, const char *var_name, 
 
     hret = margo_get_output(host_handle, &host_out);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_get_output() failed\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_get_output() failed! Err Code: %d\n", __func__, hret);
         free(h_buffer);
         cudaStreamDestroy(stream);
         margo_bulk_free(gdr_in.handle);
@@ -2433,7 +2433,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
         hret = margo_bulk_create(client->mid, 1, (void **)&host_buf, &hg_rdma_size,
                                 HG_BULK_READ_ONLY, &in.handle);
         if(hret != HG_SUCCESS) {
-            fprintf(stderr, "ERROR: (%s): margo_bulk_create() failed\n", __func__);
+            fprintf(stderr, "ERROR: (%s): margo_bulk_create() failed! Err Code: %d\n", __func__, hret);
             cudaStreamDestroy(stream);
             free(host_buf);
             host_buf = NULL;
@@ -2446,7 +2446,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
         // create handle
         hret = margo_create(client->mid, server_addr, client->putlocal_subdrain_id, &handle);
         if(hret != HG_SUCCESS) {
-            fprintf(stderr, "ERROR: (%s): margo_create() failed\n", __func__);
+            fprintf(stderr, "ERROR: (%s): margo_create() failed! Err Code: %d\n", __func__, hret);
             cudaStreamDestroy(stream);
             free(host_buf);
             host_buf = NULL;
@@ -2494,7 +2494,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
         /* putlocal_subdrain RPC */
         hret = margo_forward(handle, &in);
         if(hret != HG_SUCCESS) {
-            fprintf(stderr, "ERROR: (%s): margo_forward() failed\n", __func__);
+            fprintf(stderr, "ERROR: (%s): margo_forward() failed! Err Code: %d\n", __func__, hret);
             cudaStreamDestroy(stream);
             free(host_buf);
             host_buf = NULL;
@@ -2511,7 +2511,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
 
         hret = margo_get_output(handle, &out);
         if(hret != HG_SUCCESS) {
-            fprintf(stderr, "ERROR: (%s):  margo_get_output() failed\n", __func__);
+            fprintf(stderr, "ERROR: (%s):  margo_get_output() failed! Err Code: %d\n", __func__, hret);
             cudaStreamDestroy(stream);
             free(host_buf);
             host_buf = NULL;
