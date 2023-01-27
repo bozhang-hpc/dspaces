@@ -2588,15 +2588,16 @@ static void notify_drain_rpc(hg_handle_t handle)
     list_del(&e->entry);
     free(e);
     client->local_put_count--;
-    if(client->local_put_count == 0 && client->f_final) {
-        DEBUG_OUT("signaling all objects drained.\n");
-        ABT_cond_signal(client->drain_cond);
-    }
 
     ABT_mutex_unlock(client->putlocal_subdrain_mutex);
 
     margo_free_input(handle, &in);
     margo_destroy(handle);
+    
+    if(client->local_put_count == 0 && client->f_final) {
+        DEBUG_OUT("signaling all objects drained.\n");
+        ABT_cond_signal(client->drain_cond);
+    }
 }
 DEFINE_MARGO_RPC_HANDLER(notify_drain_rpc)
 
