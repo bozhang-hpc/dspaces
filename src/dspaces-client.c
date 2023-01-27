@@ -866,7 +866,7 @@ static int dspaces_init_margo(dspaces_client_t client,
                                 &client->putlocal_subdrain_id, &flag);
         margo_registered_name(client->mid, "notify_drain_rpc",
                               &client->notify_drain_id, &flag);
-        DS_HG_REGISTER(hg, client->notify_drain_id, bulk_in_t, void, notify_drain_rpc);
+        DS_HG_REGISTER(hg, client->notify_drain_id, odsc_list_t, void, notify_drain_rpc);
     } else {
         client->put_id = MARGO_REGISTER(client->mid, "put_rpc", bulk_gdim_t,
                                         bulk_out_t, NULL);
@@ -920,7 +920,7 @@ static int dspaces_init_margo(dspaces_client_t client,
             MARGO_REGISTER(client->mid, "putlocal_subdrain_rpc", bulk_gdim_t,
                                         bulk_out_t, NULL);
         client->notify_drain_id = MARGO_REGISTER(client->mid, "notify_drain_rpc",
-                                           bulk_in_t, void, notify_drain_rpc);
+                                           odsc_list_t, void, notify_drain_rpc);
         margo_register_data(client->mid, client->notify_drain_id, (void *)client,
                             NULL);
         margo_registered_disable_response(client->mid, client->notify_drain_id,
@@ -2552,7 +2552,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
 static void notify_drain_rpc(hg_handle_t handle)
 {
     hg_return_t hret;
-    bulk_in_t in;
+    odsc_list_t in;
 
     margo_instance_id mid = margo_hg_handle_get_instance(handle);
     const struct hg_info *info = margo_get_info(handle);
@@ -2570,7 +2570,7 @@ static void notify_drain_rpc(hg_handle_t handle)
     }
 
     obj_descriptor in_odsc;
-    memcpy(&in_odsc, in.odsc.raw_odsc, sizeof(obj_descriptor));
+    memcpy(&in_odsc, in.odsc_list.raw_odsc, sizeof(obj_descriptor));
     
     DEBUG_OUT("Received drain finished notification for obj %s\n",
                 obj_desc_sprint(&in_odsc));

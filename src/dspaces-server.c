@@ -1041,7 +1041,7 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm,
         margo_register_data(server->mid, server->putlocal_subdrain_id,
                             (void *)server, NULL);
         server->notify_drain_id =
-            MARGO_REGISTER(server->mid, "notify_drain_rpc", bulk_in_t, void, NULL);
+            MARGO_REGISTER(server->mid, "notify_drain_rpc", odsc_list_t, void, NULL);
         margo_registered_disable_response(server->mid, server->notify_drain_id,
                                           HG_TRUE);
     }
@@ -2420,7 +2420,8 @@ static void putlocal_subdrain_rpc(hg_handle_t handle)
     hg_addr_t client_addr, server_addr;
     hg_handle_t notifyh;
     margo_request req;
-    bulk_in_t notice;
+    // TODO: bug here, remove bulk_handle from notice
+    odsc_list_t notice;
     size_t owner_addr_size = 128;
     
 
@@ -2530,8 +2531,8 @@ static void putlocal_subdrain_rpc(hg_handle_t handle)
     // get client addr
     margo_addr_lookup(server->mid, in_odsc.owner, &client_addr);
 
-    notice.odsc.size = sizeof(obj_descriptor);
-    notice.odsc.raw_odsc = (char*)(&in_odsc);
+    notice.odsc_list.size = sizeof(obj_descriptor);
+    notice.odsc_list.raw_odsc = (char*)(&in_odsc);
 
     margo_create(server->mid, client_addr, server->notify_drain_id, &notifyh);
     margo_iforward(notifyh, &notice, &req);
