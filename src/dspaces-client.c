@@ -2582,8 +2582,18 @@ static void notify_drain_rpc(hg_handle_t handle)
     while(e->get_count > 0) { // in case any pending get
         ABT_cond_wait(e->delete_cond, client->putlocal_subdrain_mutex);
     }
+
+    ABT_mutex_lock(client->ls_mutex);
+    struct obj_data *od = ls_find(client->dcg->ls, &e->odsc);
+    if(od) {
+        ls_remove(client->dcg->ls, od);
+    } else {
+        free(e->buffer);
+        e->buffer = NULL;
+    }
+    ABT_mutex_unlock(client->ls_mutex);
+
     // remove entry
-    free(e->buffer);
     ABT_cond_free(&e->delete_cond);
     list_del(&e->entry);
     free(e);
@@ -2593,7 +2603,7 @@ static void notify_drain_rpc(hg_handle_t handle)
 
     margo_free_input(handle, &in);
     margo_destroy(handle);
-    
+
     if(client->local_put_count == 0 && client->f_final) {
         DEBUG_OUT("signaling all objects drained.\n");
         ABT_cond_signal(client->drain_cond);
