@@ -2342,3 +2342,44 @@ int dspaces_get_idx1(dspaces_client_t client, dspaces_idx1_params idx1p, void* d
 
     return ret;
 }
+
+int dspaces_get_netcdf(dspaces_client_t client, char* filepath, char* varname, size_t elemsize,
+                        int ndims, unsigned int timestep, uint64_t* lb, uint64_t* ub, void* data)
+{
+    int ret = dspaces_SUCCESS;
+    char ds_varname[128];
+    int num_odscs;
+    obj_descriptor *odsc_tab;
+    
+    obj_descriptor qodsc = {.st = column_major,
+                            .flags = 0,
+                            .size = elemsize,
+                            .bb = {
+                                .num_dims = ndims,
+                            }};
+    
+    memset(qodsc.bb.lb.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+    memset(qodsc.bb.ub.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+    memcpy(qodsc.bb.lb.c, lb, sizeof(uint64_t) * ndims);
+    memcpy(qodsc.bb.ub.c, ub, sizeof(uint64_t) * ndims);
+
+    sprintf(ds_varname, "%s/%s", filepath, varname);
+    strncpy(qodsc.name, ds_varname, sizeof(qodsc.name) - 1);
+    qodsc.name[sizeof(qodsc.name) - 1] = '\0';
+    
+    DEBUG_OUT("Querying %s\n", obj_desc_sprint(&qodsc));
+    num_odscs = get_odscs(client, &qodsc, -1, &odsc_tab);
+
+    DEBUG_OUT("Finished idx1 query - need to fetch %d objects\n", num_odscs);
+    for(int i = 0; i < num_odscs; ++i) {
+        DEBUG_OUT("%s\n", obj_desc_sprint(&odsc_tab[i]));
+    }
+
+    // send request to get the obj_desc
+    if(num_odscs != 0) {
+        get_data(client, num_odscs, qodsc, odsc_tab, data);
+        free(odsc_tab);
+    }
+
+    return ret;
+}

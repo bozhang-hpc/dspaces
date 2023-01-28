@@ -80,8 +80,8 @@ int idx1_get_field_num(struct idx1_dataset *idset);
 const char* idx1_get_field_name(struct idx1_dataset *idset, int fidx);
 void idx1_get_timesteps(struct idx1_dataset *idset,
                         int* ts_start, int* ts_end, int* ts_step);
-void* idx1_read(struct idx1_dataset* idset, const char* fieldname, int ndims, 
+int idx1_read(struct idx1_dataset* idset, const char* fieldname, int ndims, 
                 size_t elemsize, uint64_t* lb, uint64_t* ub,
-                unsigned int ts, int resolution);
+                unsigned int ts, int resolution, void* data);
 
 #endif

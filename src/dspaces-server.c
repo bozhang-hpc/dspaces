@@ -937,7 +937,7 @@ int dspaces_server_init(const char *listen_addr_str, MPI_Comm comm,
     hg_bool_t flag;
     hg_id_t id;
     int num_handlers = DSPACES_DEFAULT_NUM_HANDLERS;
-    struct hg_init_info hii = {0};
+    struct hg_init_info hii = HG_INIT_INFO_INITIALIZER;
     char margo_conf[1024];
     struct margo_init_info mii = {0};
     int ret;
@@ -976,6 +976,7 @@ int dspaces_server_init(const char *listen_addr_str, MPI_Comm comm,
             num_handlers);
     hii.request_post_init = 1024;
     hii.auto_sm = 0;
+    hii.no_multi_recv = true;
     mii.hg_init_info = &hii;
     mii.json_config = margo_conf;
     ABT_init(0, NULL);
@@ -1224,9 +1225,11 @@ int dspaces_server_init(const char *listen_addr_str, MPI_Comm comm,
 
     *sv = server;
 
-    //netcdf_read_var_in_file(server, "/home/zhangbo/Codes/netcdf_read_test/data/tas_Amon_NorESM2-LM_historical_r1i1p1f1_gn_185001-201412.nc", "tas");
+    // netcdf_read_var_in_file(server, "/home/zhangbo/Codes/netcdf_read_test/data/tas_Amon_NorESM2-LM_historical_r1i1p1f1_gn_185001-201412.nc", "tas");
+    // printf("NetCDF Files Loading Done!\n");
     idx1_init_load_files(server);
     server->idx1_load_rank = server->rank;
+    printf("IDX1 Files Loading Done!\n");
 
     is_initialized = 1;
 
@@ -2497,7 +2500,7 @@ int netcdf_read_var_in_file(dspaces_provider_t server, char* filepath, char* var
 
     ret = netcdf_inq_varid(ncid, varname, &varid);
 
-    ret = netcdf_load_var_ts(server, ncid, varid, 0);
+    ret = netcdf_load_var_allts(server, ncid, varid);
 
     return ret;
 }
@@ -2523,7 +2526,8 @@ int idx1_init_load_single_file(dspaces_provider_t server, char* idxfpath)
     idx1_get_lower_bound(idset, odsc_tmp.bb.lb.c);
     idx1_get_upper_bound(idset, odsc_tmp.bb.ub.c);
 
-    printf("max resolution= %d\n", odsc_tmp.resolution);
+    // printf("max resolution= %d\n", odsc_tmp.resolution);
+    // printf("%s", obj_desc_sprint(&odsc_tmp));
 
     hg_addr_t owner_addr;
     size_t owner_addr_size = 128;
@@ -2535,6 +2539,8 @@ int idx1_init_load_single_file(dspaces_provider_t server, char* idxfpath)
     // sprintf(odsc.name, "%s/%s:%s",idx1p.dir, idx1p.filename, idx1p.varname);
     int num_fields = idx1_get_field_num(idset);
     idx1_get_timesteps(idset, &ts_start, &ts_end, &ts_step);
+    // TODO: make sure ts_step always = 1
+    ts_step = 1;
 
     // ts_step could only be 1 ?
     obj_descriptor **odsc_tab =
@@ -2546,7 +2552,7 @@ int idx1_init_load_single_file(dspaces_provider_t server, char* idxfpath)
     struct obj_data *od;
 
 
-    for(int i=ts_start; i<ts_end; i+=ts_step) {
+    for(int i=ts_start; i<ts_end+1; i+=ts_step) {
         odsc_tab[i-ts_start] =
             (obj_descriptor*) malloc(num_fields*sizeof(obj_descriptor));
         od_tab[i-ts_start] =
@@ -2557,12 +2563,12 @@ int idx1_init_load_single_file(dspaces_provider_t server, char* idxfpath)
             memcpy(odsc, &odsc_tmp, sizeof(obj_descriptor));
             odsc->version = i;
             sprintf(odsc->name, "%s:%s", idxfpath, idx1_get_field_name(idset, j));
-            od = obj_data_alloc_no_data(odsc, NULL);
+            od = obj_data_alloc(odsc);
             set_global_dimension(&(server->dsg->gdim_list), odsc->name,
                          &(server->dsg->default_gdim), &od->gdim);
-            od->data = idx1_read(idset, idx1_get_field_name(idset, j),
-                                    odsc->bb.num_dims, odsc->size, odsc->bb.lb.c,
-                                    odsc->bb.ub.c, i, odsc->resolution);
+            idx1_read(idset, idx1_get_field_name(idset, j),
+                    odsc->bb.num_dims, odsc->size, odsc->bb.lb.c,
+                    odsc->bb.ub.c, i, odsc->resolution, od->data);
             ABT_mutex_lock(server->ls_mutex);
             ls_add_obj(server->dsg->ls, od);
             ABT_mutex_unlock(server->ls_mutex);                     
@@ -2624,7 +2630,7 @@ static struct obj_data* idx1_load(dspaces_provider_t server,
         return NULL;
     }
 
-    od = obj_data_alloc_no_data(in_odsc, NULL);
+    od = obj_data_alloc(in_odsc);
     if(!od) {
         fprintf(stderr, "ERROR: (%s): object allocation failed!\n", __func__);
     }
@@ -2637,9 +2643,9 @@ static struct obj_data* idx1_load(dspaces_provider_t server,
 
     struct idx1_dataset* idset = idx1_load_dataset(filepath);
     /* start to load idx*/
-    od->data = idx1_read(idset, fieldname, in_odsc->bb.num_dims,
-                        in_odsc->size, in_odsc->bb.lb.c, in_odsc->bb.ub.c,
-                        in_odsc->version, in_odsc->resolution);
+    idx1_read(idset, fieldname, in_odsc->bb.num_dims,
+            in_odsc->size, in_odsc->bb.lb.c, in_odsc->bb.ub.c,
+            in_odsc->version, in_odsc->resolution, od->data);
     if(!od->data) {
         return NULL;
     }

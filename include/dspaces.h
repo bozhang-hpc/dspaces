@@ -395,6 +395,9 @@ typedef struct {
 
 int dspaces_get_idx1(dspaces_client_t client, dspaces_idx1_params idx1p, void* data);
 
+int dspaces_get_netcdf(dspaces_client_t client, char* filepath, char* varname, size_t elemsize,
+                        int ndims, unsigned int timestep, uint64_t* lb, uint64_t* ub, void* data);
+
 #if defined(__cplusplus)
 }
 #endif

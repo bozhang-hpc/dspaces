@@ -58,6 +58,7 @@ extern "C" void idx1_get_upper_bound(struct idx1_dataset *idset, uint64_t *ub)
         ub = (uint64_t*) malloc(ndims* sizeof(uint64_t));
     }
     for(int i=0; i<ndims; i++) {
+        // idx bbox p2 is excluded, so -1 for dspaces bbox
         ub[i] = idset->dataset->getLogicBox().p2.get(i)-1;
     }
 }
@@ -81,9 +82,9 @@ extern "C" void idx1_get_timesteps(struct idx1_dataset *idset,
     *ts_step = static_cast<int> (idset->dataset-> getTimesteps().getRange().step);
 }
 
-extern "C" void* idx1_read(idx1_dataset* idset, const char* fieldname, int ndims, 
+extern "C" int idx1_read(idx1_dataset* idset, const char* fieldname, int ndims, 
                             size_t elemsize, uint64_t* lb, uint64_t* ub,
-                            unsigned int ts, int resolution)
+                            unsigned int ts, int resolution, void* data)
 {
     std::string fn(fieldname);
 
@@ -92,10 +93,10 @@ extern "C" void* idx1_read(idx1_dataset* idset, const char* fieldname, int ndims
     v2.resize(ndims);
     for(int i=0; i<ndims; i++) {
         v1[i] = static_cast<Visus::Int64> (lb[i]);
-        v2[i] = static_cast<Visus::Int64> (ub[i]);
+        // dspaces bbox is included, so +1 for idx bbox p2
+        v2[i] = static_cast<Visus::Int64> (ub[i]+1);
     }
     Visus::PointNi p1(v1), p2(v2);
-
     Visus::BoxNi logic_box(p1, p2);
 
     int end_res = resolution == -1 ? idset->dataset->getMaxResolution() : resolution;
@@ -109,26 +110,28 @@ extern "C" void* idx1_read(idx1_dataset* idset, const char* fieldname, int ndims
 
     idset->dataset->beginBoxQuery(query);
     if(!query->isRunning()) {
-        return NULL;
+        data = NULL;
+        return -1;
     }
 
     size_t data_size = elemsize;
     for(int i=0; i<ndims; i++) {
-        printf("%zu x % " PRId64 "\n", data_size, ub[i]-lb[i]+1);
         data_size *= ub[i]-lb[i]+1;
     }
     //read data from disk
     if(!idset->dataset->executeBoxQuery(access, query)) {
         printf("OpenVisus Box Query Failed\n");
-        return NULL;
+        data = NULL;
+        return -1;
     }
 
-    printf("Query resolution = %d\n", query->getCurrentResolution());
     if(query->buffer.c_size() != data_size) {
         printf("OpenVisus Box Query Data Size Wrong, data_size = %zu, buffer_size = % " PRId64 "\n", 
             data_size, query->buffer.c_size());
-        return NULL;
+        data = NULL;
+        return -1;
     }
 
-    return static_cast<void*>(query->buffer.c_ptr());
+    memcpy(data, query->buffer.c_ptr(), data_size);
+    return 0;
 }

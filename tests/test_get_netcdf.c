@@ -24,43 +24,45 @@ int main(int argc, char** argv)
         return -1;
     }
 
-    dspaces_idx1_params idxp = {.dir = "/home/zhangbo/Data/NASA/LLC2160",
-                                .filename = "u_face_0_depth_52_time_10.idx",
-                                .varname = 'u',
-                                .element_size = sizeof(float),
-                                .resolution = -1,
-                                .ndims = 3,
-                                .lb = {0},
-                                .ub = {1439, 1439, 51}
-                                };
+    int nts = 1980;
+    size_t dsize = 96*144;
 
-    size_t dsize = 1440*1440*52;
-    int nts = 10;
-
-    void* data = (void*) malloc(dsize*sizeof(float));
+    void** data = (void**) malloc(nts*sizeof(void*));
     double* timer = (double*) malloc(nts*sizeof(double));
     double total_time = 0;
 
-    FILE* fp = fopen("test_get_idx1.log", "w+");
+    FILE* fp = fopen("test.log", "w+");
     fprintf(fp, "Timestep,Millisecond\n");
 
-    for(int ts=1; ts<nts+1; ts++)
+
+    uint64_t lb[2] = {0};
+    uint64_t ub[2];
+    ub[0] = 96-1;
+    ub[1] = 144-1;
+
+    for(int ts=0; ts<nts; ts++)
     {
-        idxp.timestep = ts;
+        data[ts] = (void*) malloc(dsize*sizeof(float));
         gettimeofday(&start, NULL);
-        dspaces_get_idx1(client, idxp, data);
+        dspaces_get_netcdf(client, "/home/zhangbo/Codes/netcdf_read_test/data/tas_Amon_NorESM2-LM_historical_r1i1p1f1_gn_185001-201412.nc",
+                        "tas", sizeof(float), 2, ts, lb, ub, data[ts]);
         gettimeofday(&end, NULL);
         timer[ts] = (end.tv_sec-start.tv_sec)*1e3 + (end.tv_usec-start.tv_usec)*1e-3;
         total_time += timer[ts];
         fprintf(fp, "%d,%lf\n", ts, timer[ts]);
-        printf("ts = %d\n", ts);
+        if(ts%100==0) printf("ts = %d\n", ts);
     }
 
     fprintf(fp, "Total Time in seconds,%lf\n", total_time*1e-3);
     fclose(fp);
-
+    
     free(timer);
+    for(int ts=0; ts<nts; ts++) {
+        free(data[ts]);
+    }
     free(data);
+
+    
 
     dspaces_fini(client);
 
