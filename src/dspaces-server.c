@@ -2621,7 +2621,7 @@ static struct obj_data* idx1_load(dspaces_provider_t server,
     }
     if(!found) { // add this in_odsc to the list
         e = (struct obj_desc_list*) malloc(sizeof(struct obj_desc_list));
-        memcpy(&e->odsc, &in_odsc, sizeof(obj_descriptor));
+        memcpy(&e->odsc, in_odsc, sizeof(obj_descriptor));
         list_add(&e->odsc_entry, &(server->dsg->idx1_loading_list));
     }
     ABT_mutex_unlock(server->idx1_mutex);

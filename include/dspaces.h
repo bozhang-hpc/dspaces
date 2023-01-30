@@ -11,6 +11,7 @@
 #include <dspaces-common.h>
 #include <mpi.h>
 #include <stdint.h>
+#include <stddef.h>
 
 #if defined(__cplusplus)
 extern "C" {
