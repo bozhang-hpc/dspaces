@@ -1325,7 +1325,9 @@ static void put_dc_rpc(hg_handle_t handle)
         fprintf(stderr, "ERROR: (%s): 1 of 2 channel failed!\n", __func__);
         out.ret = dspaces_ERR_MERCURY;
         obj_data_free(dc_req->od);
+        ABT_mutex_lock(server->dc_mutex);
         list_del(&dc_req->entry);
+        ABT_mutex_unlock(server->dc_mutex);
         dc_req_free(dc_req);
         margo_respond(handle, &out);
         margo_free_input(handle, &in);
@@ -1393,29 +1395,43 @@ static void put_dc_rpc(hg_handle_t handle)
         while(dc_req->margo_req[0] == MARGO_REQUEST_NULL || dc_req->margo_req[1] == MARGO_REQUEST_NULL) {
             ABT_thread_yield();
         }
-        do {
-            hret = margo_wait_any(2, dc_req->margo_req, &req_idx);
-            if(req_idx < 2) {
-                dc_req->margo_req[req_idx] = MARGO_REQUEST_NULL;
-            }
-            if(hret != HG_SUCCESS) {
-                if(req_idx == 0) {
-                    fprintf(stderr, "ERROR: (%s): margo_wait gdr_req failed!, hret = %d\n", __func__, hret);
-                } else if(req_idx == 1) {
-                    fprintf(stderr, "ERROR: (%s): margo_wait host_req failed!\n", __func__);
-                } else {
-                    fprintf(stderr, "ERROR: (%s): margo_wait failed!\n", __func__);
-                }
-                dc_req->f_error = 1;
-            }
-        } while (req_idx != 2);
+        // do {
+        //     hret = margo_wait_any(2, dc_req->margo_req, &req_idx);
+        //     if(req_idx < 2) {
+        //         dc_req->margo_req[req_idx] = MARGO_REQUEST_NULL;
+        //     }
+        //     if(hret != HG_SUCCESS) {
+        //         if(req_idx == 0) {
+        //             fprintf(stderr, "ERROR: (%s): margo_wait gdr_req failed!, hret = %d\n", __func__, hret);
+        //         } else if(req_idx == 1) {
+        //             fprintf(stderr, "ERROR: (%s): margo_wait host_req failed!\n", __func__);
+        //         } else {
+        //             fprintf(stderr, "ERROR: (%s): margo_wait failed!\n", __func__);
+        //         }
+        //         dc_req->f_error = 1;
+        //     }
+        // } while (req_idx != 2);
+        /* gdr - 0 */
+        hret = margo_wait(dc_req->margo_req[0]);
+        if(hret != HG_SUCCESS) {
+            fprintf(stderr, "ERROR: (%s): margo_wait gdr_req failed!, hret = %d\n", __func__, hret);
+            dc_req->f_error = 1;
+        }
+        hret = margo_wait(dc_req->margo_req[1]);
+        if(hret != HG_SUCCESS) {
+            fprintf(stderr, "ERROR: (%s): margo_wait host_req failed!, hret = %d\n", __func__, hret);
+            dc_req->f_error = 1;
+        }
+
 
         // final error check
         if(dc_req->f_error) {
             fprintf(stderr, "ERROR: (%s): 1 of 2 channel failed!\n", __func__);
             out.ret = dspaces_ERR_MERCURY;
             obj_data_free(dc_req->od);
+            ABT_mutex_lock(server->dc_mutex);
             list_del(&dc_req->entry);
+            ABT_mutex_unlock(server->dc_mutex);
             dc_req_free(dc_req);
             margo_respond(handle, &out);
             margo_free_input(handle, &in);
@@ -1427,20 +1443,24 @@ static void put_dc_rpc(hg_handle_t handle)
             ls_add_obj(server->dsg->ls, od);
             ABT_mutex_unlock(server->ls_mutex);
             DEBUG_OUT("Received obj %s\n, 2 channel succeed!", obj_desc_sprint(&od->obj_desc));
-            // dual channel finished, rm the dc entry
-            list_del(&dc_req->entry);
-            dc_req_free(dc_req);
+            
         }
 
     }
 
-    // now update the dht
     out.ret = dspaces_SUCCESS;
-    margo_bulk_free(bulk_handle);
     margo_respond(handle, &out);
+    margo_bulk_free(bulk_handle);
+
+    // dual channel finished, rm the dc entry
+    ABT_mutex_lock(server->dc_mutex);
+    list_del(&dc_req->entry);
+    ABT_mutex_unlock(server->dc_mutex);
+    dc_req_free(dc_req);
     margo_free_input(handle, &in);
     margo_destroy(handle);
 
+    // now update the dht
     if(!f_first_channel) {
         obj_update_dht(server, od, DS_OBJ_NEW);
         DEBUG_OUT("Finished obj_put_update from put_rpc\n");
