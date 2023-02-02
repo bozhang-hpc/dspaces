@@ -2301,6 +2301,331 @@ static int cuda_put_dual_channel(dspaces_client_t client, const char *var_name, 
     return ret;
 }
 
+static int cuda_put_dual_channel_v2(dspaces_client_t client, const char *var_name, unsigned int ver,
+                int elem_size, int ndim, uint64_t *lb, uint64_t *ub,
+                void *data, double* itime)
+{
+    /* 1 - Device -> Host cudaMemcpyAsync()
+       2 - Device -> Remote Staging margo_iforward()
+       3 - Wait Cuda Stream
+       4 - Host -> Remote Staging margo_iforward()
+       5 - Margo_wait_any() to measure the time for dual channel
+       6 - Tune the ratio according to the time 
+     */
+    hg_addr_t server_addr;
+    hg_handle_t gdr_handle, host_handle;
+    hg_return_t hret;
+    bulk_gdim_t gdr_in, host_in;
+    bulk_out_t gdr_out, host_out;
+    margo_request gdr_req, host_req;
+    int ret = dspaces_SUCCESS;
+    struct timeval start, end;
+    double timer = 0; // timer in millisecond
+    gettimeofday(&start, NULL);
+
+    struct bbox host_bb = {.num_dims = ndim};
+    memset(host_bb.lb.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+    memset(host_bb.ub.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+    memcpy(host_bb.lb.c, lb, sizeof(uint64_t) * ndim);
+    memcpy(host_bb.ub.c, ub, sizeof(uint64_t) * ndim);
+
+    size_t data_size = (size_t) (elem_size*bbox_volume(&host_bb));
+
+    int cut_dim; // find the highest dimension whose dim length > 1
+    for(int i=0; i<ndim; i++) {
+        if(ub[i]-lb[i]>0) {
+            cut_dim = i;
+            break;
+        }
+    }
+
+    // preset data volume for gdr / pipeline = 50% : 50%
+    // cut the data along the highest dimension
+    // first piece goes to host, second piece goes to GDR
+    static double host_ratio = 0.5;
+    static double gdr_ratio = 0.5;
+
+    uint64_t dist = ub[cut_dim] - lb[cut_dim] + 1;
+    host_bb.ub.c[cut_dim] = (uint64_t)(host_bb.lb.c[cut_dim] + dist * host_ratio);
+
+    size_t host_rdma_size = (size_t) (elem_size*bbox_volume(&host_bb));
+
+    // TODO: add a check here to see if data_size = gdr_rdma_size + host_rdma_size
+    
+    cudaStream_t stream;
+    CUDA_ASSERTRT(cudaStreamCreate(&stream));
+    
+    void* h_buffer = (void*) malloc(host_rdma_size);
+    
+    /* Start D->H I/O ASAP */
+    cudaError_t curet;
+    curet = cudaMemcpyAsync(h_buffer, data, host_rdma_size, cudaMemcpyDeviceToHost, stream);
+    if(curet != cudaSuccess) {
+        fprintf(stderr, "ERROR: (%s): cudaMemcpyAsync() failed, Err Code: (%s)\n",
+                __func__, cudaGetErrorString(curet));
+        free(h_buffer);
+        cudaStreamDestroy(stream);
+        return dspaces_ERR_CUDA;
+    }
+
+    /* Start GDR I/O */
+    obj_descriptor gdr_odsc = {.version = ver,
+                               .owner = {0},
+                               .st = st,
+                               .flags = 0,
+                               .size = elem_size};
+    memcpy(&gdr_odsc.bb, &host_bb, sizeof(struct bbox));
+    gdr_odsc.bb.lb.c[cut_dim] = host_bb.ub.c[cut_dim] + 1;
+    memcpy(gdr_odsc.bb.ub.c, ub, sizeof(uint64_t) * ndim);
+    strncpy(gdr_odsc.name, var_name, sizeof(gdr_odsc.name) - 1);
+    gdr_odsc.name[sizeof(gdr_odsc.name) - 1] = '\0';
+
+    struct global_dimension odsc_gdim;
+    set_global_dimension(&(client->dcg->gdim_list), var_name,
+                         &(client->dcg->default_gdim), &odsc_gdim);
+
+    gdr_in.odsc.size = sizeof(obj_descriptor);
+    gdr_in.odsc.raw_odsc = (char *)(&gdr_odsc);
+    gdr_in.odsc.gdim_size = sizeof(struct global_dimension);
+    gdr_in.odsc.raw_gdim = (char *)(&odsc_gdim);
+    hg_size_t hg_gdr_rdma_size = elem_size*bbox_volume(&gdr_odsc.bb);
+
+    if(elem_size*bbox_volume(&gdr_odsc.bb) + host_rdma_size != data_size) {
+        fprintf(stderr, "DEBUG: Size Error!\n");
+        free(h_buffer);
+        cudaStreamDestroy(stream);
+        return dspaces_ERR_CUDA;
+    }
+
+    get_server_address(client, &server_addr);
+
+    struct cudaPointerAttributes ptr_attr;
+    CUDA_ASSERTRT(cudaPointerGetAttributes(&ptr_attr, data));
+    struct hg_bulk_attr bulk_attr = {.mem_type = HG_MEM_TYPE_CUDA,
+                                        .device = ptr_attr.device };
+
+    void* gdr_data = data+host_rdma_size;
+    hret = margo_bulk_create_attr(client->mid, 1, (void **)&gdr_data, &hg_gdr_rdma_size,
+                                HG_BULK_READ_ONLY, &bulk_attr, &gdr_in.handle);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_bulk_create_attr() failed! Err Code: %d\n", __func__, hret);
+        free(h_buffer);
+        cudaStreamDestroy(stream);
+        return dspaces_ERR_MERCURY;
+    }
+
+    hret = margo_create(client->mid, server_addr, client->put_id, &gdr_handle);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_create() failed! Err Code: %d\n", __func__, hret);
+        free(h_buffer);
+        cudaStreamDestroy(stream);
+        margo_bulk_free(gdr_in.handle);
+        return dspaces_ERR_MERCURY;
+    }
+
+    hret = margo_iforward(gdr_handle, &gdr_in, &gdr_req);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_iforward() failed! Err Code: %d\n", __func__, hret);
+        free(h_buffer);
+        cudaStreamDestroy(stream);
+        margo_bulk_free(gdr_in.handle);
+        margo_destroy(gdr_handle);
+        return dspaces_ERR_MERCURY;
+    }
+
+    /* Prep Host->Remote Staging I/O */
+    obj_descriptor host_odsc = {.version = ver,
+                               .owner = {0},
+                               .st = st,
+                               .flags = 0,
+                               .size = elem_size};
+    memcpy(&host_odsc.bb, &host_bb, sizeof(struct bbox));
+    strncpy(host_odsc.name, var_name, sizeof(host_odsc.name) - 1);
+    host_odsc.name[sizeof(host_odsc.name) - 1] = '\0';
+
+
+    host_in.odsc.size = sizeof(obj_descriptor);
+    host_in.odsc.raw_odsc = (char *)(&host_odsc);
+    host_in.odsc.gdim_size = sizeof(struct global_dimension);
+    host_in.odsc.raw_gdim = (char *)(&odsc_gdim);
+    hg_size_t hg_host_rdma_size = host_rdma_size;
+
+    hret = margo_bulk_create(client->mid, 1, (void **)&h_buffer, &hg_host_rdma_size,
+                                    HG_BULK_READ_ONLY, &host_in.handle);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_bulk_create() failed! Err Code: %d\n", __func__, hret);
+        free(h_buffer);
+        cudaStreamDestroy(stream);
+        margo_bulk_free(gdr_in.handle);
+        margo_destroy(gdr_handle);
+        return dspaces_ERR_MERCURY;
+    }
+
+    hret = margo_create(client->mid, server_addr, client->put_id, &host_handle);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_create() failed! Err Code: %d\n", __func__, hret);
+        free(h_buffer);
+        cudaStreamDestroy(stream);
+        margo_bulk_free(gdr_in.handle);
+        margo_destroy(gdr_handle);
+        margo_bulk_free(host_in.handle);
+        return dspaces_ERR_MERCURY;
+    }
+
+    /* Sync Host Buffer */
+    curet = cudaStreamSynchronize(stream);
+    if(curet != cudaSuccess) {
+        fprintf(stderr, "ERROR: (%s): cudaStreamSynchronize() failed, Err Code: (%s)\n", __func__, cudaGetErrorString(curet));
+        free(h_buffer);
+        cudaStreamDestroy(stream);
+        margo_bulk_free(gdr_in.handle);
+        margo_destroy(gdr_handle);
+        margo_bulk_free(host_in.handle);
+        margo_destroy(host_handle);
+        return dspaces_ERR_CUDA;
+    }
+
+    gettimeofday(&end, NULL);
+    timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+    *itime = timer;
+
+    hret = margo_iforward(host_handle, &host_in, &host_req);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_iforward() failed! Err Code: %d\n", __func__, hret);
+        free(h_buffer);
+        cudaStreamDestroy(stream);
+        margo_bulk_free(gdr_in.handle);
+        margo_destroy(gdr_handle);
+        margo_bulk_free(host_in.handle);
+        margo_destroy(host_handle);
+        return dspaces_ERR_MERCURY;
+    }
+
+    // struct timeval start, end;
+    double gdr_timer, host_timer, wait_timer = 0; // timer in ms
+    double epsilon = 1e-3; // 1us
+    double lr = 1.0;
+
+    /*  Try to tune the ratio every 2 timesteps
+        At timestep (t), if 2nd timer(t) < 2e-6 s, means 2nd request(t) finishes no later than the 1st(t).
+            Keep the same ratio at (t+1), but swap the request.
+            If the 2nd timer(t+1) < 2e-6 s, means almost same time; else, tune the ratio and not swap request
+            Suppose gdr finishes first initially: wait_flag = 0 -> gdr first; wait_flag = 1 -> host first
+        else
+    */
+    margo_request *req0, *req1;
+    double *timer0, *timer1;
+    static int wait_flag = 0;
+    if(wait_flag == 0) {
+        req0 = &gdr_req;
+        timer0 = &gdr_timer;
+        req1 = &host_req;
+        timer1 = &host_timer;
+    } else {
+        req0 = &host_req;
+        timer0 = &host_timer;
+        req1 = &gdr_req;
+        timer1 = &gdr_timer;
+    }
+
+    gettimeofday(&start, NULL);
+    hret = margo_wait(*req0);
+    gettimeofday(&end, NULL);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_wait(): %s failed! Err Code: %d\n", __func__,
+                            wait_flag == 0 ? "gdr_req":"host_req", hret);
+        free(h_buffer);
+        cudaStreamDestroy(stream);
+        margo_bulk_free(gdr_in.handle);
+        margo_destroy(gdr_handle);
+        margo_bulk_free(host_in.handle);
+        margo_destroy(host_handle);
+        return dspaces_ERR_MERCURY;
+    }
+    *timer0 = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+
+    gettimeofday(&start, NULL);
+    hret = margo_wait(*req1);
+    gettimeofday(&end, NULL);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_wait(): %s failed! Err Code: %d\n", __func__,
+                            wait_flag == 0 ? "host_req":"gdr_req", hret);
+        free(h_buffer);
+        cudaStreamDestroy(stream);
+        margo_bulk_free(gdr_in.handle);
+        margo_destroy(gdr_handle);
+        margo_bulk_free(host_in.handle);
+        margo_destroy(host_handle);
+        return dspaces_ERR_MERCURY;
+    }
+    *timer1 = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+
+    if(*timer1 > 2e-3) {
+        // 2nd request takes longer time, tune ratio
+        if(gdr_timer < host_timer) {
+            if(host_timer - gdr_timer > epsilon) {
+                gdr_ratio += ((host_timer - gdr_timer) / host_timer) * lr * (1-gdr_ratio);
+                host_ratio = 1 - gdr_ratio;
+            }
+        } else {
+            if(gdr_timer - host_timer > epsilon) {
+                gdr_ratio -= ((gdr_timer - host_timer) / gdr_timer) * lr * (gdr_ratio-0);
+                host_ratio = 1 - gdr_ratio;
+            }
+        }
+    } else {
+        // 2nd request finishes no later than the 1st request
+        // swap request by setting flag = 1
+        wait_flag == 0 ? 1:0;
+    }
+
+    DEBUG_OUT("ts = %u, gdr_ratio = %lf, host_ratio = %lf,"
+                "gdr_time = %lf, host_time = %lf\n", ver, gdr_ratio, host_ratio, 
+                    gdr_timer, host_timer);
+
+    hret = margo_get_output(gdr_handle, &gdr_out);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_get_output() failed! Err Code: %d\n", __func__, hret);
+        free(h_buffer);
+        cudaStreamDestroy(stream);
+        margo_bulk_free(gdr_in.handle);
+        margo_destroy(gdr_handle);
+        margo_bulk_free(host_in.handle);
+        margo_destroy(host_handle);
+        return dspaces_ERR_MERCURY;
+    }
+
+    hret = margo_get_output(host_handle, &host_out);
+    if(hret != HG_SUCCESS) {
+        fprintf(stderr, "ERROR: (%s): margo_get_output() failed! Err Code: %d\n", __func__, hret);
+        free(h_buffer);
+        cudaStreamDestroy(stream);
+        margo_bulk_free(gdr_in.handle);
+        margo_destroy(gdr_handle);
+        margo_bulk_free(host_in.handle);
+        margo_destroy(host_handle);
+        return dspaces_ERR_MERCURY;
+    }
+
+    if(gdr_out.ret == 0 && host_out.ret == 0) {
+        ret = dspaces_SUCCESS;
+    } else {
+        ret = dspaces_ERR_PUT;
+    }
+
+    margo_free_output(gdr_handle, &gdr_out);
+    margo_free_output(host_handle, &host_out);
+
+    margo_bulk_free(gdr_in.handle);
+    margo_destroy(gdr_handle);
+    margo_bulk_free(host_in.handle);
+    margo_destroy(host_handle);
+    
+    margo_addr_free(client->mid, server_addr);
+
+    return ret;
+}
+
 static int finalize_req(struct dspaces_put_req *req)
 {
     bulk_out_t out;
@@ -2613,7 +2938,7 @@ DEFINE_MARGO_RPC_HANDLER(notify_drain_rpc)
 
 int dspaces_cuda_put(dspaces_client_t client, const char *var_name, unsigned int ver,
                 int elem_size, int ndim, uint64_t *lb, uint64_t *ub,
-                const void *data, double* itime)
+                void *data, double* itime)
 {
     int ret = dspaces_SUCCESS;
 
@@ -2645,7 +2970,7 @@ int dspaces_cuda_put(dspaces_client_t client, const char *var_name, unsigned int
         ret = cuda_put_heuristic(client, var_name, ver, elem_size, ndim, lb, ub, data, itime);
         break;
     case 6:
-        ret = cuda_put_dual_channel(client, var_name, ver, elem_size, ndim, lb, ub, data, itime);
+        ret = cuda_put_dual_channel_v2(client, var_name, ver, elem_size, ndim, lb, ub, data, itime);
         break;
     case 7:
         ret = cuda_put_dcds(client, var_name, ver, elem_size, ndim, lb, ub, data, itime);
@@ -2660,7 +2985,7 @@ int dspaces_cuda_put(dspaces_client_t client, const char *var_name, unsigned int
 
 int dspaces_put(dspaces_client_t client, const char *var_name, unsigned int ver,
                 int elem_size, int ndim, uint64_t *lb, uint64_t *ub,
-                const void *data)
+                void *data)
 {
     int ret;
     double itime;
