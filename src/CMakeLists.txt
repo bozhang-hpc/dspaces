@@ -4,6 +4,9 @@ if(HAVE_DRC)
     add_definitions( -DHAVE_DRC)
 endif()
 
+find_package(Fabric)
+include_directories(${Fabric_INCLUDE_DIRS})
+
 # default: No CUDA
 set(HAVE_CUDA FALSE)
 if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.17)
@@ -29,6 +32,8 @@ if(HAVE_CUDA)
         add_definitions(-DHAVE_GDRCOPY)
     endif()
 endif()
+
+
 
 # list of source files
 if(HAVE_CUDA)

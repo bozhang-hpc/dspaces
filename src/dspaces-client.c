@@ -23,6 +23,8 @@
 #include <math.h>
 #include <stdbool.h>
 #include <time.h>
+#include <dirent.h>
+#include <rdma/fabric.h>
 
 #ifdef HAVE_DRC
 #include <rdmacred.h>
@@ -110,6 +112,11 @@ struct sub_list_node {
     int id;
 };
 
+struct nic_list_entry {
+    struct list_head entry;
+    char* name;
+};
+
 enum dspaces_cuda_dev_mode {dspaces_CUDA_PIPELINE, dspaces_CUDA_GDR, dspaces_CUDA_GDRCOPY};
 
 struct dspaces_cuda_dev_info {
@@ -121,7 +128,9 @@ struct dspaces_cuda_dev_info {
 struct dspaces_cuda_info {
     int cuda_put_mode;
     int cuda_get_mode;
-    int dev_num;
+    int visible_dev_num;
+    int total_dev_num;
+    int nic_num;
     int concurrency_enabled;
     int num_concurrent_kernels;
     struct dspaces_cuda_dev_info *dev_list;
@@ -582,7 +591,7 @@ static int check_gdrcopy_support_dev(dspaces_client_t client, int dev_rank)
 
 static int check_gdrcopy_support_dev_all(dspaces_client_t client)
 {
-    for(int dev_rank=0; dev_rank<client->cuda_info.dev_num; dev_rank++) {
+    for(int dev_rank=0; dev_rank<client->cuda_info.visible_dev_num; dev_rank++) {
         int gdr_support = check_gdrcopy_support_dev(client, dev_rank);
         if(gdr_support != dspaces_ERR_CUDA) {
             // add info to cuda device table
@@ -599,7 +608,7 @@ static int check_gdrcopy_support_dev_all(dspaces_client_t client)
 
 static int gdrcopy_init(dspaces_client_t client)
 {
-    for(int dev_rank=0; dev_rank<client->cuda_info.dev_num; dev_rank++) {
+    for(int dev_rank=0; dev_rank<client->cuda_info.visible_dev_num; dev_rank++) {
         CUDA_ASSERTDRV(cuDevicePrimaryCtxRetain(&(client->cuda_info.dev_list[dev_rank].dev_ctx),
                                                 client->cuda_info.dev_list[dev_rank].dev));
     }
@@ -673,11 +682,11 @@ static int dspaces_init_gpu(dspaces_client_t client)
         client->cuda_info.cuda_get_mode = 1;
     }
 
-    CUDA_ASSERTRT(cudaGetDeviceCount(&client->cuda_info.dev_num));
-    client->cuda_info.dev_list = (struct dspaces_cuda_dev_info*) malloc(client->cuda_info.dev_num*sizeof(struct dspaces_cuda_dev_info));
+    CUDA_ASSERTRT(cudaGetDeviceCount(&client->cuda_info.visible_dev_num));
+    client->cuda_info.dev_list = (struct dspaces_cuda_dev_info*) malloc(client->cuda_info.visible_dev_num*sizeof(struct dspaces_cuda_dev_info));
 
     // Get Device Info
-    for(int dev_rank=0; dev_rank<client->cuda_info.dev_num; dev_rank++) {
+    for(int dev_rank=0; dev_rank<client->cuda_info.visible_dev_num; dev_rank++) {
         CUDA_ASSERTDRV(cuDeviceGet(&(client->cuda_info.dev_list[dev_rank].dev), dev_rank));
     }
 
@@ -930,6 +939,73 @@ static int dspaces_init_margo(dspaces_client_t client,
     return (dspaces_SUCCESS);
 }
 
+static int read_topology_mpi(dspaces_client_t client, MPI_Comm comm, char* listen_addr_str)
+{
+    MPI_Comm shmcomm;
+    MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, 0,
+                        MPI_INFO_NULL, &shmcomm);
+    int shmrank;
+    MPI_Comm_rank(shmcomm, &shmrank);
+
+    DIR* dirp;
+    struct dirent *dire;
+    struct fi_info *hints, *info, *cur;
+    struct list_head nic_list;
+    struct nic_list_entry *nic, *e, *t;
+    client->cuda_info.total_dev_num = 0;
+    int found;
+    client->cuda_info.nic_num=0;
+    if(shmrank == 0) {
+        /* Check num of GPUs on the node
+        regardless how the CUDA_VISIABLE_DEVICE is set */
+        dirp = opendir("/proc/driver/nvidia/gpus");
+        if(!dirp) {
+            // TODO: handle error
+        } else{
+            while((dire = readdir(dirp)) != NULL) {
+                client->cuda_info.total_dev_num++;
+            }
+        }
+        /* Check num of NICs on the node according to the protocol */
+        INIT_LIST_HEAD(&nic_list);
+        hints = fi_allocinfo();
+        hints->mode = ~0;
+        hints->domain_attr->mode = ~0;
+	    hints->domain_attr->mr_mode = ~(FI_MR_BASIC | FI_MR_SCALABLE);
+        free(hints->fabric_attr->prov_name);
+		hints->fabric_attr->prov_name = strdup(listen_addr_str);
+        fi_getinfo(FI_VERSION(FI_MAJOR_VERSION, FI_MINOR_VERSION),
+                    NULL, NULL, 0, hints, &info);
+        for (cur = info; cur; cur = cur->next) {
+            found = 0;
+            list_for_each_entry(nic, &nic_list, struct nic_list_entry, entry) {
+                if(strcmp(nic->name, cur->nic->device_attr->name)==0) {
+                    found = 1;
+                }
+            }
+            if(!found) {
+                e = (struct nic_list_entry*) malloc(sizeof(*e));
+                e->name = strdup(cur->nic->device_attr->name);
+                list_add(&e->entry, &nic_list);
+                client->cuda_info.nic_num++;
+            }
+        }
+
+        list_for_each_entry_safe(nic, t, &nic_list, struct nic_list_entry, entry) {
+            list_del(&nic->entry);
+            free(nic);
+        }
+        DEBUG_OUT("Total GPU NUM = %d, NIC NUM = %d per Node\n", client->cuda_info.total_dev_num,
+                    client->cuda_info.nic_num)
+    }
+    MPI_Bcast(&client->cuda_info.total_dev_num, 1, MPI_INT, 0, shmcomm);
+    MPI_Bcast(&client->cuda_info.nic_num, 1, MPI_INT, 0, shmcomm);
+    if(client->cuda_info.total_dev_num == 0 || client->cuda_info.nic_num == 0) {
+        fprintf(stdout, "Warning: No CUDA GPU or NIC detected!\n");
+    }
+    return (dspaces_SUCCESS);
+}
+
 static int dspaces_post_init(dspaces_client_t client)
 {
     choose_server(client);
@@ -944,13 +1020,13 @@ static int dspaces_post_init(dspaces_client_t client)
 
     int device, totdevice;
     CUDA_ASSERTRT(cudaGetDevice(&device));
-    CUDA_ASSERTRT(cudaGetDeviceCount(&totdevice));
+    // CUDA_ASSERTRT(cudaGetDeviceCount(&totdevice));
     meminfo_t meminfo = parse_meminfo();
     size_t d_free, d_total;
     CUDA_ASSERTRT(cudaMemGetInfo(&d_free, &d_total));
     DEBUG_OUT("Rank %d: Device = %d/%d, Host Free Memory = %lld, Device Free Memory = %zu \n",
-                client->rank, device, totdevice, meminfo.MemAvailableMiB, d_free);
-
+                client->rank, device, client->cuda_info.visible_dev_num,
+                meminfo.MemAvailableMiB, d_free);
 
     return (dspaces_SUCCESS);
 }
@@ -1011,6 +1087,7 @@ int dspaces_init_mpi(MPI_Comm comm, dspaces_client_t *c)
         return (ret);
     }
     dspaces_init_margo(client, listen_addr_str);
+    read_topology_mpi(client, comm, listen_addr_str);
     free(listen_addr_str);
 
     dspaces_post_init(client);
@@ -1075,7 +1152,7 @@ int dspaces_fini(dspaces_client_t client)
 #ifdef HAVE_GDRCOPY
     if(client->cuda_info.cuda_put_mode == 4) {
         gdrcopy_fini(client);
-        for(int dev_rank=0; dev_rank<client->cuda_info.dev_num; dev_rank++) {
+        for(int dev_rank=0; dev_rank<client->cuda_info.visible_dev_num; dev_rank++) {
             CUDA_ASSERTDRV(cuDevicePrimaryCtxRelease(client->cuda_info.dev_list[dev_rank].dev));
         }
     }
@@ -2329,8 +2406,6 @@ static int cuda_put_dual_channel_v2(dspaces_client_t client, const char *var_nam
     memcpy(host_bb.lb.c, lb, sizeof(uint64_t) * ndim);
     memcpy(host_bb.ub.c, ub, sizeof(uint64_t) * ndim);
 
-    size_t data_size = (size_t) (elem_size*bbox_volume(&host_bb));
-
     int cut_dim; // find the highest dimension whose dim length > 1
     for(int i=0; i<ndim; i++) {
         if(ub[i]-lb[i]>0) {
@@ -2350,8 +2425,6 @@ static int cuda_put_dual_channel_v2(dspaces_client_t client, const char *var_nam
 
     size_t host_rdma_size = (size_t) (elem_size*bbox_volume(&host_bb));
 
-    // TODO: add a check here to see if data_size = gdr_rdma_size + host_rdma_size
-    
     cudaStream_t stream;
     CUDA_ASSERTRT(cudaStreamCreate(&stream));
     
@@ -2389,13 +2462,6 @@ static int cuda_put_dual_channel_v2(dspaces_client_t client, const char *var_nam
     gdr_in.odsc.gdim_size = sizeof(struct global_dimension);
     gdr_in.odsc.raw_gdim = (char *)(&odsc_gdim);
     hg_size_t hg_gdr_rdma_size = elem_size*bbox_volume(&gdr_odsc.bb);
-
-    if(elem_size*bbox_volume(&gdr_odsc.bb) + host_rdma_size != data_size) {
-        fprintf(stderr, "DEBUG: Size Error!\n");
-        free(h_buffer);
-        cudaStreamDestroy(stream);
-        return dspaces_ERR_CUDA;
-    }
 
     get_server_address(client, &server_addr);
 
@@ -2657,7 +2723,7 @@ static int finalize_req(struct dspaces_put_req *req)
 
 static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned int ver,
                 int elem_size, int ndim, uint64_t *lb, uint64_t *ub,
-                const void *data, double* itime)
+                void *data, double* itime)
 {
     /*  cuda_put_dual_channel_dual_staging
         If the host has enough memory, offload the I/O to the host.
@@ -2685,7 +2751,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
            is finished. Client doesn't have to actively free host memory.
            Client can just wait the notification from server to free the
            host memory. So insufficient memory will directly go dual channel. */
-        ret = cuda_put_dual_channel(client, var_name, ver, elem_size, ndim, lb, ub, data, itime);
+        ret = cuda_put_dual_channel_v2(client, var_name, ver, elem_size, ndim, lb, ub, data, itime);
     } else { // GPU->host + put_local_sub_drain
         /* CUDA Async MemCpy */
         
