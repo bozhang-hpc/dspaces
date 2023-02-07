@@ -963,6 +963,9 @@ static int read_topology_mpi(dspaces_client_t client, MPI_Comm comm, char* liste
             // TODO: handle error
         } else{
             while((dire = readdir(dirp)) != NULL) {
+                if(strcmp(dire->d_name, ".") == 0 ||strcmp(dire->d_name, "..") == 0) {
+                    continue;
+                }
                 client->cuda_info.total_dev_num++;
             }
         }
