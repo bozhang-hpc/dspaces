@@ -151,6 +151,13 @@ static hg_return_t get_server_address(dspaces_client_t client,
         client->mid, client->server_address[client->my_server], server_addr));
 }
 
+static hg_return_t get_server_address_index(dspaces_client_t client, int index,
+                                      hg_addr_t *server_addr)
+{
+    return (margo_addr_lookup(
+        client->mid, client->server_address[index], server_addr));
+}
+
 static hg_return_t get_meta_server_address(dspaces_client_t client,
                                            hg_addr_t *server_addr)
 {
@@ -2276,6 +2283,7 @@ static int get_idx1_odscs(dspaces_client_t client, obj_descriptor *odsc,
 
     odsc_gdim_t in;
     odsc_list_t out;
+    static int server_index = 0;
 
     in.odsc_gdim.size = sizeof(*odsc);
     in.odsc_gdim.raw_odsc = (char *)odsc;
@@ -2285,7 +2293,7 @@ static int get_idx1_odscs(dspaces_client_t client, obj_descriptor *odsc,
     in.odsc_gdim.gdim_size = sizeof(od_gdim);
     in.odsc_gdim.raw_gdim = (char *)(&od_gdim);
 
-    get_server_address(client, &server_addr);
+    get_server_address_index(client, server_index, &server_addr);
 
     hret = margo_create(client->mid, server_addr, client->query_idx1_id, &handle);
     if(hret != HG_SUCCESS) {
@@ -2314,6 +2322,9 @@ static int get_idx1_odscs(dspaces_client_t client, obj_descriptor *odsc,
     margo_free_output(handle, &out);
     margo_addr_free(client->mid, server_addr);
     margo_destroy(handle);
+
+    server_index++;
+    server_index %= client->size_sp;
 
     return (num_odscs);
 }
