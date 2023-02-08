@@ -1,6 +1,8 @@
 #include <Visus/IdxDataset.h>
 #include <vector>
 #include <inttypes.h>
+#include <time.h>
+#include <sys/time.h>
 
 struct idx1_dataset {
     idx1_dataset(Visus::SharedPtr<Visus::Dataset> dataset_) : dataset(dataset_) {}
@@ -86,6 +88,7 @@ extern "C" int idx1_read(idx1_dataset* idset, const char* fieldname, int ndims,
                             size_t elemsize, uint64_t* lb, uint64_t* ub,
                             unsigned int ts, int resolution, void* data)
 {
+    struct timeval start, end;
     std::string fn(fieldname);
 
     std::vector<Visus::Int64> v1, v2;
@@ -96,6 +99,7 @@ extern "C" int idx1_read(idx1_dataset* idset, const char* fieldname, int ndims,
         // dspaces bbox is included, so +1 for idx bbox p2
         v2[i] = static_cast<Visus::Int64> (ub[i]+1);
     }
+    gettimeofday(&start, NULL);
     Visus::PointNi p1(v1), p2(v2);
     Visus::BoxNi logic_box(p1, p2);
 
@@ -131,6 +135,8 @@ extern "C" int idx1_read(idx1_dataset* idset, const char* fieldname, int ndims,
         data = NULL;
         return -1;
     }
+    gettimeofday(&end, NULL);
+    printf("idx1 load time = %lf", (end.tv_sec-start.tv_sec)*1e3 + (end.tv_usec-start.tv_usec)*1e-3);
 
     memcpy(data, query->buffer.c_ptr(), data_size);
     return 0;
