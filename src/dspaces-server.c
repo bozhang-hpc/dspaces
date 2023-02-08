@@ -402,6 +402,7 @@ static int parse_conf_toml(const char *fname, struct list_head *dir_list)
     }
 
     toml_free(conf);
+    return dspaces_SUCCESS;
 }
 
 static int init_sspace(dspaces_provider_t server, struct bbox *default_domain,
