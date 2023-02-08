@@ -2580,6 +2580,124 @@ int idx1_init_load_single_file(dspaces_provider_t server, char* idxfpath)
     return ret;
 }
 
+int idx1_init_load_par_single_file(dspaces_provider_t server, char* idxfpath)
+{
+    int ret = dspaces_SUCCESS;
+
+    struct idx1_dataset* idset = idx1_load_dataset(idxfpath);
+
+    int ndims = idx1_get_ndims(idset);
+    /* Procs Layout for Cartesian Domain */
+    int* dims = (int*) malloc(ndims*sizeof(int));
+    /* Non-Cyclic Cartesian Domain */
+    int* periods = (int*) malloc(ndims*sizeof(int));
+    /* Allow MPI Rank Re-Arrangement for Cartesian Domain */
+    int reorder = 1;
+    /* Cartesian Domain Comm */
+    MPI_Comm cart_comm;
+    /* Cartesian Domain Rank */
+    int cart_rank;
+    /* Rank Coordinates in Cartesian Domain */
+    int* cart_rank_coord = (int*) malloc(ndims*sizeof(int));
+
+    for(int i=0; i<ndims; i++) {
+        dims[i] = 0;
+        periods[i] = 0;
+    }
+    /* Procs Decomposition */
+    MPI_Dims_create(server->comm_size, ndims, dims);
+    MPI_Cart_create(server->comm, ndims, dims, periods, reorder, &cart_comm);
+    MPI_Comm_rank(cart_comm, &cart_rank);
+    MPI_Cart_coords(cart_comm, cart_rank, ndims, cart_rank_coord);
+
+    /* Global Lower & Upper Bound */
+    uint64_t* glb = (uint64_t*) malloc(ndims*sizeof(uint64_t));
+    uint64_t* gub = (uint64_t*) malloc(ndims*sizeof(uint64_t));
+    uint64_t* gsize = (uint64_t*) malloc(ndims*sizeof(uint64_t));
+    /* Local Lower & Upper Bound */
+    uint64_t* llb = (uint64_t*) malloc(ndims*sizeof(uint64_t));
+    uint64_t* lub = (uint64_t*) malloc(ndims*sizeof(uint64_t));
+
+    /* Data Decomposition */    
+    idx1_get_lower_bound(idset, glb);
+    idx1_get_upper_bound(idset, gub);
+
+    for(int i=0; i<ndims; i++) {
+        gsize[i] = gub[i] - glb[i] + 1;
+        llb[i] = (gsize[i] / dims[i]) * cart_rank_coord[i];
+        if(cart_rank_coord[i] < (gsize[i] % dims[i])) {
+            llb[i] += cart_rank_coord[i];
+            lub[i] = llb[i] + (gsize[i] / dims[i]);
+        } else {
+            llb[i] += gsize[i] % dims[i];
+            lub[i] = llb[i] + (gsize[i] / dims[i]) - 1;
+        }
+    }
+
+    obj_descriptor odsc_tmp = {.st = st,
+                               .flags = 0,
+                               .size = idx1_get_dtype_size(idset),
+                               .resolution = idx1_get_max_resolution(idset),
+                               .flag_max_res = 1,
+                               .bb = {
+                                    .num_dims = ndims,
+                                }};
+    memset(odsc_tmp.bb.lb.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+    memset(odsc_tmp.bb.ub.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+    memcpy(odsc_tmp.bb.lb.c, llb, sizeof(uint64_t) * ndims);
+    memcpy(odsc_tmp.bb.ub.c, lub, sizeof(uint64_t) * ndims);
+
+    hg_addr_t owner_addr;
+    size_t owner_addr_size = 128;
+    margo_addr_self(server->mid, &owner_addr);
+    margo_addr_to_string(server->mid, odsc_tmp.owner, &owner_addr_size,
+                         owner_addr);
+    margo_addr_free(server->mid, owner_addr);
+
+    int num_fields = idx1_get_field_num(idset);
+
+    int ts_start, ts_end, ts_step;
+    idx1_get_timesteps(idset, &ts_start, &ts_end, &ts_step);
+    // TODO: make sure ts_step always = 1
+    ts_step = 1;
+
+    // ts_step could only be 1 ?
+    obj_descriptor **odsc_tab =
+        (obj_descriptor**) malloc((ts_end-ts_start+1)*sizeof(obj_descriptor*));
+    struct obj_data*** od_tab = 
+        (struct obj_data***) malloc((ts_end-ts_start+1)*sizeof(struct obj_data**));
+
+    obj_descriptor *odsc;
+    struct obj_data *od;
+
+    for(int i=ts_start; i<ts_end+1; i+=ts_step) {
+        odsc_tab[i-ts_start] =
+            (obj_descriptor*) malloc(num_fields*sizeof(obj_descriptor));
+        od_tab[i-ts_start] =
+            (struct obj_data**) malloc(num_fields*sizeof(struct obj_data*));
+        for(int j=0; j<num_fields; j++) {
+            odsc = &odsc_tab[i-ts_start][j];
+            od = od_tab[i-ts_start][j];
+            memcpy(odsc, &odsc_tmp, sizeof(obj_descriptor));
+            odsc->version = i;
+            sprintf(odsc->name, "%s:%s", idxfpath, idx1_get_field_name(idset, j));
+            od = obj_data_alloc(odsc);
+            set_global_dimension(&(server->dsg->gdim_list), odsc->name,
+                         &(server->dsg->default_gdim), &od->gdim);
+            idx1_read(idset, idx1_get_field_name(idset, j),
+                    odsc->bb.num_dims, odsc->size, odsc->bb.lb.c,
+                    odsc->bb.ub.c, i, odsc->resolution, od->data);
+            ABT_mutex_lock(server->ls_mutex);
+            ls_add_obj(server->dsg->ls, od);
+            ABT_mutex_unlock(server->ls_mutex);                     
+
+            obj_update_dht(server, od, DS_OBJ_NEW);
+            DEBUG_OUT("idx1 load finished for %s\n", obj_desc_sprint(odsc));
+        }
+    }
+    return ret;
+}
+
 int idx1_init_load_files(dspaces_provider_t server)
 {
     int ret = dspaces_SUCCESS;
@@ -2593,7 +2711,7 @@ int idx1_init_load_files(dspaces_provider_t server)
         {
             if(file->type == DS_FILE_IDX) {
                 sprintf(idx1path, "%s/%s", dir->path, file->name);
-                ret = idx1_init_load_single_file(server, idx1path);
+                ret = idx1_init_load_par_single_file(server, idx1path);
             }
         }
     }
