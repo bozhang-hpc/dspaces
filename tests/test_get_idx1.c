@@ -63,6 +63,10 @@ int main(int argc, char** argv)
     free(timer);
     free(data);
 
+    if(rank == 0) {
+        dspaces_kill(client);
+    }
+
     dspaces_fini(client);
 
     MPI_Barrier(MPI_COMM_WORLD);
