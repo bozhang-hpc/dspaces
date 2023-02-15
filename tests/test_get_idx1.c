@@ -35,7 +35,10 @@ int main(int argc, char** argv)
                                 .ub = {1439, 1439, 51}
                                 };
 
-    size_t dsize = 1440*1440*52;
+    uint64_t dimx = 1440;
+    uint64_t dimy = 1440;
+    uint64_t dimz = 52;
+    uint64_t dsize = dimx * dimy * dimz;
     int nts = 10;
 
     void* data = (void*) malloc(dsize*sizeof(float));

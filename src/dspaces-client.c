@@ -2293,7 +2293,8 @@ static int get_idx1_odscs(dspaces_client_t client, obj_descriptor *odsc,
     in.odsc_gdim.gdim_size = sizeof(od_gdim);
     in.odsc_gdim.raw_gdim = (char *)(&od_gdim);
 
-    get_server_address_index(client, server_index, &server_addr);
+    get_server_address(client, &server_addr);
+    // get_server_address_index(client, server_index, &server_addr);
 
     hret = margo_create(client->mid, server_addr, client->query_idx1_id, &handle);
     if(hret != HG_SUCCESS) {

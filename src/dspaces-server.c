@@ -377,6 +377,7 @@ static int parse_conf_toml(const char *fname, struct list_head *dir_list)
                                     __func__, dir->name, dire->d_name);
                                 }
                             }
+                            closedir(dirp);
                         } else {
                             fprintf(stderr,
                                 "ERROR: %s: invalid value for "
@@ -1228,7 +1229,11 @@ int dspaces_server_init(const char *listen_addr_str, MPI_Comm comm,
 
     // netcdf_read_var_in_file(server, "/home/zhangbo/Codes/netcdf_read_test/data/tas_Amon_NorESM2-LM_historical_r1i1p1f1_gn_185001-201412.nc", "tas");
     // printf("NetCDF Files Loading Done!\n");
-    idx1_init_load_files(server);
+    err = idx1_init_load_files(server);
+    if(err != dspaces_SUCCESS) {
+        printf("IDX1 Files Loading Error!\n");
+        return err;
+    }
     server->idx1_load_rank = server->rank;
     printf("IDX1 Files Loading Done!\n");
 
@@ -2683,6 +2688,10 @@ int idx1_init_load_par_single_file(dspaces_provider_t server, char* idxfpath)
             odsc->version = i;
             sprintf(odsc->name, "%s:%s", idxfpath, idx1_get_field_name(idset, j));
             od = obj_data_alloc(odsc);
+            if(!od) {
+                fprintf(stderr, "od Malloc() failed for %s", obj_desc_sprint(odsc));
+                return dspaces_ERR_ALLOCATION;
+            }
             set_global_dimension(&(server->dsg->gdim_list), odsc->name,
                          &(server->dsg->default_gdim), &od->gdim);
             idx1_read(idset, idx1_get_field_name(idset, j),
@@ -2713,6 +2722,9 @@ int idx1_init_load_files(dspaces_provider_t server)
             if(file->type == DS_FILE_IDX) {
                 sprintf(idx1path, "%s/%s", dir->path, file->name);
                 ret = idx1_init_load_par_single_file(server, idx1path);
+                if(ret != dspaces_SUCCESS) {
+                    return ret;
+                }
             }
         }
     }
