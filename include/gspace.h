@@ -82,7 +82,8 @@ struct dc_gspace {
     struct list_head gdim_list;
 
     /* List of 'struct gpu_bulk_list_entry' */
-    struct list_head gpu_bulk_list;
+    struct list_head gpu_bulk_put_list;
+    struct list_head gpu_bulk_get_list;
 
     /* Pending requests for iput+drain in dual-channel-dual-staging put. */
     struct list_head putlocal_subdrain_list;

@@ -326,7 +326,8 @@ static struct dc_gspace *dcg_alloc(dspaces_client_t client)
     dcg_l->hash_version = ssd_hash_version_v1; // set default hash versio
 
     // added for gpu data movement path selection
-    INIT_LIST_HEAD(&dcg_l->gpu_bulk_list);
+    INIT_LIST_HEAD(&dcg_l->gpu_bulk_put_list);
+    INIT_LIST_HEAD(&dcg_l->gpu_bulk_get_list);
 
     // added for gpu dcds pending requests
     INIT_LIST_HEAD(&dcg_l->putlocal_subdrain_list);
@@ -1145,7 +1146,8 @@ int dspaces_fini(dspaces_client_t client)
     DEBUG_OUT("all objects drained. Finalizing...\n");
 
     free_gdim_list(&client->dcg->gdim_list);
-    free_gpu_bulk_list(&client->dcg->gpu_bulk_list);
+    free_gpu_bulk_list(&client->dcg->gpu_bulk_put_list);
+    free_gpu_bulk_list(&client->dcg->gpu_bulk_get_list);
     free_putlocal_subdrain_list(&client->dcg->putlocal_subdrain_list);
     free(client->server_address[0]);
     free(client->server_address);
@@ -1975,7 +1977,7 @@ static int cuda_put_heuristic(dspaces_client_t client, const char *var_name, uns
     size_t rdma_size = elem_size * bbox_volume(&bb);
 
     struct gpu_bulk_list_entry *e;
-    e = lookup_gpu_bulk_list(&client->dcg->gpu_bulk_list, rdma_size);
+    e = lookup_gpu_bulk_list(&client->dcg->gpu_bulk_put_list, rdma_size);
     if(!e) { // no record for this rdma size, randomly choose one of the path
         srand((unsigned)time(NULL));
         double r = ((double) rand() / (RAND_MAX));
@@ -2003,7 +2005,7 @@ static int cuda_put_heuristic(dspaces_client_t client, const char *var_name, uns
             e->gdr_heat_score = 0;
             e->host_heat_score = e->host_heat_score < 5 ? e->host_heat_score++ : 5;
         }
-        list_add(&e->entry, &client->dcg->gpu_bulk_list);
+        list_add(&e->entry, &client->dcg->gpu_bulk_put_list);
     } else if(e->host_time[0] < 0) { // no record for host-based path, force to choose it
         gettimeofday(&start, NULL);
         ret = cuda_put_pipeline(client, var_name, ver, elem_size, ndim, lb, ub, data, itime);
@@ -2391,7 +2393,7 @@ static int cuda_put_dual_channel_v2(dspaces_client_t client, const char *var_nam
        4 - Host -> Remote Staging margo_iforward()
        5 - Margo_wait_any() to measure the time for dual channel
        6 - Tune the ratio according to the time 
-     */
+    */
     hg_addr_t server_addr;
     hg_handle_t gdr_handle, host_handle;
     hg_return_t hret;
@@ -3609,7 +3611,6 @@ static int get_data_hybrid(dspaces_client_t client, int num_odscs,
     struct obj_data **host_od;
     host_od = malloc(num_odscs * sizeof(struct obj_data *));
     
-
     margo_request *serv_req;
     hg_handle_t *hndl;
     hndl = (hg_handle_t *)malloc(sizeof(hg_handle_t) * num_odscs);
@@ -3661,7 +3662,6 @@ static int get_data_hybrid(dspaces_client_t client, int num_odscs,
 
         stream = (cudaStream_t*) malloc(stream_size*sizeof(cudaStream_t));
         for(int i = 0; i < stream_size; i++) {
-            CUDA_ASSERTRT(cudaStreamCreateWithFlags(&stream[i], cudaStreamNonBlocking));
             curet = cudaStreamCreateWithFlags(&stream[i], cudaStreamNonBlocking);
             if(curet != cudaSuccess) {
                 fprintf(stderr, "ERROR: (%s): cudaStreamCreateWithFlags() failed, Err Code: (%s)\n",
@@ -3705,6 +3705,7 @@ static int get_data_hybrid(dspaces_client_t client, int num_odscs,
                     obj_data_free_cuda(device_od[i]);
                     obj_data_free(host_od[i]);
                 }
+                free(device_od);
                 free(host_od);
                 free(in);
                 return dspaces_ERR_CUDA;
@@ -3826,6 +3827,560 @@ static int get_data_hybrid(dspaces_client_t client, int num_odscs,
     free(return_od);
 
     *ctime = timer;
+    return ret;
+}
+
+static int get_data_heuristic(dspaces_client_t client, int num_odscs,
+                    obj_descriptor req_obj, obj_descriptor *odsc_tab,
+                    void *d_data, double *ctime)
+{
+    /*  Choose to use conventional path or GDR path based on a score
+        Performance score - 10 or 0
+        The path that takes less time gains 10, the other path gains 0
+        Heating score - 0 to 5(max)
+        Artificially set the max to the half of the performance score
+        If the path is not chosen, heating score +1
+        Total score  = Performance Score + Heating Score
+        Use Softmax of the total score for random choosing
+    */
+    int ret = dspaces_SUCCESS;
+    struct timeval start, end;
+
+    size_t rdma_size = req_obj.size*bbox_volume(&req_obj.bb);
+    struct gpu_bulk_list_entry *e;
+    e = lookup_gpu_bulk_list(&client->dcg->gpu_bulk_get_list, rdma_size);
+    if(!e) { // no record for this rdma size, randomly choose one of the path
+        srand((unsigned)time(NULL));
+        double r = ((double) rand() / (RAND_MAX));
+        e = (struct gpu_bulk_list_entry *) malloc(sizeof(*e));
+        e->rdma_size = rdma_size;
+        // each entry keeps 3 performance record
+        for(int i=0; i<3; i++) {
+            e->host_time[i] = -1.0;
+            e->gdr_time[i] = -1.0;
+        }
+        e->host_heat_score = 0;
+        e->gdr_heat_score = 0;
+        if(r < 0.5) { // choose host-based path
+            gettimeofday(&start, NULL);
+            ret = get_data_hybrid(client, num_odscs, req_obj, odsc_tab, d_data, ctime);
+            gettimeofday(&end, NULL);
+            e->host_time[0] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+            e->host_heat_score = 0;
+            e->gdr_heat_score =  e->gdr_heat_score < 5 ? e->gdr_heat_score++ : 5;
+        } else { // choose gdr path
+            gettimeofday(&start, NULL);
+            ret = get_data_gdr(client, num_odscs, req_obj, odsc_tab, d_data, ctime);
+            gettimeofday(&end, NULL);
+            e->gdr_time[0] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+            e->gdr_heat_score = 0;
+            e->host_heat_score = e->host_heat_score < 5 ? e->host_heat_score++ : 5;
+        }
+        list_add(&e->entry, &client->dcg->gpu_bulk_get_list);
+    } else if(e->host_time[0] < 0) { // no record for host-based path, force to choose it
+        gettimeofday(&start, NULL);
+        ret = get_data_hybrid(client, num_odscs, req_obj, odsc_tab, d_data, ctime);
+        gettimeofday(&end, NULL);
+        for(int i=2; i>0; i--) { // shift the record
+            e->host_time[i] = e->host_time[i-1];
+        }
+        e->host_time[0] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+        e->host_heat_score = 0;
+        e->gdr_heat_score =  e->gdr_heat_score < 5 ? e->gdr_heat_score++ : 5;
+    } else if(e->gdr_time[0] < 0) { // no record for gdr path, force to choose it
+        gettimeofday(&start, NULL);
+        ret = get_data_gdr(client, num_odscs, req_obj, odsc_tab, d_data, ctime);
+        gettimeofday(&end, NULL);
+        for(int i=2; i>0; i--) { // shift the record
+            e->gdr_time[i] = e->gdr_time[i-1];
+        }
+        e->gdr_time[0] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+        e->gdr_heat_score = 0;
+        e->host_heat_score = e->host_heat_score < 5 ? e->host_heat_score++ : 5;
+    } else { // have both records, choose the path according to score
+        double host_perf_score, gdr_perf_score,
+               host_total_score, gdr_total_score, max_total_score;
+        double avg_host_time = 0.0, avg_gdr_time = 0.0;
+        int avg_host_cnt = 0, avg_gdr_cnt = 0;
+        double host_prob, gdr_prob;
+        for(int i=0; i<3; i++) {
+            if(e->host_time[i] > 0.0) {
+                avg_host_time += e->host_time[i];
+                avg_host_cnt++;
+            }
+            if(e->gdr_time[i] > 0.0) {
+                avg_gdr_time += e->gdr_time[i];
+                avg_gdr_cnt++;
+            }
+        }
+        avg_host_time /= avg_host_cnt;
+        avg_gdr_time /= avg_gdr_cnt;
+        if(avg_gdr_time > avg_host_time) { // host perf better
+            host_perf_score = 10;
+            gdr_perf_score = 0;
+        } else { // gdr perf better
+            host_perf_score = 0;
+            gdr_perf_score = 10;
+        }
+        host_total_score = host_perf_score + e->host_heat_score;
+        gdr_total_score = gdr_perf_score + e->gdr_heat_score;
+        max_total_score = host_total_score > gdr_total_score ? host_total_score : gdr_total_score;
+        host_prob = exp(host_total_score - max_total_score) / (exp(host_total_score -max_total_score)
+                                                            + exp(gdr_total_score -max_total_score));
+        gdr_prob = exp(gdr_total_score - max_total_score) / (exp(host_total_score -max_total_score)
+                                                            + exp(gdr_total_score -max_total_score));
+        DEBUG_OUT("host_prob = %lf, gdr_prob = %lf\n", host_prob, gdr_prob);
+        srand((unsigned)time(NULL));
+        double r = ((double) rand() / (RAND_MAX));
+        if(r < host_prob) { // choose host-based path
+            gettimeofday(&start, NULL);
+            ret = get_data_hybrid(client, num_odscs, req_obj, odsc_tab, d_data, ctime);
+            gettimeofday(&end, NULL);
+            for(int i=2; i>0; i--) { // shift the record
+                e->host_time[i] = e->host_time[i-1];
+            }
+            e->host_time[0] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+            e->host_heat_score = 0;
+            e->gdr_heat_score =  e->gdr_heat_score < 5 ? e->gdr_heat_score++ : 5;
+        } else { // choose gdr path
+            gettimeofday(&start, NULL);
+            ret = get_data_gdr(client, num_odscs, req_obj, odsc_tab, d_data, ctime);
+            gettimeofday(&end, NULL);
+            for(int i=2; i>0; i--) { // shift the record
+                e->gdr_time[i] = e->gdr_time[i-1];
+            }
+            e->gdr_time[0] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+            e->gdr_heat_score = 0;
+            e->host_heat_score = e->host_heat_score < 5 ? e->host_heat_score++ : 5;
+        }
+    }
+    return ret;
+}
+
+static int get_data_dual_channel(dspaces_client_t client, int num_odscs,
+                    obj_descriptor req_obj, obj_descriptor *odsc_tab,
+                    void *d_data, double *ctime)
+{
+    /* 1 - Set a rdma size threshold according to ratio
+       2 - split odsc tab according to the threshold && Margo_iforward()
+       3 - Margo_wait() for all host path rpc && H->D transfer + ssd_copy_cuda
+       4 - Margo_wait() for all gdr path rpc + ssd_copy_cuda
+       5 - Tune the ratio according to the time 
+    */
+    int ret = dspaces_SUCCESS;
+    struct timeval start, end;
+
+    cudaError_t curet;
+    struct cudaPointerAttributes ptr_attr;
+    curet = cudaPointerGetAttributes(&ptr_attr, d_data);
+    if(curet != cudaSuccess) {
+        fprintf(stderr, "ERROR: (%s): cudaPointerGetAttributes() failed, Err Code: (%s)\n",
+                __func__, cudaGetErrorString(curet));
+        return dspaces_ERR_CUDA;
+    }
+
+    struct hg_bulk_attr bulk_attr = {.mem_type = HG_MEM_TYPE_CUDA,
+                                    .device = ptr_attr.device};
+
+    bulk_in_t *in = (bulk_in_t *)malloc(sizeof(bulk_in_t) * num_odscs);
+
+    struct obj_data **od, **gdr_od, **host_od, **device_od;
+    od = (struct obj_data **) malloc(num_odscs * sizeof(struct obj_data *));
+
+    margo_request *serv_req = 
+        (margo_request *)malloc(sizeof(margo_request) * num_odscs);
+    hg_handle_t *hndl = 
+        (hg_handle_t *)malloc(sizeof(hg_handle_t) * num_odscs);
+
+    size_t total_rdma_size = req_obj.size*bbox_volume(&req_obj.bb);
+
+    // preset data volume for gdr / pipeline = 50% : 50%
+    // cut the data byte stream and record the offset
+    static double gdr_ratio = 0.5;
+    static double host_ratio = 0.5;
+
+    // first N odscs go to gdr: [0 : N-1]->gdr, [N: num_odsc-1]->host
+    size_t gdr_rdma_size = 0;
+    size_t rdma_size_threshold = (size_t) (total_rdma_size*gdr_ratio);
+    int num_host, num_gdr = 0;
+    for(int i=0; i<num_odscs; i++) {
+        in[i].odsc.size = sizeof(obj_descriptor);
+        in[i].odsc.raw_odsc = (char *)(&odsc_tab[i]);
+        hg_size_t rdma_size = (req_obj.size) * bbox_volume(&odsc_tab[i].bb);
+        if(gdr_rdma_size < rdma_size_threshold) { // go to gdr 
+            od[i] = obj_data_alloc_cuda(&odsc_tab[i]);
+            margo_bulk_create_attr(client->mid, 1, (void **)(&(od[i]->data)),
+                                &rdma_size, HG_BULK_WRITE_ONLY, &bulk_attr,
+                                &in[i].handle);
+            gdr_rdma_size += rdma_size;
+            num_gdr++;
+        } else { // go to host
+            od[i] = obj_data_alloc(&odsc_tab[i]);
+            margo_bulk_create(client->mid, 1, (void **)(&(od[i]->data)),
+                            &rdma_size, HG_BULK_WRITE_ONLY, &in[i].handle);
+        }
+        hg_addr_t server_addr;
+        margo_addr_lookup(client->mid, odsc_tab[i].owner, &server_addr);
+        hg_handle_t handle;
+        if(odsc_tab[i].flags & DS_CLIENT_STORAGE) {
+            DEBUG_OUT("retrieving object from client-local storage.\n");
+            margo_create(client->mid, server_addr, client->get_local_id,
+                         &handle);
+        } else {
+            DEBUG_OUT("retrieving object from server storage.\n");
+            margo_create(client->mid, server_addr, client->get_id, &handle);
+        }
+        margo_request req;
+        // forward get requests
+        margo_iforward(handle, &in[i], &req);
+        hndl[i] = handle;
+        serv_req[i] = req;
+        margo_addr_free(client->mid, server_addr);  
+    }
+
+    num_host = num_odscs - num_gdr;
+
+    // return_od is linked to the device ptr
+    struct obj_data *return_od = obj_data_alloc_no_data(&req_obj, d_data);
+
+    // concurrent cuda streams assigned to each od
+    cudaStream_t *gdr_stream, *host_stream;
+    int stream_size, gdr_stream_size, host_stream_size;
+    
+    if(num_odscs < client->cuda_info.num_concurrent_kernels) {
+        stream_size = num_odscs;
+        gdr_stream_size = num_gdr;
+        host_stream_size = num_host;
+    } else {
+        stream_size = client->cuda_info.num_concurrent_kernels;
+        gdr_stream_size = (int) ((1.0*num_gdr/num_odscs) * stream_size);
+        host_stream_size = stream_size - gdr_stream_size;
+    }
+
+    gdr_stream = (cudaStream_t*) malloc(gdr_stream_size*sizeof(cudaStream_t));
+    for(int i = 0; i < gdr_stream_size; i++) {
+        curet = cudaStreamCreateWithFlags(&gdr_stream[i], cudaStreamNonBlocking);
+        if(curet != cudaSuccess) {
+            fprintf(stderr, "ERROR: (%s): cudaStreamCreateWithFlags() failed, Err Code: (%s)\n",
+                    __func__, cudaGetErrorString(curet));
+            free(gdr_stream);
+            free(return_od);
+            free(hndl);
+            free(serv_req);
+            for(int j = 0; j < num_gdr; j++) {
+                obj_data_free_cuda(od[j]);
+            }
+            for(int j = 0; j < num_host; j++) {
+                obj_data_free(od[num_gdr+j]);
+            }
+            free(od);
+            free(in);
+            return dspaces_ERR_CUDA;
+        }
+    }
+
+    host_stream = (cudaStream_t*) malloc(host_stream_size*sizeof(cudaStream_t));
+    for(int i = 0; i < host_stream_size; i++) {
+        curet = cudaStreamCreateWithFlags(&host_stream[i], cudaStreamNonBlocking);
+        if(curet != cudaSuccess) {
+            fprintf(stderr, "ERROR: (%s): cudaStreamCreateWithFlags() failed, Err Code: (%s)\n",
+                    __func__, cudaGetErrorString(curet));
+            free(host_stream);
+            free(gdr_stream);
+            free(return_od);
+            free(hndl);
+            free(serv_req);
+            for(int j = 0; j < num_gdr; j++) {
+                obj_data_free_cuda(od[j]);
+            }
+            for(int j = 0; j < num_host; j++) {
+                obj_data_free(od[num_gdr+j]);
+            }
+            free(od);
+            free(in);
+            return dspaces_ERR_CUDA;
+        }
+    }
+    
+
+    device_od = malloc(num_host * sizeof(struct obj_data *));
+
+    bulk_out_t resp;
+    host_od = &od[num_gdr];
+
+    // First, process the host-based path
+    for(int i=0; i<num_host; i++) {
+        device_od[i] = obj_data_alloc_cuda(&odsc_tab[num_gdr+i]);
+        margo_wait(serv_req[num_gdr+i]);
+        margo_get_output(hndl[num_gdr+i], &resp);
+        // H->D async transfer
+        size_t data_size = (req_obj.size) * bbox_volume(&odsc_tab[num_gdr+i].bb);
+        curet = cudaMemcpyAsync(device_od[i]->data, host_od[i]->data, data_size,
+                                    cudaMemcpyHostToDevice, host_stream[i%host_stream_size]);
+        if(curet != cudaSuccess) {
+            fprintf(stderr, "ERROR: (%s): cudaMemcpyAsync() failed, Err Code: (%s)\n",
+                    __func__, cudaGetErrorString(curet));
+            free(host_stream);
+            free(gdr_stream);
+            free(return_od);
+            free(hndl);
+            free(serv_req);
+            for(int j = 0; j < num_gdr; j++) {
+                obj_data_free_cuda(od[j]);
+            }
+            for(int j = 0; j < num_host; j++) {
+                obj_data_free(od[num_gdr+j]);
+            }
+            for(int j = 0; i <= i; j++) {
+                obj_data_free_cuda(device_od[j]);
+            }
+            free(device_od);
+            free(od);
+            free(in);
+            return dspaces_ERR_CUDA;
+        }
+        ret =  ssd_copy_cuda_async(return_od, device_od[i], &host_stream[i%host_stream_size]);
+        if(ret != dspaces_SUCCESS) {
+            fprintf(stderr, "ERROR: (%s): ssd_copy_cuda_async() failed, Err Code: (%s)\n",
+                    __func__, ret);
+            free(host_stream);
+            free(gdr_stream);
+            free(return_od);
+            free(hndl);
+            free(serv_req);
+            for(int j = 0; j < num_gdr; j++) {
+                obj_data_free_cuda(od[j]);
+            }
+            for(int j = 0; j < num_host; j++) {
+                obj_data_free(od[num_gdr+j]);
+            }
+            for(int j = 0; i <= i; j++) {
+                obj_data_free_cuda(device_od[j]);
+            }
+            free(device_od);
+            free(od);
+            free(in);
+            return dspaces_ERR_CUDA;
+        }
+        margo_free_output(hndl[i], &resp);
+        margo_bulk_free(in[i].handle);
+        margo_destroy(hndl[i]);
+    }
+
+    // Second, process the GDR path
+    for(int i=0; i<num_gdr; i++) {
+        margo_wait(serv_req[i]);
+        margo_get_output(hndl[i], &resp);
+        ret = ssd_copy_cuda_async(return_od, od[i], &gdr_stream[i%gdr_stream_size]);
+        if(ret != dspaces_SUCCESS) {
+            fprintf(stderr, "ERROR: (%s): ssd_copy_cuda_async() failed, Err Code: (%s)\n",
+                    __func__, ret);
+            free(host_stream);
+            free(gdr_stream);
+            free(return_od);
+            free(hndl);
+            free(serv_req);
+            for(int j = 0; j < num_gdr; j++) {
+                obj_data_free_cuda(od[j]);
+            }
+            for(int j = 0; j < num_host; j++) {
+                obj_data_free(od[num_gdr+j]);
+                obj_data_free_cuda(device_od[j]);
+            }
+            free(device_od);
+            free(od);
+            free(in);
+            return dspaces_ERR_CUDA;
+        }
+        margo_free_output(hndl[i], &resp);
+        margo_bulk_free(in[i].handle);
+        margo_destroy(hndl[i]);
+    }
+
+    double gdr_timer = 0, host_timer = 0;
+    double epsilon = 0.2; // 0.2ms
+    /*  Try to tune the ratio every 2 timesteps
+        At timestep (t), if 2nd timer(t) < 0.2ms, means 2nd request(t) finishes no later than the 1st(t).
+            Keep the same ratio at (t+1), but swap the request.
+            If the 2nd timer(t+1) < 0.2ms, means almost same time; else, tune the ratio and not swap request
+            Suppose gdr finishes first initially: wait_flag = 0 -> host first; wait_flag = 1 -> gdr first
+        else
+    */
+    cudaStream_t *stream0, *stream1;
+    int stream_size0, stream_size1;
+    double *timer0, *timer1;
+    static int wait_flag = 0;
+    if(wait_flag == 0) {
+        stream0 = host_stream;
+        stream_size0 = num_host;
+        timer0 = &host_timer;
+        stream1 = gdr_stream;
+        stream_size1 = num_gdr;
+        timer1 = &gdr_timer;
+    } else {
+        stream0 = gdr_stream;
+        stream_size0 = num_gdr;
+        timer0 = &gdr_timer;
+        stream1 = host_stream;
+        stream_size1 = num_host;
+        timer1 = &host_timer;
+    }
+
+    for(int i=0; i<stream_size0; i++) {
+        gettimeofday(&start, NULL);
+        curet = cudaStreamSynchronize(stream0[i]);
+        gettimeofday(&end, NULL);
+        *timer0 += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+        if(curet != cudaSuccess) {
+            fprintf(stderr, "ERROR: (%s): cudaStreamSynchronize() failed, Err Code: (%s)\n",
+                        __func__, cudaGetErrorString(curet));
+            free(host_stream);
+            free(gdr_stream);
+            free(return_od);
+            free(hndl);
+            free(serv_req);
+            for(int j = 0; j < num_gdr; j++) {
+                obj_data_free_cuda(od[j]);
+            }
+            for(int j = 0; j < num_host; j++) {
+                obj_data_free(od[num_gdr+j]);
+                obj_data_free_cuda(device_od[j]);
+            }
+            free(device_od);
+            free(od);
+            free(in);
+            return dspaces_ERR_CUDA;
+        }
+
+        curet = cudaStreamDestroy(stream0[i]);
+        if(curet != cudaSuccess) {
+            fprintf(stderr, "ERROR: (%s): cudaStreamSynchronize() failed, Err Code: (%s)\n",
+                        __func__, cudaGetErrorString(curet));
+            free(host_stream);
+            free(gdr_stream);
+            free(return_od);
+            free(hndl);
+            free(serv_req);
+            for(int j = 0; j < num_gdr; j++) {
+                obj_data_free_cuda(od[j]);
+            }
+            for(int j = 0; j < num_host; j++) {
+                obj_data_free(od[num_gdr+j]);
+                obj_data_free_cuda(device_od[j]);
+            }
+            free(device_od);
+            free(od);
+            free(in);
+            return dspaces_ERR_CUDA;
+        }
+    }
+
+    for(int i=0; i<stream_size1; i++) {
+        gettimeofday(&start, NULL);
+        curet = cudaStreamSynchronize(stream1[i]);
+        gettimeofday(&end, NULL);
+        *timer1 += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+        if(curet != cudaSuccess) {
+            fprintf(stderr, "ERROR: (%s): cudaStreamSynchronize() failed, Err Code: (%s)\n",
+                        __func__, cudaGetErrorString(curet));
+            free(host_stream);
+            free(gdr_stream);
+            free(return_od);
+            free(hndl);
+            free(serv_req);
+            for(int j = 0; j < num_gdr; j++) {
+                obj_data_free_cuda(od[j]);
+            }
+            for(int j = 0; j < num_host; j++) {
+                obj_data_free(od[num_gdr+j]);
+                obj_data_free_cuda(device_od[j]);
+            }
+            free(device_od);
+            free(od);
+            free(in);
+            return dspaces_ERR_CUDA;
+        }
+
+        curet = cudaStreamDestroy(stream1[i]);
+        if(curet != cudaSuccess) {
+            fprintf(stderr, "ERROR: (%s): cudaStreamSynchronize() failed, Err Code: (%s)\n",
+                        __func__, cudaGetErrorString(curet));
+            free(host_stream);
+            free(gdr_stream);
+            free(return_od);
+            free(hndl);
+            free(serv_req);
+            for(int j = 0; j < num_gdr; j++) {
+                obj_data_free_cuda(od[j]);
+            }
+            for(int j = 0; j < num_host; j++) {
+                obj_data_free(od[num_gdr+j]);
+                obj_data_free_cuda(device_od[j]);
+            }
+            free(device_od);
+            free(od);
+            free(in);
+            return dspaces_ERR_CUDA;
+        }
+    }
+
+    free(host_stream);
+    free(gdr_stream);
+
+    if(*timer1 > stream_size1*epsilon) {
+        // 2nd request takes longer time, tune ratio
+        if(gdr_timer < host_timer) {
+            if(host_timer - gdr_timer > 1e-3) {
+                gdr_ratio += ((host_timer - gdr_timer) / host_timer) * (1-gdr_ratio);
+                host_ratio = 1 - gdr_ratio;
+            }
+        } else {
+            if(gdr_timer - host_timer > 1e-3) {
+                gdr_ratio -= ((gdr_timer - host_timer) / gdr_timer) * (gdr_ratio-0);
+                host_ratio = 1 - gdr_ratio;
+            }
+        }
+    } else {
+        // 2nd request finishes no later than the 1st request
+        // swap request by setting flag = 1
+        wait_flag == 0 ? 1:0;
+    }
+
+    DEBUG_OUT("ts = %u, gdr_ratio = %lf, host_ratio = %lf,"
+                "gdr_time = %lf, host_time = %lf\n", req_obj.version, gdr_ratio, host_ratio, 
+                    gdr_timer, host_timer);
+    
+    for(int i = 0; i < num_gdr; i++) {
+        obj_data_free_cuda(od[i]);
+    }
+    for(int i = 0; i < num_host; i++) {
+        obj_data_free(od[num_gdr+i]);
+        obj_data_free_cuda(device_od[i]);
+    }
+    free(device_od);
+    free(od);
+    free(hndl);
+    free(serv_req);
+    free(in);
+    free(return_od);
+
+    *ctime = 0;
+    return ret;
+}
+
+static int get_data_dcds(dspaces_client_t client, int num_odscs,
+                    obj_descriptor req_obj, obj_descriptor *odsc_tab,
+                    void *d_data, double *ctime)
+{
+    /*
+        1 - check the pattern, reuse the pattern module in heterogeneous-dspaces
+        2 - if the pattern exist, sub the predicted data objects and add them to
+            local host storage
+        3 - check local storage before calling the bulk rpc
+        4 - if local cache fails, go to get_data_dual_channel
+    */
+    int ret = dspaces_SUCCESS;
+
     return ret;
 }
 
@@ -4178,6 +4733,15 @@ int dspaces_cuda_get(dspaces_client_t client, const char *var_name, unsigned int
         {
             gettimeofday(&start, NULL);
             ret = get_data_hybrid(client, num_odscs, odsc, odsc_tab, data, ctime);
+            gettimeofday(&end, NULL);
+            timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+            break;
+        }
+        // Heuristic
+        case 4:
+        {
+            gettimeofday(&start, NULL);
+            ret = get_data_heuristic(client, num_odscs, odsc, odsc_tab, data, ctime);
             gettimeofday(&end, NULL);
             timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
             break;
