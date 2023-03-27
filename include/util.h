@@ -5,10 +5,15 @@
 #include <stdbool.h>
 #include <errno.h>
 #include "dspaces-common.h"
+#include "list.h"
 
 size_t str_len(const char *str);
 char *str_append_const(char *, const char *);
 char *str_append(char *, char *);
+
+/*******************************************************
+   Memory Info
+**********************************************************/
 
 #define MEM_PATH_LEN 256
 typedef struct {
@@ -35,6 +40,30 @@ typedef struct procinfo {
 } procinfo_t;
 
 meminfo_t parse_meminfo();
+
+/*******************************************************
+   Common List Entries
+**********************************************************/
+
+struct int_list_entry {
+    struct list_head entry;
+    int value;
+};
+
+struct size_t_list_entry {
+    struct list_head entry;
+    size_t value;
+};
+
+struct float_list_entry {
+    struct list_head entry;
+    float value;
+};
+
+struct double_list_entry {
+    struct list_head entry;
+    float value;
+};
 
 /*******************************************************
    Processing parameter lists

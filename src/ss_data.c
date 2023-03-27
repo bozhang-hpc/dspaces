@@ -1001,6 +1001,28 @@ struct obj_data *ls_find(ss_storage *ls, obj_descriptor *odsc)
 }
 
 /*
+  Find  an object  in the  local storage  that has  the same  name and
+  version with the object descriptor 'odsc'.
+*/
+struct obj_data *ls_find_equals_no_owner(ss_storage *ls, obj_descriptor *odsc)
+{
+    struct obj_data *od;
+    struct list_head *list;
+    int index;
+
+    index = odsc->version % ls->size_hash;
+    list = &ls->obj_hash[index];
+
+    list_for_each_entry(od, list, struct obj_data, obj_entry)
+    {
+        if(obj_desc_equals_no_owner(odsc, &od->obj_desc))
+            return od;
+    }
+
+    return NULL;
+}
+
+/*
  * Do two object descriptors have the same name and version?
  */
 static int obj_desc_match(obj_descriptor *odsc1, obj_descriptor *odsc2)
@@ -1013,7 +1035,7 @@ static int obj_desc_match(obj_descriptor *odsc1, obj_descriptor *odsc2)
   Find  list of object_desriptors  in the  local storage  that has  the same
   name and version as the object descriptor 'odsc'.
 */
-int ls_find_ods(ss_storage *ls, obj_descriptor *odsc, obj_descriptor ***od_tab)
+int ls_find_odscs(ss_storage *ls, obj_descriptor *odsc, obj_descriptor ***odsc_tab)
 {
     struct obj_data *od;
     struct list_head *list;
@@ -1028,15 +1050,58 @@ int ls_find_ods(ss_storage *ls, obj_descriptor *odsc, obj_descriptor ***od_tab)
             num_odsc++;
         }
     }
-    *od_tab = malloc(sizeof(**od_tab) * num_odsc);
+    *odsc_tab = malloc(sizeof(**odsc_tab) * num_odsc);
     num_odsc = 0;
     list_for_each_entry(od, list, struct obj_data, obj_entry)
     {
         if(obj_desc_match(odsc, &od->obj_desc)) {
-            (*od_tab)[num_odsc++] = &od->obj_desc;
+            (*odsc_tab)[num_odsc++] = &od->obj_desc;
         }
     }
     return num_odsc;
+}
+
+/*
+ *   Test if two object descriptors have the same name and versions and
+ *     odsc2 is included by odsc1.
+ *     */
+int obj_desc_equals_include(obj_descriptor *odsc1, obj_descriptor *odsc2)
+{
+    if(strcmp(odsc1->name, odsc2->name) == 0 &&
+       odsc1->version == odsc2->version &&
+       bbox_include(&odsc1->bb, &odsc2->bb))
+        return 1;
+    return 0;
+}
+
+/*
+  Find list of obj_data in the local storage that has the same
+  name and version as the object descriptor 'odsc' and included by it.
+*/
+int ls_find_ods_include(ss_storage *ls, obj_descriptor *odsc, struct obj_data **od_tab)
+{
+    struct obj_data *od;
+    struct list_head *list;
+    int index;
+    int num_od = 0;
+
+    index = odsc->version % ls->size_hash;
+    list = &ls->obj_hash[index];
+    list_for_each_entry(od, list, struct obj_data, obj_entry)
+    {
+        if(obj_desc_equals_include(odsc, &od->obj_desc)) {
+            num_od++;
+        }
+    }
+    od_tab = (struct obj_data**) malloc(sizeof(struct obj_data*) * num_od);
+    num_od = 0;
+    list_for_each_entry(od, list, struct obj_data, obj_entry)
+    {
+        if(obj_desc_equals_include(odsc, &od->obj_desc)) {
+            od_tab[num_od++] = od;
+        }
+    }
+    return num_od;
 }
 
 /*
@@ -1974,6 +2039,78 @@ void free_putlocal_subdrain_list(struct list_head *plsd_list)
     int cnt = 0;
     struct subdrain_list_entry *e, *t;
     list_for_each_entry_safe(e, t, plsd_list, struct subdrain_list_entry, entry)
+    {
+        list_del(&e->entry);
+        free(e);
+        cnt++;
+    }
+
+#ifdef DEBUG
+    fprintf(stderr, "%s(): number of gpu bulk transfer record is %d\n",
+            __func__, cnt);
+#endif
+}
+
+struct getobj_list_entry*
+    lookup_getobj_list(struct list_head *getobj_list, obj_descriptor odsc)
+{
+    if(!getobj_list) {
+        return NULL;
+    }
+    struct getobj_list_entry *e, *t;
+    list_for_each_entry_safe(e, t, getobj_list, struct getobj_list_entry, entry)
+    {
+        if(strcmp(e->var_name, odsc.name) == 0 &&
+            e->st == odsc.st && bbox_equals(&e->bb, &odsc.bb)) {
+            return e;
+        }
+    }
+    return NULL;
+}
+
+void free_getobj_list(struct list_head *getobj_list)
+{
+    if(!getobj_list)
+        return;
+    int cnt = 0;
+    struct getobj_list_entry *e, *t;
+    list_for_each_entry_safe(e, t, getobj_list, struct getobj_list_entry, entry)
+    {
+        list_del(&e->entry);
+        free(e->var_name);
+        free(e);
+        cnt++;
+    }
+
+#ifdef DEBUG
+    fprintf(stderr, "%s(): number of gpu bulk transfer record is %d\n",
+            __func__, cnt);
+#endif
+}
+
+struct subods_list_entry*
+    lookup_subods_list(struct list_head *subods_list, int sub_ods_id)
+{
+    if(!subods_list) {
+        return NULL;
+    }
+    struct subods_list_entry *e, *t;
+    list_for_each_entry_safe(e, t, subods_list, struct subods_list_entry, entry)
+    {
+        if(e->id == sub_ods_id) {
+            return e;
+        }
+    }
+    return NULL;
+}
+
+void free_subods_list(struct list_head *subods_list)
+{
+    if(!subods_list)
+        return;
+    int cnt = 0;
+    struct subods_list_entry *e, *t;
+    list_for_each_entry_safe(e, t, subods_list, struct subods_list_entry, entry)
     {
         list_del(&e->entry);
         free(e);

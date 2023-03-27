@@ -67,6 +67,8 @@ struct dspaces_provider {
     hg_id_t put_dc_id;
     hg_id_t putlocal_subdrain_id;
     hg_id_t notify_drain_id;
+    hg_id_t sub_ods_id;
+    hg_id_t notify_ods_id;
     struct ds_gspace *dsg;
     char **server_address;
     char **node_names;
@@ -108,6 +110,7 @@ DECLARE_MARGO_RPC_HANDLER(kill_rpc)
 DECLARE_MARGO_RPC_HANDLER(sub_rpc)
 DECLARE_MARGO_RPC_HANDLER(put_dc_rpc)
 DECLARE_MARGO_RPC_HANDLER(putlocal_subdrain_rpc)
+DECLARE_MARGO_RPC_HANDLER(sub_ods_rpc)
 
 static void put_rpc(hg_handle_t h);
 static void put_local_rpc(hg_handle_t h);
@@ -122,6 +125,7 @@ static void kill_rpc(hg_handle_t h);
 static void sub_rpc(hg_handle_t h);
 static void put_dc_rpc(hg_handle_t h);
 static void putlocal_subdrain_rpc(hg_handle_t h);
+static void sub_ods_rpc(hg_handle_t h);
 // static void write_lock_rpc(hg_handle_t h);
 // static void read_lock_rpc(hg_handle_t h);
 
@@ -970,6 +974,10 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm,
                         putlocal_subdrain_rpc);
         margo_registered_name(server->mid, "notify_drain_rpc",
                               &server->notify_drain_id, &flag);
+        margo_registered_name(server->mid, "sub_ods_rpc", &server->sub_ods_id, &flag);
+        DS_HG_REGISTER(hg, server->sub_ods_id, odsc_gdim_t, void, sub_ods_rpc);
+        margo_registered_name(server->mid, "notify_ods_rpc", &server->notify_ods_id,
+                              &flag);
     } else {
         server->put_id = MARGO_REGISTER(server->mid, "put_rpc", bulk_gdim_t,
                                         bulk_out_t, put_rpc);
@@ -1043,6 +1051,14 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm,
         server->notify_drain_id =
             MARGO_REGISTER(server->mid, "notify_drain_rpc", odsc_list_t, void, NULL);
         margo_registered_disable_response(server->mid, server->notify_drain_id,
+                                          HG_TRUE);
+        server->sub_ods_id =
+            MARGO_REGISTER(server->mid, "sub_ods_rpc", odsc_gdim_t, void, sub_ods_rpc);
+        margo_register_data(server->mid, server->sub_ods_id, (void *)server, NULL);
+        margo_registered_disable_response(server->mid, server->sub_ods_id, HG_TRUE);
+        server->notify_ods_id =
+            MARGO_REGISTER(server->mid, "notify_ods_rpc", odsc_list_t, void, NULL);
+        margo_registered_disable_response(server->mid, server->notify_ods_id,
                                           HG_TRUE);
     }
     int err = dsg_alloc(server, conf_file, comm);
@@ -2241,7 +2257,7 @@ int dspaces_server_find_objs(dspaces_provider_t server, const char *var_name,
                              int version, struct dspaces_data_obj **objs)
 {
     obj_descriptor odsc;
-    obj_descriptor **od_tab;
+    obj_descriptor **odsc_tab;
     struct dspaces_data_obj *obj;
     int num_obj = 0;
     int i;
@@ -2250,7 +2266,7 @@ int dspaces_server_find_objs(dspaces_provider_t server, const char *var_name,
     strcpy(odsc.name, var_name);
     odsc.version = version;
     ABT_mutex_lock(server->ls_mutex);
-    num_obj = ls_find_ods(server->dsg->ls, &odsc, &od_tab);
+    num_obj = ls_find_odscs(server->dsg->ls, &odsc, &odsc_tab);
     ABT_mutex_unlock(server->ls_mutex);
 
     if(num_obj) {
@@ -2259,16 +2275,16 @@ int dspaces_server_find_objs(dspaces_provider_t server, const char *var_name,
             obj = &(*objs)[i];
             obj->var_name = var_name;
             obj->version = version;
-            obj->ndim = od_tab[i]->bb.num_dims;
-            obj->size = od_tab[i]->size;
+            obj->ndim = odsc_tab[i]->bb.num_dims;
+            obj->size = odsc_tab[i]->size;
             obj->lb = malloc(sizeof(*obj->lb) * obj->ndim);
             obj->ub = malloc(sizeof(*obj->ub) * obj->ndim);
-            memcpy(obj->lb, od_tab[i]->bb.lb.c,
-                   sizeof(*obj->lb) * od_tab[i]->bb.num_dims);
-            memcpy(obj->ub, od_tab[i]->bb.ub.c,
-                   sizeof(*obj->ub) * od_tab[i]->bb.num_dims);
+            memcpy(obj->lb, odsc_tab[i]->bb.lb.c,
+                   sizeof(*obj->lb) * odsc_tab[i]->bb.num_dims);
+            memcpy(obj->ub, odsc_tab[i]->bb.ub.c,
+                   sizeof(*obj->ub) * odsc_tab[i]->bb.num_dims);
         }
-        free(od_tab);
+        free(odsc_tab);
     }
 
     return (num_obj);
@@ -2554,3 +2570,49 @@ static void putlocal_subdrain_rpc(hg_handle_t handle)
     margo_destroy(handle);
 }
 DEFINE_MARGO_RPC_HANDLER(putlocal_subdrain_rpc)
+
+static void sub_ods_rpc(hg_handle_t handle)
+{
+    margo_instance_id mid = margo_hg_handle_get_instance(handle);
+    const struct hg_info *info = margo_get_info(handle);
+    dspaces_provider_t server =
+        (dspaces_provider_t)margo_registered_data(mid, info->id);
+    odsc_list_t notice;
+    odsc_gdim_t in;
+    int32_t sub_ods_id;
+    obj_descriptor in_odsc;
+    obj_descriptor *results;
+    struct global_dimension in_gdim;
+    hg_addr_t client_addr;
+    hg_handle_t notifyh;
+    margo_request req;
+    static int uid = 0;
+    int req_id;
+
+    req_id = __sync_fetch_and_add(&uid, 1L);
+    margo_get_input(handle, &in);
+
+    memcpy(&in_odsc, in.odsc_gdim.raw_odsc, sizeof(in_odsc));
+    memcpy(&in_gdim, in.odsc_gdim.raw_gdim, sizeof(struct global_dimension));
+    sub_ods_id = in.param;
+
+    DEBUG_OUT("received subscription for %s with id %d from %s\n",
+              obj_desc_sprint(&in_odsc), sub_ods_id, in_odsc.owner);
+
+    in.param = -1; // this will be interpreted as timeout by any interal queries
+    notice.odsc_list.size = get_query_odscs(server, &in, -1, &results, req_id);
+    notice.odsc_list.raw_odsc = (char *)results;
+    notice.param = sub_ods_id;
+
+    margo_addr_lookup(server->mid, in_odsc.owner, &client_addr);
+    margo_create(server->mid, client_addr, server->notify_ods_id, &notifyh);
+    margo_iforward(notifyh, &notice, &req);
+    margo_addr_free(server->mid, client_addr);
+    margo_destroy(notifyh);
+
+    margo_free_input(handle, &in);
+    margo_destroy(handle);
+
+    free(results);
+}
+DEFINE_MARGO_RPC_HANDLER(sub_ods_rpc)

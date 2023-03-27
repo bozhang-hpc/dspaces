@@ -88,6 +88,12 @@ struct dc_gspace {
     /* Pending requests for iput+drain in dual-channel-dual-staging put. */
     struct list_head putlocal_subdrain_list;
 
+    /* Record for dual channel dual staging get patterns. */
+    struct list_head getobj_record_list;
+
+    /* List of struct dspaces_subods_handle */
+    struct list_head sub_ods_list;
+
     enum sspace_hash_version hash_version;
     int max_versions;
     // for dimes like client storage

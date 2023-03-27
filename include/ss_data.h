@@ -142,6 +142,22 @@ struct subdrain_list_entry {
     void *buffer;
 };
 
+struct getobj_list_entry {
+    struct list_head entry;
+    char *var_name;
+    enum storage_type st;
+    struct bbox bb;
+    unsigned int last_ver;
+    int interval_ver;
+};
+
+struct subods_list_entry {
+    struct list_head entry;
+    int status;
+    int id;
+    obj_descriptor qodsc;
+};
+
 typedef struct {
     int num_obj;
     int size_hash;
@@ -387,8 +403,10 @@ void ls_remove(ss_storage *, struct obj_data *);
 void ls_try_remove_free(ss_storage *, struct obj_data *);
 struct obj_data *ls_find(ss_storage *, obj_descriptor *);
 struct obj_data *ls_find_od(ss_storage *, obj_descriptor *);
-int ls_find_ods(ss_storage *ls, obj_descriptor *odsc, obj_descriptor ***od_tab);
+int ls_find_odscs(ss_storage *ls, obj_descriptor *odsc, obj_descriptor ***odsc_tab);
 struct obj_data *ls_find_no_version(ss_storage *, obj_descriptor *);
+struct obj_data *ls_find_equals_no_owner(ss_storage *ls, obj_descriptor *odsc);
+int ls_find_ods_include(ss_storage *ls, obj_descriptor *odsc, struct obj_data **od_tab);
 
 struct obj_data *obj_data_alloc(obj_descriptor *);
 struct obj_data *obj_data_alloc_cuda(obj_descriptor *);
@@ -408,6 +426,7 @@ int obj_desc_equals_intersect(obj_descriptor *odsc1, obj_descriptor *odsc2);
 
 int obj_desc_by_name_intersect(const obj_descriptor *odsc1,
                                const obj_descriptor *odsc2);
+int obj_desc_equals_include(obj_descriptor *odsc1, obj_descriptor *odsc2);
 
 // void copy_global_dimension(struct global_dimension *l, int ndim, const
 // uint64_t *gdim);
@@ -437,5 +456,12 @@ void free_gpu_bulk_list(struct list_head *gpu_bulk_list);
 struct subdrain_list_entry* lookup_putlocal_subdrain_list(struct list_head *plsd_list,
                                         obj_descriptor odsc);
 void free_putlocal_subdrain_list(struct list_head *plsd_list);
+struct getobj_list_entry* lookup_getobj_list(struct list_head *getobj_list,
+                                        obj_descriptor odsc);
+void free_getobj_list(struct list_head *getobj_list);
+
+struct subods_list_entry* lookup_subods_list(struct list_head *subods_list,
+                                        int sub_ods_id);
+void free_subods_list(struct list_head *subods_list);
 
 #endif /* __SS_DATA_H_ */
