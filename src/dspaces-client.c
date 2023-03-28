@@ -794,6 +794,8 @@ static int dspaces_init_margo(dspaces_client_t client,
     int i;
 
     margo_set_environment(NULL);
+    sprintf(margo_conf,
+            "{ \"use_progress_thread\" : false, \"rpc_thread_count\" : 0}");
     hii.request_post_init = 1024;
     hii.auto_sm = false;
     hii.no_multi_recv = true;
