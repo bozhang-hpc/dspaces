@@ -2817,7 +2817,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             return dspaces_ERR_CUDA;
         }
 
-        hg_handle_t handle;
+        hg_handle_t *handle = (hg_handle_t*) malloc(sizeof(hg_handle_t));
         hg_return_t hret;
         hg_addr_t server_addr;
         
@@ -2861,17 +2861,17 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
         DEBUG_OUT("Added into local_storage\n");
         ABT_mutex_unlock(client->ls_mutex);
 
-        bulk_gdim_t in;
+        bulk_gdim_t *in = (bulk_gdim_t*) malloc(sizeof(bulk_gdim_t));
         bulk_out_t out;
 
-        in.odsc.size = sizeof(odsc);
-        in.odsc.raw_odsc = (char *)(&odsc);
-        in.odsc.gdim_size = sizeof(struct global_dimension);
-        in.odsc.raw_gdim = (char *)(&od->gdim);
+        in->odsc.size = sizeof(odsc);
+        in->odsc.raw_odsc = (char *)(&odsc);
+        in->odsc.gdim_size = sizeof(struct global_dimension);
+        in->odsc.raw_gdim = (char *)(&od->gdim);
         hg_size_t hg_rdma_size = rdma_size;
 
         hret = margo_bulk_create(client->mid, 1, (void **)&host_buf, &hg_rdma_size,
-                                HG_BULK_READ_ONLY, &in.handle);
+                                HG_BULK_READ_ONLY, &(in->handle));
         if(hret != HG_SUCCESS) {
             fprintf(stderr, "ERROR: (%s): margo_bulk_create() failed! Err Code: %d\n", __func__, hret);
             cudaStreamDestroy(stream);
@@ -2884,7 +2884,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
         get_server_address(client, &server_addr);
 
         // create handle
-        hret = margo_create(client->mid, server_addr, client->putlocal_subdrain_id, &handle);
+        hret = margo_create(client->mid, server_addr, client->putlocal_subdrain_id, handle);
         if(hret != HG_SUCCESS) {
             fprintf(stderr, "ERROR: (%s): margo_create() failed! Err Code: %d\n", __func__, hret);
             cudaStreamDestroy(stream);
@@ -2892,7 +2892,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             host_buf = NULL;
             margo_addr_free(client->mid, server_addr);
             obj_data_free(od);
-            margo_bulk_free(in.handle);
+            margo_bulk_free(in->handle);
             return dspaces_ERR_MERCURY;
         }
 
@@ -2902,8 +2902,8 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
         e->odsc = odsc;
         e->buffer = host_buf;
         e->get_count = 0;
-        e->bulk_handle = &(in.handle);
-        e->rpc_handle = &handle;
+        e->bulk_handle = in;
+        e->rpc_handle = handle;
         ABT_cond_create(&e->delete_cond);
         ABT_mutex_lock(client->putlocal_subdrain_mutex);
         list_add(&e->entry, &client->dcg->putlocal_subdrain_list);
@@ -2920,8 +2920,8 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             host_buf = NULL;
             margo_addr_free(client->mid, server_addr);
             obj_data_free(od);
-            margo_bulk_free(in.handle);
-            margo_destroy(handle);
+            margo_bulk_free(in->handle);
+            margo_destroy(*handle);
             ABT_cond_free(&e->delete_cond);
             ABT_mutex_lock(client->putlocal_subdrain_mutex);
             list_del(&e->entry);
@@ -2934,7 +2934,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
         *itime = timer;
 
         /* putlocal_subdrain RPC */
-        hret = margo_forward(handle, &in);
+        hret = margo_forward(*handle, in);
         if(hret != HG_SUCCESS) {
             fprintf(stderr, "ERROR: (%s): margo_forward() failed! Err Code: %d\n", __func__, hret);
             cudaStreamDestroy(stream);
@@ -2942,8 +2942,8 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             host_buf = NULL;
             margo_addr_free(client->mid, server_addr);
             obj_data_free(od);
-            margo_bulk_free(in.handle);
-            margo_destroy(handle);
+            margo_bulk_free(in->handle);
+            margo_destroy(*handle);
             ABT_cond_free(&e->delete_cond);
             ABT_mutex_lock(client->putlocal_subdrain_mutex);
             list_del(&e->entry);
@@ -2951,7 +2951,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             return dspaces_ERR_MERCURY;
         }
 
-        hret = margo_get_output(handle, &out);
+        hret = margo_get_output(*handle, &out);
         if(hret != HG_SUCCESS) {
             fprintf(stderr, "ERROR: (%s):  margo_get_output() failed! Err Code: %d\n", __func__, hret);
             cudaStreamDestroy(stream);
@@ -2959,8 +2959,8 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             host_buf = NULL;
             margo_addr_free(client->mid, server_addr);
             obj_data_free(od);
-            margo_bulk_free(in.handle);
-            margo_destroy(handle);
+            margo_bulk_free(in->handle);
+            margo_destroy(*handle);
             ABT_cond_free(&e->delete_cond);
             ABT_mutex_lock(client->putlocal_subdrain_mutex);
             list_del(&e->entry);
@@ -2982,7 +2982,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
         /* putlocal_subdrain RPC end */
 
         CUDA_ASSERTRT(cudaStreamDestroy(stream));
-        margo_free_output(handle, &out);
+        margo_free_output(*handle, &out);
         margo_addr_free(client->mid, server_addr);
     }
 
@@ -3019,7 +3019,8 @@ static void notify_drain_rpc(hg_handle_t handle)
 
     struct subdrain_list_entry *e =
         lookup_putlocal_subdrain_list(&client->dcg->putlocal_subdrain_list, in_odsc);
-    margo_bulk_free(*(e->bulk_handle));
+    margo_bulk_free(e->bulk_handle->handle);
+    free(e->bulk_handle);
     margo_destroy(*(e->rpc_handle));
     while(e->get_count > 0) { // in case any pending get
         ABT_cond_wait(e->delete_cond, client->putlocal_subdrain_mutex);

@@ -134,15 +134,7 @@ struct gpu_bulk_list_entry {
     int gdr_heat_score;
 };
 
-struct subdrain_list_entry {
-    struct list_head entry;
-    obj_descriptor odsc;
-    size_t get_count;
-    ABT_cond delete_cond;
-    void *buffer;
-    hg_bulk_t *bulk_handle;
-    hg_handle_t* rpc_handle;
-};
+
 
 struct getobj_list_entry {
     struct list_head entry;
@@ -361,6 +353,16 @@ MERCURY_GEN_PROC(odsc_gdim_t,
                  ((odsc_hdr_with_gdim)(odsc_gdim))((int32_t)(param)))
 MERCURY_GEN_PROC(odsc_list_t, ((odsc_hdr)(odsc_list))((int32_t)(param)))
 MERCURY_GEN_PROC(ss_information, ((odsc_hdr)(ss_buf)))
+
+struct subdrain_list_entry {
+    struct list_head entry;
+    obj_descriptor odsc;
+    size_t get_count;
+    ABT_cond delete_cond;
+    void *buffer;
+    bulk_gdim_t *bulk_handle;
+    hg_handle_t* rpc_handle;
+};
 
 char *obj_desc_sprint(obj_descriptor *);
 //
