@@ -2902,6 +2902,8 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
         e->odsc = odsc;
         e->buffer = host_buf;
         e->get_count = 0;
+        e->bulk_handle = &(in.handle);
+        e->rpc_handle = &handle;
         ABT_cond_create(&e->delete_cond);
         ABT_mutex_lock(client->putlocal_subdrain_mutex);
         list_add(&e->entry, &client->dcg->putlocal_subdrain_list);
@@ -2981,8 +2983,6 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
 
         CUDA_ASSERTRT(cudaStreamDestroy(stream));
         margo_free_output(handle, &out);
-        margo_bulk_free(in.handle);
-        margo_destroy(handle);
         margo_addr_free(client->mid, server_addr);
     }
 
@@ -3019,6 +3019,8 @@ static void notify_drain_rpc(hg_handle_t handle)
 
     struct subdrain_list_entry *e =
         lookup_putlocal_subdrain_list(&client->dcg->putlocal_subdrain_list, in_odsc);
+    margo_bulk_free(*(e->bulk_handle));
+    margo_destroy(*(e->rpc_handle));
     while(e->get_count > 0) { // in case any pending get
         ABT_cond_wait(e->delete_cond, client->putlocal_subdrain_mutex);
     }

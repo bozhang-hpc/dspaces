@@ -140,6 +140,8 @@ struct subdrain_list_entry {
     size_t get_count;
     ABT_cond delete_cond;
     void *buffer;
+    hg_bulk_t *bulk_handle;
+    hg_handle_t* rpc_handle;
 };
 
 struct getobj_list_entry {

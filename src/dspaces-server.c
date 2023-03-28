@@ -2528,7 +2528,8 @@ static void putlocal_subdrain_rpc(hg_handle_t handle)
     hret = margo_bulk_create(mid, 1, (void **)&(server_od->data), &rdma_size,
                              HG_BULK_WRITE_ONLY, &bulk_handle);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_bulk_create failed!\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_bulk_create failed! Err Code = %d.\n",
+                 __func__, hret);
         margo_free_input(handle, &in);
         margo_destroy(handle);
         return;
@@ -2537,7 +2538,8 @@ static void putlocal_subdrain_rpc(hg_handle_t handle)
     hret = margo_bulk_transfer(mid, HG_BULK_PULL, info->addr, in.handle, 0,
                                bulk_handle, 0, rdma_size);
     if(hret != HG_SUCCESS) {
-        fprintf(stderr, "ERROR: (%s): margo_bulk_transfer failed!\n", __func__);
+        fprintf(stderr, "ERROR: (%s): margo_bulk_transfer failed! Err Code = %d.\n",
+                __func__, hret);
         margo_free_input(handle, &in);
         margo_bulk_free(bulk_handle);
         margo_destroy(handle);
