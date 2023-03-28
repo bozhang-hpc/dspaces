@@ -752,7 +752,7 @@ static int dspaces_init_gpu(dspaces_client_t client)
         break;
     }
 
-    DEBUG_OUT("dspaces CUDA Put Mode = %s", hint);
+    DEBUG_OUT("dspaces CUDA Put Mode = %s\n", hint);
 
     switch (client->cuda_info.cuda_get_mode)
     {
@@ -765,12 +765,21 @@ static int dspaces_init_gpu(dspaces_client_t client)
     case 3:
         sprintf(hint, "Hybrid");
         break;
+    case 4:
+        sprintf(hint, "Heuristic");
+        break;
+    case 5:
+        sprintf(hint, "Dual Channel");
+        break;
+    case 6:
+        sprintf(hint, "Dual Channel Dual Staging");
+        break;
     default:
         sprintf(hint, "Error");
         break;
     }
 
-    DEBUG_OUT("dspaces CUDA Get Mode = %s", hint);
+    DEBUG_OUT("dspaces CUDA Get Mode = %s\n", hint);
 
     return dspaces_SUCCESS;
 }
