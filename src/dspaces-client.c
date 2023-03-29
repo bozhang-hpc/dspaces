@@ -5415,7 +5415,7 @@ static int dspaces_cuda_dcds_get(dspaces_client_t client, const char *var_name, 
 
     for(int i=0; i<num_remote; i++) {
         bin[i].odsc.size = sizeof(obj_descriptor);
-        bin[i].odsc.raw_odsc = (char*) (&remote_odsc_tab[i]);
+        bin[i].odsc.raw_odsc = (char*) (remote_odsc_tab[i]);
         rdma_size = qodsc.size * bbox_volume(&remote_odsc_tab[i]->bb);
         if(gdr_rdma_size < rdma_size_threshold) { // go to gdr 
             remote_od[i] = obj_data_alloc_cuda(remote_odsc_tab[i]);
