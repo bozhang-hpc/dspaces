@@ -4579,6 +4579,15 @@ static int get_data_dual_channel_v2(dspaces_client_t client, int num_odscs,
         }
     }
     
+    double wait_timer, gdr_timer = 0, host_timer = 0;
+    double wait_epsilon = 2e-3 * num_odscs;
+    /*  Try to tune the ratio every 2 timesteps
+        At timestep (t), if 2nd timer(t) < 0.2ms, means 2nd request(t) finishes no later than the 1st(t).
+            Keep the same ratio at (t+1), but swap the request.
+            If the 2nd timer(t+1) < 0.2ms, means almost same time; else, tune the ratio and not swap request
+            Suppose gdr finishes first initially: wait_flag = 0 -> host first; wait_flag = 1 -> gdr first
+        else
+    */
 
     device_od = malloc(num_host * sizeof(struct obj_data *));
 
@@ -4589,7 +4598,10 @@ static int get_data_dual_channel_v2(dspaces_client_t client, int num_odscs,
     size_t od_data_size;
     size_t req_idx, host_idx;
     do {
+        gettimeofday(&start, NULL);
         hret = margo_wait_any(num_odscs, serv_req, &req_idx);
+        gettimeofday(&end, NULL);
+        wait_timer = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
         if(hret != HG_SUCCESS) {
             fprintf(stderr,
                 "ERROR: (%s): margo_wait_any() failed, idx = %zu. Err Code = %d.\n",
@@ -4623,9 +4635,15 @@ static int get_data_dual_channel_v2(dspaces_client_t client, int num_odscs,
         serv_req[req_idx] = MARGO_REQUEST_NULL;
         margo_get_output(hndl[req_idx], &resp);
         if(req_idx < num_gdr) { // gdr path
+            if(wait_timer > wait_epsilon) {
+                gdr_timer += (wait_timer - wait_epsilon);
+            }
             ret = ssd_copy_cuda_async(return_od, od[req_idx], 
                             &gdr_stream[req_idx%gdr_stream_size]);
         } else { // host-based path
+            if(wait_timer > wait_epsilon) {
+                host_timer += (wait_timer - wait_epsilon);
+            }
             host_idx = req_idx - num_gdr;
             device_od[host_idx] = obj_data_alloc_cuda(&odsc_tab[req_idx]);
             // H->D async transfer
@@ -4701,15 +4719,6 @@ static int get_data_dual_channel_v2(dspaces_client_t client, int num_odscs,
         free(e);
     }
 
-    double gdr_timer = 0, host_timer = 0;
-    double epsilon = 0.2; // 0.2ms
-    /*  Try to tune the ratio every 2 timesteps
-        At timestep (t), if 2nd timer(t) < 0.2ms, means 2nd request(t) finishes no later than the 1st(t).
-            Keep the same ratio at (t+1), but swap the request.
-            If the 2nd timer(t+1) < 0.2ms, means almost same time; else, tune the ratio and not swap request
-            Suppose gdr finishes first initially: wait_flag = 0 -> host first; wait_flag = 1 -> gdr first
-        else
-    */
     cudaStream_t *stream0, *stream1;
     int stream_size0, stream_size1;
     double *timer0, *timer1;
@@ -4831,7 +4840,9 @@ static int get_data_dual_channel_v2(dspaces_client_t client, int num_odscs,
     free(host_stream);
     free(gdr_stream);
 
-    if(*timer1 > stream_size1*epsilon) {
+    double stream_epsilon = 0.2; // 0.2ms
+
+    if(*timer1 > stream_size1*stream_epsilon) {
         // 2nd request takes longer time, tune ratio
         if(gdr_timer < host_timer) {
             if(host_timer - gdr_timer > 1e-3) {
