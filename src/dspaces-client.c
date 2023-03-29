@@ -4483,10 +4483,12 @@ static int get_data_dual_channel_v2(dspaces_client_t client, int num_odscs,
     size_t gdr_rdma_size = 0;
     size_t rdma_size_threshold = (size_t) (total_rdma_size*gdr_ratio);
     int num_host, num_gdr = 0;
+    hg_size_t rdma_size;
+    hg_addr_t server_addr;
     for(int i=0; i<num_odscs; i++) {
         in[i].odsc.size = sizeof(obj_descriptor);
         in[i].odsc.raw_odsc = (char *)(&odsc_tab[i]);
-        hg_size_t rdma_size = (req_obj.size) * bbox_volume(&odsc_tab[i].bb);
+        rdma_size = (req_obj.size) * bbox_volume(&odsc_tab[i].bb);
         if(gdr_rdma_size < rdma_size_threshold) { // go to gdr 
             od[i] = obj_data_alloc_cuda(&odsc_tab[i]);
             margo_bulk_create_attr(client->mid, 1, (void **)(&(od[i]->data)),
@@ -4499,22 +4501,17 @@ static int get_data_dual_channel_v2(dspaces_client_t client, int num_odscs,
             margo_bulk_create(client->mid, 1, (void **)(&(od[i]->data)),
                             &rdma_size, HG_BULK_WRITE_ONLY, &in[i].handle);
         }
-        hg_addr_t server_addr;
         margo_addr_lookup(client->mid, odsc_tab[i].owner, &server_addr);
-        hg_handle_t handle;
         if(odsc_tab[i].flags & DS_CLIENT_STORAGE) {
             DEBUG_OUT("retrieving object from client-local storage.\n");
             margo_create(client->mid, server_addr, client->get_local_id,
-                         &handle);
+                         &hndl[i]);
         } else {
             DEBUG_OUT("retrieving object from server storage.\n");
-            margo_create(client->mid, server_addr, client->get_id, &handle);
+            margo_create(client->mid, server_addr, client->get_id, &hndl[i]);
         }
-        margo_request req;
         // forward get requests
-        margo_iforward(handle, &in[i], &req);
-        hndl[i] = handle;
-        serv_req[i] = req;
+        margo_iforward(hndl[i], &in[i], &serv_req[i]);
         margo_addr_free(client->mid, server_addr);  
     }
 
