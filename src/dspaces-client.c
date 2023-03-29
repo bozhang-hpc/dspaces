@@ -4594,8 +4594,9 @@ static int get_data_dual_channel_v2(dspaces_client_t client, int num_odscs,
     do {
         hret = margo_wait_any(num_odscs, serv_req, &req_idx);
         if(hret != HG_SUCCESS) {
-            fprintf(stderr, "ERROR: (%s): margo_wait_any() failed, idx = %zu\n",
-                    __func__, req_idx);
+            fprintf(stderr,
+                "ERROR: (%s): margo_wait_any() failed, idx = %zu. Err Code = %d.\n",
+                    __func__, req_idx, hret);
             list_for_each_entry_safe(e, t, &req_done_list,
                                      struct size_t_list_entry, entry) {
                 obj_data_free_cuda(device_od[e->value]);
@@ -4617,7 +4618,8 @@ static int get_data_dual_channel_v2(dspaces_client_t client, int num_odscs,
             free(od);
             free(in);
             return dspaces_ERR_MERCURY;
-        } 
+        }
+        serv_req[req_idx] = MARGO_REQUEST_NULL;
         margo_get_output(hndl[req_idx], &resp);
         if(req_idx < num_gdr) { // gdr path
             ret = ssd_copy_cuda_async(return_od, od[req_idx], 
@@ -5615,8 +5617,9 @@ static int dspaces_cuda_dcds_get(dspaces_client_t client, const char *var_name, 
     do {
         hret = margo_wait_any(num_remote, breq, &req_idx);
         if(hret != HG_SUCCESS) {
-            fprintf(stderr, "ERROR: (%s): margo_wait_any() failed, idx = %zu\n",
-                    __func__, req_idx);
+            fprintf(stderr,
+                "ERROR: (%s): margo_wait_any() failed, idx = %zu. Err Code = %d.\n",
+                    __func__, req_idx, hret);
             list_for_each_entry_safe(req_ent, req_tmp, &req_done_list,
                                         struct size_t_list_entry, entry) {
                 obj_data_free_cuda(remote_device_od[req_ent->value]);
@@ -5652,6 +5655,7 @@ static int dspaces_cuda_dcds_get(dspaces_client_t client, const char *var_name, 
             }
             return dspaces_ERR_MERCURY;
         }
+        breq[req_idx] = MARGO_REQUEST_NULL;
         margo_get_output(bhndl[req_idx], &bresp);
         if(req_idx < num_gdr) { // gdr path
             ret = ssd_copy_cuda_async(return_od, remote_od[req_idx], 
@@ -6872,8 +6876,9 @@ static void notify_ods_rpc(hg_handle_t handle)
             do {
                 hret = margo_wait_any(num_odscs, breq, &req_idx);
                 if(hret != HG_SUCCESS) {
-                    fprintf(stderr, "ERROR: (%s): margo_wait_any() failed, idx = %zu\n",
-                    __func__, req_idx);
+                    fprintf(stderr,
+                        "ERROR: (%s): margo_wait_any() failed, idx = %zu. Err Code = %d.\n",
+                        __func__, req_idx, hret);
                     for(int i=0; i<num_odscs; i++) {
                         margo_bulk_free(bin[i].handle);
                         margo_destroy(bhndl[i]);
@@ -6888,7 +6893,7 @@ static void notify_ods_rpc(hg_handle_t handle)
                     margo_destroy(handle);
                     return ; 
                 }
-
+                breq[req_idx] = MARGO_REQUEST_NULL;
                 margo_get_output(bhndl[req_idx], &bresp);
                 margo_free_output(bhndl[req_idx], &bresp);
                 margo_bulk_free(bin[req_idx].handle);
