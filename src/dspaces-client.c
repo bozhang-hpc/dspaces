@@ -5223,7 +5223,7 @@ static int dspaces_cuda_dcds_get(dspaces_client_t client, const char *var_name, 
     // could only be a subset of queried odsc list
     struct obj_data **local_od;
     ABT_mutex_lock(client->ls_mutex);
-    int num_local = ls_find_ods_include(client->dcg->ls, &qodsc, local_od);
+    int num_local = ls_find_ods_include(client->dcg->ls, &qodsc, &local_od);
     ABT_mutex_unlock(client->ls_mutex);
 
     // the local od we can find could only be a subset of queried odsc list

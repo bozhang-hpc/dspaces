@@ -410,7 +410,7 @@ struct obj_data *ls_find_od(ss_storage *, obj_descriptor *);
 int ls_find_odscs(ss_storage *ls, obj_descriptor *odsc, obj_descriptor ***odsc_tab);
 struct obj_data *ls_find_no_version(ss_storage *, obj_descriptor *);
 struct obj_data *ls_find_equals_no_owner(ss_storage *ls, obj_descriptor *odsc);
-int ls_find_ods_include(ss_storage *ls, obj_descriptor *odsc, struct obj_data **od_tab);
+int ls_find_ods_include(ss_storage *ls, obj_descriptor *odsc, struct obj_data ***od_tab);
 
 struct obj_data *obj_data_alloc(obj_descriptor *);
 struct obj_data *obj_data_alloc_cuda(obj_descriptor *);

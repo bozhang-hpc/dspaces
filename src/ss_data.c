@@ -1078,7 +1078,7 @@ int obj_desc_equals_include(obj_descriptor *odsc1, obj_descriptor *odsc2)
   Find list of obj_data in the local storage that has the same
   name and version as the object descriptor 'odsc' and included by it.
 */
-int ls_find_ods_include(ss_storage *ls, obj_descriptor *odsc, struct obj_data **od_tab)
+int ls_find_ods_include(ss_storage *ls, obj_descriptor *odsc, struct obj_data ***od_tab)
 {
     struct obj_data *od;
     struct list_head *list;
@@ -1093,12 +1093,12 @@ int ls_find_ods_include(ss_storage *ls, obj_descriptor *odsc, struct obj_data **
             num_od++;
         }
     }
-    od_tab = (struct obj_data**) malloc(sizeof(struct obj_data*) * num_od);
+    *od_tab = (struct obj_data**) malloc(sizeof(struct obj_data*) * num_od);
     num_od = 0;
     list_for_each_entry(od, list, struct obj_data, obj_entry)
     {
         if(obj_desc_equals_include(odsc, &od->obj_desc)) {
-            od_tab[num_od++] = od;
+            (*od_tab)[num_od++] = od;
         }
     }
     return num_od;
