@@ -4616,6 +4616,10 @@ static int get_data_dual_channel_v2(dspaces_client_t client, int num_odscs,
             free(in);
             return dspaces_ERR_MERCURY;
         }
+        // break when all req are finished
+        if(req_idx == num_odscs) {
+            break;
+        }
         serv_req[req_idx] = MARGO_REQUEST_NULL;
         margo_get_output(hndl[req_idx], &resp);
         if(req_idx < num_gdr) { // gdr path
@@ -5651,6 +5655,10 @@ static int dspaces_cuda_dcds_get(dspaces_client_t client, const char *var_name, 
                 free(getobj_ent);
             }
             return dspaces_ERR_MERCURY;
+        }
+        // break when all req are finished
+        if(req_idx == num_odscs) {
+            break;
         }
         breq[req_idx] = MARGO_REQUEST_NULL;
         margo_get_output(bhndl[req_idx], &bresp);
@@ -6889,6 +6897,10 @@ static void notify_ods_rpc(hg_handle_t handle)
                     margo_free_input(handle, &qin);
                     margo_destroy(handle);
                     return ; 
+                }
+                // break when all req are finished
+                if(req_idx == num_odscs) {
+                    break;
                 }
                 breq[req_idx] = MARGO_REQUEST_NULL;
                 margo_get_output(bhndl[req_idx], &bresp);
