@@ -671,8 +671,8 @@ static int dspaces_init_gpu(dspaces_client_t client)
     // 5 - Heuristic, 6 - Dual Channel, 7 - Dual Channel Dual Staging
     if(envcudaputmode) {
         int cudaputmode = atoi(envcudaputmode);
-        // mode check 0-4
-        if(cudaputmode >=0 && cudaputmode < 8) {
+        // mode check 0-7
+        if(cudaputmode >= 0 && cudaputmode < 8) {
             client->cuda_info.cuda_put_mode = cudaputmode;
         } else {
             client->cuda_info.cuda_put_mode = 0;
@@ -681,12 +681,13 @@ static int dspaces_init_gpu(dspaces_client_t client)
         client->cuda_info.cuda_put_mode = 0;
     }
 
-    // Default Get Mode: 1 - Baseline, Others: 2 - GDR
+    // Default Get Mode: 1 - Baseline, Others: 2 - GDR, 3 - Hybrid, 4 - Heuristic
+    // 5 - Dual Channel, 6 - Daul Channel Dual Staging
     if(envcudagetmode) {
         int cudagetmode = atoi(envcudagetmode);
 
-        //mode check
-        if(cudagetmode>=1 && cudagetmode <4) {
+        // mode check 1-6
+        if(cudagetmode >= 1 && cudagetmode < 7) {
             client->cuda_info.cuda_get_mode = cudagetmode;
         } else {
             client->cuda_info.cuda_get_mode = 1;
