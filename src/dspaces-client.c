@@ -6314,8 +6314,10 @@ int dspaces_cuda_get(dspaces_client_t client, const char *var_name, unsigned int
             break;
         }
         }
-        *ttime = timer - *ctime;    
-        free(odsc_tab);
+        *ttime = timer - *ctime;
+        if(client->cuda_info.cuda_get_mode !=6) { // fuse get_odscs() & get_data in dcds_get()
+            free(odsc_tab);
+        }
     }
 
     return (ret);
