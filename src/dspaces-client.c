@@ -4580,7 +4580,6 @@ static int get_data_dual_channel_v2(dspaces_client_t client, int num_odscs,
     }
     
     double wait_timer, gdr_timer = 0, host_timer = 0;
-    double wait_epsilon = 2e-3 * num_odscs;
     /*  Try to tune the ratio every 2 timesteps
         At timestep (t), if 2nd timer(t) < 0.2ms, means 2nd request(t) finishes no later than the 1st(t).
             Keep the same ratio at (t+1), but swap the request.
@@ -4600,8 +4599,6 @@ static int get_data_dual_channel_v2(dspaces_client_t client, int num_odscs,
     do {
         gettimeofday(&start, NULL);
         hret = margo_wait_any(num_odscs, serv_req, &req_idx);
-        gettimeofday(&end, NULL);
-        wait_timer = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
         if(hret != HG_SUCCESS) {
             fprintf(stderr,
                 "ERROR: (%s): margo_wait_any() failed, idx = %zu. Err Code = %d.\n",
@@ -4635,15 +4632,12 @@ static int get_data_dual_channel_v2(dspaces_client_t client, int num_odscs,
         serv_req[req_idx] = MARGO_REQUEST_NULL;
         margo_get_output(hndl[req_idx], &resp);
         if(req_idx < num_gdr) { // gdr path
-            if(wait_timer > wait_epsilon) {
-                gdr_timer += (wait_timer - wait_epsilon);
-            }
             ret = ssd_copy_cuda_async(return_od, od[req_idx], 
                             &gdr_stream[req_idx%gdr_stream_size]);
+            gettimeofday(&end, NULL);
+            gdr_timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
         } else { // host-based path
-            if(wait_timer > wait_epsilon) {
-                host_timer += (wait_timer - wait_epsilon);
-            }
+            host_timer += wait_timer;
             host_idx = req_idx - num_gdr;
             device_od[host_idx] = obj_data_alloc_cuda(&odsc_tab[req_idx]);
             // H->D async transfer
@@ -4683,6 +4677,8 @@ static int get_data_dual_channel_v2(dspaces_client_t client, int num_odscs,
             list_add(&e->entry, &req_done_list);
             ret = ssd_copy_cuda_async(return_od, device_od[host_idx],
                                 &host_stream[host_idx%host_stream_size]);
+            gettimeofday(&end, NULL);
+            gdr_timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
         }
         if(ret != dspaces_SUCCESS) {
             fprintf(stderr, "ERROR: (%s): ssd_copy_cuda_async() failed, Err Code: (%d)\n",
