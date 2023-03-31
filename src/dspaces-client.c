@@ -4543,8 +4543,8 @@ static int get_data_dual_channel_v2(dspaces_client_t client, int num_odscs,
     cudaStream_t *host_stream, *gdr_stream;
     int stream_size, host_stream_size, gdr_stream_size;
     
-    if(num_odscs < client->cuda_info.num_concurrent_kernels) {
-        stream_size = num_odscs;
+    if(2*num_odscs < client->cuda_info.num_concurrent_kernels) {
+        stream_size = 2 * num_odscs;
     } else {
         stream_size = client->cuda_info.num_concurrent_kernels;     
     }
