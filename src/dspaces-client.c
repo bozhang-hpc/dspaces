@@ -5163,218 +5163,226 @@ static int dspaces_cuda_dcds_get(dspaces_client_t client, const char *var_name, 
             memcpy(&remote_odsc_tab[num_remote++], &odsc_tab[i], sizeof(obj_descriptor));
         }   
     }
-    int num_rpcs = 2*num_remote;
-    remote_odsc_tab = 
-        (obj_descriptor*) realloc(remote_odsc_tab, num_rpcs*sizeof(obj_descriptor));
-    struct obj_data **remote_od = 
-        (struct obj_data**) malloc(num_rpcs*sizeof(struct obj_data*));
-    // rpc for remote odscs
-    bulk_in_t *bin = 
-        (bulk_in_t *)malloc(num_rpcs*sizeof(bulk_in_t));
-    margo_request *breq = 
-        (margo_request *)malloc(num_rpcs*sizeof(margo_request));
-    hg_handle_t *bhndl = 
-        (hg_handle_t *)malloc(num_rpcs*sizeof(hg_handle_t));
-    
-    memcpy(&remote_odsc_tab[num_remote], remote_odsc_tab, num_remote*sizeof(obj_descriptor));
+
+    int num_rpcs;
+    struct obj_data **remote_od;
+    bulk_in_t *bin;
+    margo_request *breq;
+    hg_handle_t *bhndl;
 
     // preset data volume for host_based / GDR = 50% : 50%
     // cut the data along the highest dimension
     // first piece goes to host, second piece goes to GDR
     static double host_ratio = 0.5;
     static double gdr_ratio = 0.5;
-    
+    double gdr_timer = 0, host_timer = 0;
+
     int cut_dim; // find the highest dimension whose dim length > 1
     uint64_t dist; // the bbox distance of the cut_dim
     hg_size_t host_rdma_size, gdr_rdma_size;
     hg_addr_t bserver_addr;
     int gdr_idx;
-    // first N elems in remote_odsc_tab, bin, remote_od, breq and bhndl
-    // go to host: [0 : N-1]->host, [N: num_odsc-1]->GDR
-    for(int i=0; i<num_remote; i++) {
-        for(int j=0; j<remote_odsc_tab[i].bb.num_dims; j++) {
-            if(remote_odsc_tab[i].bb.ub.c[j] - remote_odsc_tab[i].bb.lb.c[j] > 0) {
-                cut_dim = j;
-                break;
-            }
-        }
-        dist = remote_odsc_tab[i].bb.ub.c[cut_dim]- remote_odsc_tab[i].bb.lb.c[cut_dim] + 1;
-        remote_odsc_tab[i].bb.ub.c[cut_dim] = 
-            (uint64_t) (remote_odsc_tab[i].bb.lb.c[cut_dim] + dist * host_ratio);
-        margo_addr_lookup(client->mid, remote_odsc_tab[i].owner, &bserver_addr);
-        /* Start host-based RPC ASAP */
-        remote_od[i] = obj_data_alloc(&remote_odsc_tab[i]);
-        bin[i].odsc.size = sizeof(obj_descriptor);
-        bin[i].odsc.raw_odsc = (char *)(&remote_odsc_tab[i]);
-        host_rdma_size = qodsc.size * bbox_volume(&remote_odsc_tab[i].bb);
-        margo_bulk_create(client->mid, 1, (void **)(&(remote_od[i]->data)),
-                            &host_rdma_size, HG_BULK_WRITE_ONLY, &bin[i].handle);
-        if(remote_odsc_tab[i].flags & DS_CLIENT_STORAGE) {
-            DEBUG_OUT("retrieving object from client-local storage.\n");
-            margo_create(client->mid, bserver_addr, client->get_local_id,
-                         &bhndl[i]);
-        } else {
-            DEBUG_OUT("retrieving object from server storage.\n");
-            margo_create(client->mid, bserver_addr, client->get_id, &bhndl[i]);
-        }
-        margo_iforward(bhndl[i], &bin[i], &breq[i]);
-        /* GDR RPC */
-        gdr_idx = i + num_remote;
-        remote_odsc_tab[gdr_idx].bb.lb.c[cut_dim] = remote_odsc_tab[i].bb.ub.c[cut_dim] + 1;
-        remote_od[gdr_idx] = obj_data_alloc_cuda(&remote_odsc_tab[gdr_idx]);
-        bin[gdr_idx].odsc.size = sizeof(obj_descriptor);
-        bin[gdr_idx].odsc.raw_odsc = (char *)(&remote_odsc_tab[gdr_idx]);
-        gdr_rdma_size = qodsc.size * bbox_volume(&remote_odsc_tab[gdr_idx].bb);
-        margo_bulk_create_attr(client->mid, 1, (void **)(&(remote_od[gdr_idx]->data)),
-                                &gdr_rdma_size, HG_BULK_WRITE_ONLY, &bulk_attr,
-                                &bin[gdr_idx].handle);
-        if(remote_odsc_tab[gdr_idx].flags & DS_CLIENT_STORAGE) {
-            DEBUG_OUT("retrieving object from client-local storage.\n");
-            margo_create(client->mid, bserver_addr, client->get_local_id,
-                         &bhndl[gdr_idx]);
-        } else {
-            DEBUG_OUT("retrieving object from server storage.\n");
-            margo_create(client->mid, bserver_addr, client->get_id, &bhndl[gdr_idx]);
-        }
-        margo_iforward(bhndl[gdr_idx], &bin[gdr_idx], &breq[gdr_idx]);
-        margo_addr_free(client->mid, bserver_addr);
-    }
-
-    // free odsc query resources
-    margo_free_output(qhandle, &qout);
-    margo_destroy(qhandle);
 
     cudaStream_t *host_stream, *gdr_stream;
     int remote_stream_size, host_stream_size, gdr_stream_size;
 
-    if(num_rpcs < client->cuda_info.num_concurrent_kernels) {
-        remote_stream_size = num_rpcs;
-    } else {
-        remote_stream_size = client->cuda_info.num_concurrent_kernels;
-    }
-    host_stream_size = (int) (remote_stream_size / 2);
-    gdr_stream_size = remote_stream_size - host_stream_size;
-
-    host_stream = (cudaStream_t*) malloc(host_stream_size*sizeof(cudaStream_t));
-    alloc_cnt = 0;
-    for(int i = 0; i < host_stream_size; i++) {
-        curet = cudaStreamCreateWithFlags(&host_stream[i], cudaStreamNonBlocking);
-        if(curet != cudaSuccess) {
-            fprintf(stderr, "ERROR: (%s): cudaStreamCreateWithFlags() failed, Err Code: (%s)\n",
-                    __func__, cudaGetErrorString(curet));
-            for(int j=0; j<alloc_cnt; j++) {
-                cudaStreamDestroy(host_stream[j]);
-            }
-            free(host_stream);
-            for(int j = 0; j < num_remote; j++) {
-                obj_data_free(remote_od[j]);
-                obj_data_free_cuda(remote_od[j+num_remote]);
-            }
-            free(remote_od);
-            free(bhndl);
-            free(breq);
-            free(bin);
-            free(remote_odsc_tab);
-            free(odsc_tab);
-            for(int j=0; j<num_local; j++) {
-                obj_data_free_cuda(local_device_od[j]);
-            }
-            free(local_device_od);
-            for(int j=0; j<local_stream_size; j++) {
-                cudaStreamDestroy(local_stream[j]);
-            }
-            free(local_stream);
-            free(local_od);
-            free(return_od);
-            if(init_pattern) {
-                list_del(&getobj_ent->entry);
-                free(getobj_ent->var_name);
-                free(getobj_ent);
-            }
-            return dspaces_ERR_CUDA;
-        }
-        alloc_cnt++ ;
-    }
-
-    gdr_stream = (cudaStream_t*) malloc(gdr_stream_size*sizeof(cudaStream_t));
-    alloc_cnt = 0;
-    for(int i = 0; i < gdr_stream_size; i++) {
-        curet = cudaStreamCreateWithFlags(&gdr_stream[i], cudaStreamNonBlocking);
-        if(curet != cudaSuccess) {
-            fprintf(stderr, "ERROR: (%s): cudaStreamCreateWithFlags() failed, Err Code: (%s)\n",
-                    __func__, cudaGetErrorString(curet));
-            for(int j=0; j<alloc_cnt; j++) {
-                cudaStreamDestroy(gdr_stream[j]);
-            }
-            free(gdr_stream);
-            for(int j=0; j<host_stream_size; j++) {
-                cudaStreamDestroy(host_stream[j]);
-            }
-            free(host_stream);
-            for(int j = 0; j < num_remote; j++) {
-                obj_data_free(remote_od[j]);
-                obj_data_free_cuda(remote_od[j+num_remote]);
-            }
-            free(remote_od);
-            free(bhndl);
-            free(breq);
-            free(bin);
-            free(remote_odsc_tab);
-            free(odsc_tab);
-            for(int j=0; j<num_local; j++) {
-                obj_data_free_cuda(local_device_od[j]);
-            }
-            free(local_device_od);
-            for(int j=0; j<local_stream_size; j++) {
-                cudaStreamDestroy(local_stream[j]);
-            }
-            free(local_stream);
-            free(local_od);
-            free(return_od);
-            if(init_pattern) {
-                list_del(&getobj_ent->entry);
-                free(getobj_ent->var_name);
-                free(getobj_ent);
-            }
-            return dspaces_ERR_CUDA;
-        }
-        alloc_cnt++ ;
-    }
-
-    double gdr_timer = 0, host_timer = 0;
-
-    struct obj_data **remote_device_od = 
-        (struct obj_data **) malloc(num_remote * sizeof(struct obj_data*));;
+    struct obj_data **remote_device_od;
     bulk_out_t bresp;
     struct list_head req_done_list;
     struct size_t_list_entry *req_ent, *req_tmp;
-    INIT_LIST_HEAD(&req_done_list);
     size_t req_idx;
 
+    if(num_remote) {
+        // RPC resources allocation
+        num_rpcs = 2*num_remote;
+        remote_odsc_tab = 
+            (obj_descriptor*) realloc(remote_odsc_tab, num_rpcs*sizeof(obj_descriptor));
+        remote_od = (struct obj_data**) malloc(num_rpcs*sizeof(struct obj_data*));
+        bin = (bulk_in_t *)malloc(num_rpcs*sizeof(bulk_in_t));
+        breq = (margo_request *)malloc(num_rpcs*sizeof(margo_request));
+        bhndl = (hg_handle_t *)malloc(num_rpcs*sizeof(hg_handle_t));
+        memcpy(&remote_odsc_tab[num_remote], remote_odsc_tab, num_remote*sizeof(obj_descriptor));
+
+        // first N elems in remote_odsc_tab, bin, remote_od, breq and bhndl
+        // go to host: [0 : N-1]->host, [N: num_odsc-1]->GDR
+        for(int i=0; i<num_remote; i++) {
+            for(int j=0; j<remote_odsc_tab[i].bb.num_dims; j++) {
+                if(remote_odsc_tab[i].bb.ub.c[j] - remote_odsc_tab[i].bb.lb.c[j] > 0) {
+                    cut_dim = j;
+                    break;
+                }
+            }
+            dist = remote_odsc_tab[i].bb.ub.c[cut_dim]- remote_odsc_tab[i].bb.lb.c[cut_dim] + 1;
+            remote_odsc_tab[i].bb.ub.c[cut_dim] = 
+                (uint64_t) (remote_odsc_tab[i].bb.lb.c[cut_dim] + dist * host_ratio);
+            margo_addr_lookup(client->mid, remote_odsc_tab[i].owner, &bserver_addr);
+            /* Start host-based RPC ASAP */
+            remote_od[i] = obj_data_alloc(&remote_odsc_tab[i]);
+            bin[i].odsc.size = sizeof(obj_descriptor);
+            bin[i].odsc.raw_odsc = (char *)(&remote_odsc_tab[i]);
+            host_rdma_size = qodsc.size * bbox_volume(&remote_odsc_tab[i].bb);
+            margo_bulk_create(client->mid, 1, (void **)(&(remote_od[i]->data)),
+                                &host_rdma_size, HG_BULK_WRITE_ONLY, &bin[i].handle);
+            if(remote_odsc_tab[i].flags & DS_CLIENT_STORAGE) {
+                DEBUG_OUT("retrieving object from client-local storage.\n");
+                margo_create(client->mid, bserver_addr, client->get_local_id,
+                            &bhndl[i]);
+            } else {
+                DEBUG_OUT("retrieving object from server storage.\n");
+                margo_create(client->mid, bserver_addr, client->get_id, &bhndl[i]);
+            }
+            margo_iforward(bhndl[i], &bin[i], &breq[i]);
+            /* GDR RPC */
+            gdr_idx = i + num_remote;
+            remote_odsc_tab[gdr_idx].bb.lb.c[cut_dim] = remote_odsc_tab[i].bb.ub.c[cut_dim] + 1;
+            remote_od[gdr_idx] = obj_data_alloc_cuda(&remote_odsc_tab[gdr_idx]);
+            bin[gdr_idx].odsc.size = sizeof(obj_descriptor);
+            bin[gdr_idx].odsc.raw_odsc = (char *)(&remote_odsc_tab[gdr_idx]);
+            gdr_rdma_size = qodsc.size * bbox_volume(&remote_odsc_tab[gdr_idx].bb);
+            margo_bulk_create_attr(client->mid, 1, (void **)(&(remote_od[gdr_idx]->data)),
+                                    &gdr_rdma_size, HG_BULK_WRITE_ONLY, &bulk_attr,
+                                    &bin[gdr_idx].handle);
+            if(remote_odsc_tab[gdr_idx].flags & DS_CLIENT_STORAGE) {
+                DEBUG_OUT("retrieving object from client-local storage.\n");
+                margo_create(client->mid, bserver_addr, client->get_local_id,
+                            &bhndl[gdr_idx]);
+            } else {
+                DEBUG_OUT("retrieving object from server storage.\n");
+                margo_create(client->mid, bserver_addr, client->get_id, &bhndl[gdr_idx]);
+            }
+            margo_iforward(bhndl[gdr_idx], &bin[gdr_idx], &breq[gdr_idx]);
+            margo_addr_free(client->mid, bserver_addr);
+        }
+
+        free(odsc_tab);
+
+        // CUDA stream allocation
+        if(num_rpcs < client->cuda_info.num_concurrent_kernels) {
+            remote_stream_size = num_rpcs;
+        } else {
+            remote_stream_size = client->cuda_info.num_concurrent_kernels;
+        }
+        host_stream_size = (int) (remote_stream_size / 2);
+        gdr_stream_size = remote_stream_size - host_stream_size;
+
+        host_stream = (cudaStream_t*) malloc(host_stream_size*sizeof(cudaStream_t));
+        alloc_cnt = 0;
+        for(int i = 0; i < host_stream_size; i++) {
+            curet = cudaStreamCreateWithFlags(&host_stream[i], cudaStreamNonBlocking);
+            if(curet != cudaSuccess) {
+                fprintf(stderr, "ERROR: (%s): cudaStreamCreateWithFlags() failed, Err Code: (%s)\n",
+                        __func__, cudaGetErrorString(curet));
+                for(int j=0; j<alloc_cnt; j++) {
+                    cudaStreamDestroy(host_stream[j]);
+                }
+                free(host_stream);
+                for(int j = 0; j < num_remote; j++) {
+                    obj_data_free(remote_od[j]);
+                    obj_data_free_cuda(remote_od[j+num_remote]);
+                }
+                free(remote_od);
+                free(bhndl);
+                free(breq);
+                free(bin);
+                free(remote_odsc_tab);
+                for(int j=0; j<num_local; j++) {
+                    obj_data_free_cuda(local_device_od[j]);
+                }
+                free(local_device_od);
+                for(int j=0; j<local_stream_size; j++) {
+                    cudaStreamDestroy(local_stream[j]);
+                }
+                free(local_stream);
+                free(local_od);
+                free(return_od);
+                if(init_pattern) {
+                    list_del(&getobj_ent->entry);
+                    free(getobj_ent->var_name);
+                    free(getobj_ent);
+                }
+                return dspaces_ERR_CUDA;
+            }
+            alloc_cnt++ ;
+        }
+
+        gdr_stream = (cudaStream_t*) malloc(gdr_stream_size*sizeof(cudaStream_t));
+        alloc_cnt = 0;
+        for(int i = 0; i < gdr_stream_size; i++) {
+            curet = cudaStreamCreateWithFlags(&gdr_stream[i], cudaStreamNonBlocking);
+            if(curet != cudaSuccess) {
+                fprintf(stderr, "ERROR: (%s): cudaStreamCreateWithFlags() failed, Err Code: (%s)\n",
+                        __func__, cudaGetErrorString(curet));
+                for(int j=0; j<alloc_cnt; j++) {
+                    cudaStreamDestroy(gdr_stream[j]);
+                }
+                free(gdr_stream);
+                for(int j=0; j<host_stream_size; j++) {
+                    cudaStreamDestroy(host_stream[j]);
+                }
+                free(host_stream);
+                for(int j = 0; j < num_remote; j++) {
+                    obj_data_free(remote_od[j]);
+                    obj_data_free_cuda(remote_od[j+num_remote]);
+                }
+                free(remote_od);
+                free(bhndl);
+                free(breq);
+                free(bin);
+                free(remote_odsc_tab);
+                for(int j=0; j<num_local; j++) {
+                    obj_data_free_cuda(local_device_od[j]);
+                }
+                free(local_device_od);
+                for(int j=0; j<local_stream_size; j++) {
+                    cudaStreamDestroy(local_stream[j]);
+                }
+                free(local_stream);
+                free(local_od);
+                free(return_od);
+                if(init_pattern) {
+                    list_del(&getobj_ent->entry);
+                    free(getobj_ent->var_name);
+                    free(getobj_ent);
+                }
+                return dspaces_ERR_CUDA;
+            }
+            alloc_cnt++ ;
+        }
+        remote_device_od = 
+            (struct obj_data **) malloc(num_remote * sizeof(struct obj_data*));
+        INIT_LIST_HEAD(&req_done_list);
+    }
+    
+    // free odsc query resources
+    margo_free_output(qhandle, &qout);
+    margo_destroy(qhandle);
+
+    // finish ssd_copy_cuda_async of local od
     for(int i=0; i<local_stream_size; i++) {
         curet = cudaStreamSynchronize(local_stream[i]);
         if(curet != cudaSuccess) {
             fprintf(stderr, "ERROR: (%s): cudaStreamSynchronize() failed, Err Code: (%s)\n",
                         __func__, cudaGetErrorString(curet));
-            free(remote_device_od);
-            for(int j=0; j<host_stream_size; j++) {
-                cudaStreamDestroy(host_stream[j]);
+            if(num_remote) {
+                free(remote_device_od);
+                for(int j=0; j<host_stream_size; j++) {
+                    cudaStreamDestroy(host_stream[j]);
+                }
+                free(host_stream);
+                for(int j=0; j<gdr_stream_size; j++) {
+                    cudaStreamDestroy(gdr_stream[j]);
+                }
+                free(gdr_stream);
+                for(int j = 0; j < num_remote; j++) {
+                    obj_data_free(remote_od[j]);
+                    obj_data_free_cuda(remote_od[j+num_remote]);
+                }
+                free(remote_od);
+                free(bhndl);
+                free(breq);
+                free(bin);
             }
-            free(host_stream);
-            for(int j=0; j<gdr_stream_size; j++) {
-                cudaStreamDestroy(gdr_stream[j]);
-            }
-            free(gdr_stream);
-            for(int j = 0; j < num_remote; j++) {
-                obj_data_free(remote_od[j]);
-                obj_data_free_cuda(remote_od[j+num_remote]);
-            }
-            free(remote_od);
-            free(bhndl);
-            free(breq);
-            free(bin);
             free(remote_odsc_tab);
-            free(odsc_tab);
             for(int j=0; j<num_local; j++) {
                 obj_data_free_cuda(local_device_od[j]);
             }
@@ -5406,64 +5414,26 @@ static int dspaces_cuda_dcds_get(dspaces_client_t client, const char *var_name, 
     free(local_stream);
     free(local_od);
 
-    do {
-        gettimeofday(&start, NULL);
-        hret = margo_wait_any(num_rpcs, breq, &req_idx);
-        if(hret != HG_SUCCESS) {
-            fprintf(stderr,
-                "ERROR: (%s): margo_wait_any() failed, idx = %zu. Err Code = %d.\n",
-                    __func__, req_idx, hret);
-            list_for_each_entry_safe(req_ent, req_tmp, &req_done_list,
-                                        struct size_t_list_entry, entry) {
-                obj_data_free_cuda(remote_device_od[req_ent->value]);
-                list_del(&req_ent->entry);
-                free(req_ent);
-            }
-            free(remote_device_od);
-            for(int i=0; i<host_stream_size; i++) {
-                cudaStreamDestroy(host_stream[i]);
-            }
-            free(host_stream);
-            for(int i=0; i<gdr_stream_size; i++) {
-                cudaStreamDestroy(gdr_stream[i]);
-            }
-            free(gdr_stream);
-            for(int j = 0; j < num_remote; j++) {
-                obj_data_free(remote_od[j]);
-                obj_data_free_cuda(remote_od[j+num_remote]);
-            }
-            free(remote_od);
-            free(bhndl);
-            free(breq);
-            free(bin);
-            free(remote_odsc_tab);
-            free(odsc_tab);
-            free(return_od);
-            if(init_pattern) {
-                list_del(&getobj_ent->entry);
-                free(getobj_ent->var_name);
-                free(getobj_ent);
-            }
-            return dspaces_ERR_MERCURY;
-        }
-        // break when all req are finished
-        if(req_idx == num_odscs) {
-            break;
-        }
-        breq[req_idx] = MARGO_REQUEST_NULL;
-        margo_get_output(bhndl[req_idx], &bresp);
-        if(req_idx < num_odscs) { // host-based path
-            remote_device_od[req_idx] = obj_data_alloc_cuda(&remote_odsc_tab[req_idx]);
-            // H->D async transfer
-            h2d_size = (qodsc.size)*bbox_volume(&remote_odsc_tab[req_idx].bb);
-            curet = cudaMemcpyAsync(remote_device_od[req_idx]->data,
-                                    remote_od[req_idx]->data, h2d_size,
-                                    cudaMemcpyHostToDevice,
-                                    host_stream[req_idx%host_stream_size]);
-            if(curet != cudaSuccess) {
-                fprintf(stderr, "ERROR: (%s): cudaMemcpyAsync() failed, Err Code: (%s)\n",
-                        __func__, cudaGetErrorString(curet));
-                obj_data_free_cuda(remote_device_od[req_idx]);
+    /*  Try to tune the ratio every 2 timesteps
+        At timestep (t), if 2nd timer(t) < 0.2ms, means 2nd request(t) finishes no later than the 1st(t).
+            Keep the same ratio at (t+1), but swap the request.
+            If the 2nd timer(t+1) < 0.2ms, means almost same time; else, tune the ratio and not swap request
+            Suppose gdr finishes first initially: wait_flag = 0 -> GDR first; wait_flag = 1 -> host first
+        else
+    */
+    cudaStream_t *stream0, *stream1;
+    int stream_size0, stream_size1;
+    double *timer0, *timer1;
+    static int wait_flag = 0;
+    double epsilon = 0.2; // 0.2ms
+    if(num_remote) {
+        do {
+            gettimeofday(&start, NULL);
+            hret = margo_wait_any(num_rpcs, breq, &req_idx);
+            if(hret != HG_SUCCESS) {
+                fprintf(stderr,
+                    "ERROR: (%s): margo_wait_any() failed, idx = %zu. Err Code = %d.\n",
+                        __func__, req_idx, hret);
                 list_for_each_entry_safe(req_ent, req_tmp, &req_done_list,
                                             struct size_t_list_entry, entry) {
                     obj_data_free_cuda(remote_device_od[req_ent->value]);
@@ -5488,7 +5458,106 @@ static int dspaces_cuda_dcds_get(dspaces_client_t client, const char *var_name, 
                 free(breq);
                 free(bin);
                 free(remote_odsc_tab);
-                free(odsc_tab);
+                free(return_od);
+                if(init_pattern) {
+                    list_del(&getobj_ent->entry);
+                    free(getobj_ent->var_name);
+                    free(getobj_ent);
+                }
+                return dspaces_ERR_MERCURY;
+            }
+            // break when all req are finished
+            if(req_idx == num_odscs) {
+                break;
+            }
+            breq[req_idx] = MARGO_REQUEST_NULL;
+            margo_get_output(bhndl[req_idx], &bresp);
+            if(req_idx < num_odscs) { // host-based path
+                remote_device_od[req_idx] = obj_data_alloc_cuda(&remote_odsc_tab[req_idx]);
+                // H->D async transfer
+                h2d_size = (qodsc.size)*bbox_volume(&remote_odsc_tab[req_idx].bb);
+                curet = cudaMemcpyAsync(remote_device_od[req_idx]->data,
+                                        remote_od[req_idx]->data, h2d_size,
+                                        cudaMemcpyHostToDevice,
+                                        host_stream[req_idx%host_stream_size]);
+                if(curet != cudaSuccess) {
+                    fprintf(stderr, "ERROR: (%s): cudaMemcpyAsync() failed, Err Code: (%s)\n",
+                            __func__, cudaGetErrorString(curet));
+                    obj_data_free_cuda(remote_device_od[req_idx]);
+                    list_for_each_entry_safe(req_ent, req_tmp, &req_done_list,
+                                                struct size_t_list_entry, entry) {
+                        obj_data_free_cuda(remote_device_od[req_ent->value]);
+                        list_del(&req_ent->entry);
+                        free(req_ent);
+                    }
+                    free(remote_device_od);
+                    for(int i=0; i<host_stream_size; i++) {
+                        cudaStreamDestroy(host_stream[i]);
+                    }
+                    free(host_stream);
+                    for(int i=0; i<gdr_stream_size; i++) {
+                        cudaStreamDestroy(gdr_stream[i]);
+                    }
+                    free(gdr_stream);
+                    for(int j = 0; j < num_remote; j++) {
+                        obj_data_free(remote_od[j]);
+                        obj_data_free_cuda(remote_od[j+num_remote]);
+                    }
+                    free(remote_od);
+                    free(bhndl);
+                    free(breq);
+                    free(bin);
+                    free(remote_odsc_tab);
+                    free(return_od);
+                    if(init_pattern) {
+                        list_del(&getobj_ent->entry);
+                        free(getobj_ent->var_name);
+                        free(getobj_ent);
+                    }
+                    return dspaces_ERR_CUDA;
+                }
+                // track allocated device_od
+                req_ent = 
+                    (struct size_t_list_entry *) malloc(sizeof(struct size_t_list_entry));
+                req_ent->value = req_idx;
+                list_add(&req_ent->entry, &req_done_list);
+                ret = ssd_copy_cuda_async(return_od, remote_device_od[req_idx],
+                                    &host_stream[req_idx%host_stream_size]);
+                gettimeofday(&end, NULL);
+                host_timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+            } else { // GDR path
+                ret = ssd_copy_cuda_async(return_od, remote_od[req_idx], 
+                                &gdr_stream[(req_idx-num_remote)%gdr_stream_size]);
+                gettimeofday(&end, NULL);
+                gdr_timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+            }
+            if(ret != dspaces_SUCCESS) {
+                fprintf(stderr, "ERROR: (%s): ssd_copy_cuda_async() failed, Err Code: (%d)\n",
+                    __func__, ret);
+                list_for_each_entry_safe(req_ent, req_tmp, &req_done_list,
+                                            struct size_t_list_entry, entry) {
+                    obj_data_free_cuda(remote_device_od[req_ent->value]);
+                    list_del(&req_ent->entry);
+                    free(req_ent);
+                }
+                free(remote_device_od);
+                for(int i=0; i<host_stream_size; i++) {
+                    cudaStreamDestroy(host_stream[i]);
+                }
+                free(host_stream);
+                for(int i=0; i<gdr_stream_size; i++) {
+                    cudaStreamDestroy(gdr_stream[i]);
+                }
+                free(gdr_stream);
+                for(int j = 0; j < num_remote; j++) {
+                    obj_data_free(remote_od[j]);
+                    obj_data_free_cuda(remote_od[j+num_remote]);
+                }
+                free(remote_od);
+                free(bhndl);
+                free(breq);
+                free(bin);
+                free(remote_odsc_tab);
                 free(return_od);
                 if(init_pattern) {
                     list_del(&getobj_ent->entry);
@@ -5497,207 +5566,139 @@ static int dspaces_cuda_dcds_get(dspaces_client_t client, const char *var_name, 
                 }
                 return dspaces_ERR_CUDA;
             }
-            // track allocated device_od
-            req_ent = 
-                (struct size_t_list_entry *) malloc(sizeof(struct size_t_list_entry));
-            req_ent->value = req_idx;
-            list_add(&req_ent->entry, &req_done_list);
-            ret = ssd_copy_cuda_async(return_od, remote_device_od[req_idx],
-                                &host_stream[req_idx%host_stream_size]);
+            margo_free_output(bhndl[req_idx], &bresp);
+            margo_bulk_free(bin[req_idx].handle);
+            margo_destroy(bhndl[req_idx]);
+        } while(req_idx != num_remote);
+
+        // beyond this point, all device_od are allocated
+        list_for_each_entry_safe(req_ent, req_tmp, &req_done_list, struct size_t_list_entry, entry) {
+            list_del(&req_ent->entry);
+            free(req_ent);
+        }
+
+        free(bhndl);
+        free(breq);
+        free(bin);
+
+        if(wait_flag == 0) {
+            stream0 = gdr_stream;
+            stream_size0 = gdr_stream_size;
+            timer0 = &gdr_timer;
+            stream1 = host_stream;
+            stream_size1 = host_stream_size;
+            timer1 = &host_timer;
+        } else {
+            stream0 = host_stream;
+            stream_size0 = host_stream_size;
+            timer0 = &host_timer;
+            stream1 = gdr_stream;
+            stream_size1 = gdr_stream_size;
+            timer1 = &gdr_timer;
+        }
+
+        for(int i=0; i<stream_size0; i++) {
+            gettimeofday(&start, NULL);
+            curet = cudaStreamSynchronize(stream0[i]);
             gettimeofday(&end, NULL);
-            host_timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
-        } else { // GDR path
-            ret = ssd_copy_cuda_async(return_od, remote_od[req_idx], 
-                            &gdr_stream[(req_idx-num_remote)%gdr_stream_size]);
+            *timer0 += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+            if(curet != cudaSuccess) {
+                fprintf(stderr, "ERROR: (%s): cudaStreamSynchronize() failed, Err Code: (%s)\n",
+                            __func__, cudaGetErrorString(curet));
+                for(int j=i; j<stream_size0; j++) {
+                    cudaStreamDestroy(stream0[j]);
+                }
+                free(stream0);
+                for(int j=0; j<stream_size1; j++) {
+                    cudaStreamDestroy(stream1[j]);
+                }
+                free(stream1);
+                for(int j = 0; j < num_remote; j++) {
+                    obj_data_free(remote_od[j]);
+                    obj_data_free_cuda(remote_od[j+num_remote]);
+                    obj_data_free_cuda(remote_device_od[j]);
+                }
+                free(remote_device_od);
+                free(remote_od);
+                free(remote_odsc_tab);
+                free(return_od);
+                if(init_pattern) {
+                    list_del(&getobj_ent->entry);
+                    free(getobj_ent->var_name);
+                    free(getobj_ent);
+                }
+                return dspaces_ERR_CUDA;
+            }
+            cudaStreamDestroy(stream0[i]);
+        }
+
+        for(int i=0; i<stream_size1; i++) {
+            gettimeofday(&start, NULL);
+            curet = cudaStreamSynchronize(stream1[i]);
             gettimeofday(&end, NULL);
-            gdr_timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+            *timer1 += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+            if(curet != cudaSuccess) {
+                fprintf(stderr, "ERROR: (%s): cudaStreamSynchronize() failed, Err Code: (%s)\n",
+                            __func__, cudaGetErrorString(curet));
+                free(stream0);
+                for(int j=i; j<stream_size1; j++) {
+                    cudaStreamDestroy(stream1[j]);
+                }
+                free(stream1);
+                for(int j = 0; j < num_remote; j++) {
+                    obj_data_free(remote_od[j]);
+                    obj_data_free_cuda(remote_od[j+num_remote]);
+                    obj_data_free_cuda(remote_device_od[j]);
+                }
+                free(remote_device_od);
+                free(remote_od);
+                free(remote_odsc_tab);
+                free(return_od);
+                if(init_pattern) {
+                    list_del(&getobj_ent->entry);
+                    free(getobj_ent->var_name);
+                    free(getobj_ent);
+                }
+                return dspaces_ERR_CUDA;
+            }
+            cudaStreamDestroy(stream1[i]);
         }
-        if(ret != dspaces_SUCCESS) {
-            fprintf(stderr, "ERROR: (%s): ssd_copy_cuda_async() failed, Err Code: (%d)\n",
-                __func__, ret);
-            list_for_each_entry_safe(req_ent, req_tmp, &req_done_list,
-                                        struct size_t_list_entry, entry) {
-                obj_data_free_cuda(remote_device_od[req_ent->value]);
-                list_del(&req_ent->entry);
-                free(req_ent);
-            }
-            free(remote_device_od);
-            for(int i=0; i<host_stream_size; i++) {
-                cudaStreamDestroy(host_stream[i]);
-            }
-            free(host_stream);
-            for(int i=0; i<gdr_stream_size; i++) {
-                cudaStreamDestroy(gdr_stream[i]);
-            }
-            free(gdr_stream);
-            for(int j = 0; j < num_remote; j++) {
-                obj_data_free(remote_od[j]);
-                obj_data_free_cuda(remote_od[j+num_remote]);
-            }
-            free(remote_od);
-            free(bhndl);
-            free(breq);
-            free(bin);
-            free(remote_odsc_tab);
-            free(odsc_tab);
-            free(return_od);
-            if(init_pattern) {
-                list_del(&getobj_ent->entry);
-                free(getobj_ent->var_name);
-                free(getobj_ent);
-            }
-            return dspaces_ERR_CUDA;
-        }
-        margo_free_output(bhndl[req_idx], &bresp);
-        margo_bulk_free(bin[req_idx].handle);
-        margo_destroy(bhndl[req_idx]);
-    } while(req_idx != num_remote);
 
-    // beyond this point, all device_od are allocated
-    list_for_each_entry_safe(req_ent, req_tmp, &req_done_list, struct size_t_list_entry, entry) {
-        list_del(&req_ent->entry);
-        free(req_ent);
-    }
+        free(gdr_stream);
+        free(host_stream);
 
-    free(bhndl);
-    free(breq);
-    free(bin);
-
-    
-    
-    /*  Try to tune the ratio every 2 timesteps
-        At timestep (t), if 2nd timer(t) < 0.2ms, means 2nd request(t) finishes no later than the 1st(t).
-            Keep the same ratio at (t+1), but swap the request.
-            If the 2nd timer(t+1) < 0.2ms, means almost same time; else, tune the ratio and not swap request
-            Suppose gdr finishes first initially: wait_flag = 0 -> GDR first; wait_flag = 1 -> host first
-        else
-    */
-    cudaStream_t *stream0, *stream1;
-    int stream_size0, stream_size1;
-    double *timer0, *timer1;
-    static int wait_flag = 0;
-    if(wait_flag == 0) {
-        stream0 = gdr_stream;
-        stream_size0 = gdr_stream_size;
-        timer0 = &gdr_timer;
-        stream1 = host_stream;
-        stream_size1 = host_stream_size;
-        timer1 = &host_timer;
-    } else {
-        stream0 = host_stream;
-        stream_size0 = host_stream_size;
-        timer0 = &host_timer;
-        stream1 = gdr_stream;
-        stream_size1 = gdr_stream_size;
-        timer1 = &gdr_timer;
-    }
-
-    for(int i=0; i<stream_size0; i++) {
-        gettimeofday(&start, NULL);
-        curet = cudaStreamSynchronize(stream0[i]);
-        gettimeofday(&end, NULL);
-        *timer0 += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
-        if(curet != cudaSuccess) {
-            fprintf(stderr, "ERROR: (%s): cudaStreamSynchronize() failed, Err Code: (%s)\n",
-                        __func__, cudaGetErrorString(curet));
-            for(int j=i; j<stream_size0; j++) {
-                cudaStreamDestroy(stream0[j]);
-            }
-            free(stream0);
-            for(int j=0; j<stream_size1; j++) {
-                cudaStreamDestroy(stream1[j]);
-            }
-            free(stream1);
-            for(int j = 0; j < num_remote; j++) {
-                obj_data_free(remote_od[j]);
-                obj_data_free_cuda(remote_od[j+num_remote]);
-                obj_data_free_cuda(remote_device_od[j]);
-            }
-            free(remote_device_od);
-            free(remote_od);
-            free(remote_odsc_tab);
-            free(odsc_tab);
-            free(return_od);
-            if(init_pattern) {
-                list_del(&getobj_ent->entry);
-                free(getobj_ent->var_name);
-                free(getobj_ent);
-            }
-            return dspaces_ERR_CUDA;
-        }
-        cudaStreamDestroy(stream0[i]);
-    }
-
-    for(int i=0; i<stream_size1; i++) {
-        gettimeofday(&start, NULL);
-        curet = cudaStreamSynchronize(stream1[i]);
-        gettimeofday(&end, NULL);
-        *timer1 += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
-        if(curet != cudaSuccess) {
-            fprintf(stderr, "ERROR: (%s): cudaStreamSynchronize() failed, Err Code: (%s)\n",
-                        __func__, cudaGetErrorString(curet));
-            free(stream0);
-            for(int j=i; j<stream_size1; j++) {
-                cudaStreamDestroy(stream1[j]);
-            }
-            free(stream1);
-            for(int j = 0; j < num_remote; j++) {
-                obj_data_free(remote_od[j]);
-                obj_data_free_cuda(remote_od[j+num_remote]);
-                obj_data_free_cuda(remote_device_od[j]);
-            }
-            free(remote_device_od);
-            free(remote_od);
-            free(remote_odsc_tab);
-            free(odsc_tab);
-            free(return_od);
-            if(init_pattern) {
-                list_del(&getobj_ent->entry);
-                free(getobj_ent->var_name);
-                free(getobj_ent);
-            }
-            return dspaces_ERR_CUDA;
-        }
-        cudaStreamDestroy(stream1[i]);
-    }
-
-    free(gdr_stream);
-    free(host_stream);
-    
-    double epsilon = 0.2; // 0.2ms
-
-    if(*timer1 > stream_size1*epsilon) {
-        // 2nd request takes longer time, tune ratio
-        if(gdr_timer < host_timer) {
-            if(host_timer - gdr_timer > 1e-3) {
-                gdr_ratio += ((host_timer - gdr_timer) / host_timer) * (1-gdr_ratio);
-                host_ratio = 1 - gdr_ratio;
+        if(*timer1 > stream_size1*epsilon) {
+            // 2nd request takes longer time, tune ratio
+            if(gdr_timer < host_timer) {
+                if(host_timer - gdr_timer > 1e-3) {
+                    gdr_ratio += ((host_timer - gdr_timer) / host_timer) * (1-gdr_ratio);
+                    host_ratio = 1 - gdr_ratio;
+                }
+            } else {
+                if(gdr_timer - host_timer > 1e-3) {
+                    gdr_ratio -= ((gdr_timer - host_timer) / gdr_timer) * (gdr_ratio-0);
+                    host_ratio = 1 - gdr_ratio;
+                }
             }
         } else {
-            if(gdr_timer - host_timer > 1e-3) {
-                gdr_ratio -= ((gdr_timer - host_timer) / gdr_timer) * (gdr_ratio-0);
-                host_ratio = 1 - gdr_ratio;
-            }
+            // 2nd request finishes no later than the 1st request
+            // swap request by setting flag = 1
+            wait_flag == 0 ? 1:0;
         }
-    } else {
-        // 2nd request finishes no later than the 1st request
-        // swap request by setting flag = 1
-        wait_flag == 0 ? 1:0;
-    }
 
-    DEBUG_OUT("ts = %u, gdr_ratio = %lf, host_ratio = %lf,"
-                "gdr_time = %lf, host_time = %lf\n", qodsc.version, gdr_ratio, host_ratio, 
-                    gdr_timer, host_timer);
-
-    for(int j = 0; j < num_remote; j++) {
-        obj_data_free(remote_od[j]);
-        obj_data_free_cuda(remote_od[j+num_remote]);
-        obj_data_free_cuda(remote_device_od[j]);
+        DEBUG_OUT("ts = %u, gdr_ratio = %lf, host_ratio = %lf,"
+                    "gdr_time = %lf, host_time = %lf\n", qodsc.version, gdr_ratio, host_ratio, 
+                        gdr_timer, host_timer);
+        
+        for(int j = 0; j < num_remote; j++) {
+            obj_data_free(remote_od[j]);
+            obj_data_free_cuda(remote_od[j+num_remote]);
+            obj_data_free_cuda(remote_device_od[j]);
+        }
+        free(remote_device_od);
+        free(remote_od);
     }
-    free(remote_device_od);
-    free(remote_od);
     free(remote_odsc_tab);
-    free(odsc_tab);
     free(return_od);
     
     *ctime = 0;
