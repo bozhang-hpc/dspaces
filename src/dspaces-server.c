@@ -2606,6 +2606,10 @@ static void sub_ods_rpc(hg_handle_t handle)
 
     DEBUG_OUT("received subscription for %s with id %d from %s\n",
               obj_desc_sprint(&in_odsc), sub_ods_id, in_odsc.owner);
+    
+    if(in_odsc.version > ds_conf.max_versions) {
+        return;
+    }
 
     in.param = -1; // this will be interpreted as timeout by any interal queries
     notice.odsc_list.size = get_query_odscs(server, &in, -1, &results, req_id);
