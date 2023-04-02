@@ -5349,7 +5349,7 @@ static int dspaces_cuda_dcds_get(dspaces_client_t client, const char *var_name, 
     struct list_head req_done_list;
     struct size_t_list_entry *req_ent, *req_tmp;
     INIT_LIST_HEAD(&req_done_list);
-    size_t req_idx, host_idx;
+    size_t req_idx;
 
     for(int i=0; i<local_stream_size; i++) {
         curet = cudaStreamSynchronize(local_stream[i]);
@@ -5459,11 +5459,11 @@ static int dspaces_cuda_dcds_get(dspaces_client_t client, const char *var_name, 
             curet = cudaMemcpyAsync(remote_device_od[req_idx]->data,
                                     remote_od[req_idx]->data, h2d_size,
                                     cudaMemcpyHostToDevice,
-                                    host_stream[host_idx%host_stream_size]);
+                                    host_stream[req_idx%host_stream_size]);
             if(curet != cudaSuccess) {
                 fprintf(stderr, "ERROR: (%s): cudaMemcpyAsync() failed, Err Code: (%s)\n",
                         __func__, cudaGetErrorString(curet));
-                obj_data_free_cuda(remote_device_od[host_idx]);
+                obj_data_free_cuda(remote_device_od[req_idx]);
                 list_for_each_entry_safe(req_ent, req_tmp, &req_done_list,
                                             struct size_t_list_entry, entry) {
                     obj_data_free_cuda(remote_device_od[req_ent->value]);
@@ -5502,8 +5502,8 @@ static int dspaces_cuda_dcds_get(dspaces_client_t client, const char *var_name, 
                 (struct size_t_list_entry *) malloc(sizeof(struct size_t_list_entry));
             req_ent->value = req_idx;
             list_add(&req_ent->entry, &req_done_list);
-            ret = ssd_copy_cuda_async(return_od, remote_device_od[host_idx],
-                                &host_stream[host_idx%host_stream_size]);
+            ret = ssd_copy_cuda_async(return_od, remote_device_od[req_idx],
+                                &host_stream[req_idx%host_stream_size]);
             gettimeofday(&end, NULL);
             host_timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
         } else { // GDR path
