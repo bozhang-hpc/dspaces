@@ -5699,11 +5699,7 @@ static int dspaces_cuda_dcds_get(dspaces_client_t client, const char *var_name, 
     free(remote_odsc_tab);
     free(odsc_tab);
     free(return_od);
-    if(init_pattern) {
-        list_del(&getobj_ent->entry);
-        free(getobj_ent->var_name);
-        free(getobj_ent);
-    }
+    
     *ctime = 0;
     return ret;
 }
