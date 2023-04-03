@@ -5169,9 +5169,11 @@ static int dspaces_cuda_dcds_get(dspaces_client_t client, const char *var_name, 
                 memcpy(&remote_odsc_tab[num_remote++], &odsc_tab[i], sizeof(obj_descriptor));
             }   
         }
+        *ctime = num_local / num_odscs;
     } else {
         num_remote = num_odscs;
         memcpy(remote_odsc_tab, qout.odsc_list.raw_odsc, qout.odsc_list.size);
+        *ctime = 0;
     }
     
 
@@ -5714,7 +5716,6 @@ static int dspaces_cuda_dcds_get(dspaces_client_t client, const char *var_name, 
     free(remote_odsc_tab);
     free(return_od);
     
-    *ctime = 0;
     return ret;
 }
 
