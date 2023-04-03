@@ -5994,6 +5994,7 @@ int dspaces_cuda_get(dspaces_client_t client, const char *var_name, unsigned int
                      int elem_size, int ndim, uint64_t *lb, uint64_t *ub, void *data,
                      int timeout, double* ttime, double* ctime)
 {
+    
     struct timeval start, end;
     double timer = 0; // timer in second
     obj_descriptor odsc;
@@ -6002,109 +6003,107 @@ int dspaces_cuda_get(dspaces_client_t client, const char *var_name, unsigned int
     int ret = dspaces_SUCCESS;
     int curet;
 
-    fill_odsc(var_name, ver, elem_size, ndim, lb, ub, &odsc);
+    if(client->cuda_info.cuda_get_mode ==6) { // Dual-Channel-Dual-Staging
+        gettimeofday(&start, NULL);
+        ret = dspaces_cuda_dcds_get(client, var_name, ver, elem_size, ndim, lb, ub, data,
+                                timeout, ttime, ctime);
+        gettimeofday(&end, NULL);
+        timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+    } else {
 
-    DEBUG_OUT("Querying %s with timeout %d\n", obj_desc_sprint(&odsc), timeout);
+        fill_odsc(var_name, ver, elem_size, ndim, lb, ub, &odsc);
 
-    if(client->cuda_info.cuda_get_mode !=6) { // fuse get_odscs() & get_data in dcds_get()
+        DEBUG_OUT("Querying %s with timeout %d\n", obj_desc_sprint(&odsc), timeout);
+
         num_odscs = get_odscs(client, &odsc, timeout, &odsc_tab);
 
         DEBUG_OUT("Finished query - need to fetch %d objects\n", num_odscs);
         for(int i = 0; i < num_odscs; ++i) {
             DEBUG_OUT("%s\n", obj_desc_sprint(&odsc_tab[i]));
         }
-    }
 
-    // send request to get the obj_desc
-    if(num_odscs != 0) {
-        switch (client->cuda_info.cuda_get_mode)
-        {
-        // Baseline
-        case 1:
-        {
-            size_t rdma_size = elem_size*bbox_volume(&odsc.bb);
-            void* buffer = (void*) malloc(rdma_size);
-            gettimeofday(&start, NULL);
-            get_data_baseline(client, num_odscs, odsc, odsc_tab, buffer, ctime);
-            curet = cudaMemcpy(data, buffer, rdma_size, cudaMemcpyHostToDevice);
-            if(curet != cudaSuccess) {
-                fprintf(stderr, "ERROR: (%s): cudaMemcpy() failed, Err Code: (%s)\n", __func__, cudaGetErrorString(curet));
-                ret = dspaces_ERR_CUDA;
+
+        // send request to get the obj_desc
+        if(num_odscs != 0) {
+            switch (client->cuda_info.cuda_get_mode)
+            {
+            // Baseline
+            case 1:
+            {
+                size_t rdma_size = elem_size*bbox_volume(&odsc.bb);
+                void* buffer = (void*) malloc(rdma_size);
+                gettimeofday(&start, NULL);
+                get_data_baseline(client, num_odscs, odsc, odsc_tab, buffer, ctime);
+                curet = cudaMemcpy(data, buffer, rdma_size, cudaMemcpyHostToDevice);
+                if(curet != cudaSuccess) {
+                    fprintf(stderr, "ERROR: (%s): cudaMemcpy() failed, Err Code: (%s)\n",
+                             __func__, cudaGetErrorString(curet));
+                    ret = dspaces_ERR_CUDA;
+                }
+                gettimeofday(&end, NULL);
+                timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+                free(buffer);
+                break;
             }
-            gettimeofday(&end, NULL);
-            timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
-            free(buffer);
-            break;
-        }
-        // GDR
-        case 2:
-        {
-            gettimeofday(&start, NULL);
-            ret = get_data_gdr(client, num_odscs, odsc, odsc_tab, data, ctime);
-            gettimeofday(&end, NULL);
-            timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
-            break;
-        }
-        // Hybrid
-        case 3:
-        {
-            gettimeofday(&start, NULL);
-            ret = get_data_hybrid(client, num_odscs, odsc, odsc_tab, data, ctime);
-            gettimeofday(&end, NULL);
-            timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
-            break;
-        }
-        // Heuristic
-        case 4:
-        {
-            gettimeofday(&start, NULL);
-            ret = get_data_heuristic(client, num_odscs, odsc, odsc_tab, data, ctime);
-            gettimeofday(&end, NULL);
-            timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
-            break;
-        }
-        // Dual-Channel
-        case 5:
-        {
-            gettimeofday(&start, NULL);
-            ret = get_data_dual_channel_v2(client, num_odscs, odsc, odsc_tab, data, ctime);
-            gettimeofday(&end, NULL);
-            timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
-            break;
-        }
-        // Dual-Channel-Dual-Staging
-        case 6:
-        {
-            gettimeofday(&start, NULL);
-            dspaces_cuda_dcds_get(client, var_name, ver, elem_size, ndim, lb, ub, data,
-                                    timeout, ttime, ctime);
-            gettimeofday(&end, NULL);
-            timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
-            break;
-        }
-        default:
-        {
-            size_t rdma_size = elem_size*bbox_volume(&odsc.bb);
-            void* buffer = (void*) malloc(rdma_size);
-            gettimeofday(&start, NULL);
-            get_data_baseline(client, num_odscs, odsc, odsc_tab, buffer, ctime);
-            curet = cudaMemcpy(data, buffer, rdma_size, cudaMemcpyHostToDevice);
-            if(curet != cudaSuccess) {
-                fprintf(stderr, "ERROR: (%s): cudaMemcpy() failed, Err Code: (%s)\n", __func__, cudaGetErrorString(curet));
-                ret = dspaces_ERR_CUDA;
+            // GDR
+            case 2:
+            {
+                gettimeofday(&start, NULL);
+                ret = get_data_gdr(client, num_odscs, odsc, odsc_tab, data, ctime);
+                gettimeofday(&end, NULL);
+                timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+                break;
             }
-            gettimeofday(&end, NULL);
-            timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
-            free(buffer);
-            break;
-        }
-        }
-        *ttime = timer - *ctime;
-        if(client->cuda_info.cuda_get_mode !=6) { // fuse get_odscs() & get_data in dcds_get()
+            // Hybrid
+            case 3:
+            {
+                gettimeofday(&start, NULL);
+                ret = get_data_hybrid(client, num_odscs, odsc, odsc_tab, data, ctime);
+                gettimeofday(&end, NULL);
+                timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+                break;
+            }
+            // Heuristic
+            case 4:
+            {
+                gettimeofday(&start, NULL);
+                ret = get_data_heuristic(client, num_odscs, odsc, odsc_tab, data, ctime);
+                gettimeofday(&end, NULL);
+                timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+                break;
+            }
+            // Dual-Channel
+            case 5:
+            {
+                gettimeofday(&start, NULL);
+                ret = get_data_dual_channel_v2(client, num_odscs, odsc, odsc_tab, data, ctime);
+                gettimeofday(&end, NULL);
+                timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+                break;
+            }
+            default:
+            {
+                size_t rdma_size = elem_size*bbox_volume(&odsc.bb);
+                void* buffer = (void*) malloc(rdma_size);
+                gettimeofday(&start, NULL);
+                get_data_baseline(client, num_odscs, odsc, odsc_tab, buffer, ctime);
+                curet = cudaMemcpy(data, buffer, rdma_size, cudaMemcpyHostToDevice);
+                if(curet != cudaSuccess) {
+                    fprintf(stderr, "ERROR: (%s): cudaMemcpy() failed, Err Code: (%s)\n", __func__, cudaGetErrorString(curet));
+                    ret = dspaces_ERR_CUDA;
+                }
+                gettimeofday(&end, NULL);
+                timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+                free(buffer);
+                break;
+            }
+            }
+            
             free(odsc_tab);
         }
     }
 
+    *ttime = timer - *ctime;
     return (ret);
 }
 
