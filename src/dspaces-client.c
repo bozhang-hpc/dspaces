@@ -4447,6 +4447,14 @@ static int get_data_dual_channel_v2(dspaces_client_t client, int num_odscs,
             or only ssd_copy_cuda_async
        5 - Tune the ratio according to the time 
     */
+
+    // preset data volume for host_based / GDR = 50% : 50%
+    // cut the data along the highest dimension
+    // first piece goes to host, second piece goes to GDR
+    static double host_ratio = 0.5;
+    static double gdr_ratio = 0.5;
+
+    // TODO： make it to pure GDR or host-based when either the ratio is 1 
     int ret = dspaces_SUCCESS;
     hg_return_t hret = HG_SUCCESS;
     struct timeval start, end;
@@ -4477,12 +4485,6 @@ static int get_data_dual_channel_v2(dspaces_client_t client, int num_odscs,
         (hg_handle_t*) malloc(num_rpcs*sizeof(hg_handle_t));
 
     memcpy(gdr_odsc_tab, odsc_tab, num_odscs*sizeof(obj_descriptor));
-
-    // preset data volume for host_based / GDR = 50% : 50%
-    // cut the data along the highest dimension
-    // first piece goes to host, second piece goes to GDR
-    static double host_ratio = 0.5;
-    static double gdr_ratio = 0.5;
 
     int cut_dim; // find the highest dimension whose dim length > 1
     uint64_t dist; // the bbox distance of the cut_dim
