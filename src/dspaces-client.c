@@ -2439,6 +2439,28 @@ static int cuda_put_dual_channel_v2(dspaces_client_t client, const char *var_nam
        5 - Margo_wait_any() to measure the time for dual channel
        6 - Tune the ratio according to the time 
     */
+
+    // preset data volume for gdr / pipeline = 50% : 50%
+    // cut the data along the highest dimension
+    // first piece goes to host, second piece goes to GDR
+    static double host_ratio = 0.5;
+    static double gdr_ratio = 0.5;
+    // the max msg_size for a single bulk transfer is 1GB
+    // 1GB*1e-3 = 1MB makes no difference for single or dual channel
+    double ratio_eps = 1e-3;
+    // make it to pure GDR or host-based when either the ratio is around 1 
+    double min_ratio = host_ratio > gdr_ratio ? gdr_ratio : host_ratio;
+    if(min_ratio < ratio_eps) { // go to either pure GDR or host-based
+        if(host_ratio > gdr_ratio) { // pure host
+            return cuda_put_pipeline(client, var_name, ver, 
+                            elem_size, ndim, lb, ub, data, itime);
+        } else { // pure GDR
+            *itime = 0;
+            return cuda_put_gdr(client, var_name, ver, 
+                            elem_size, ndim, lb, ub, data);
+        }
+    }
+
     hg_addr_t server_addr;
     hg_handle_t gdr_handle, host_handle;
     hg_return_t hret;
@@ -2463,12 +2485,6 @@ static int cuda_put_dual_channel_v2(dspaces_client_t client, const char *var_nam
             break;
         }
     }
-
-    // preset data volume for gdr / pipeline = 50% : 50%
-    // cut the data along the highest dimension
-    // first piece goes to host, second piece goes to GDR
-    static double host_ratio = 0.5;
-    static double gdr_ratio = 0.5;
 
     uint64_t dist = ub[cut_dim] - lb[cut_dim] + 1;
     host_bb.ub.c[cut_dim] = (uint64_t)(host_bb.lb.c[cut_dim] + dist * host_ratio);
