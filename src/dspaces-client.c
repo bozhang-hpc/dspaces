@@ -3010,7 +3010,212 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
                 int elem_size, int ndim, uint64_t *lb, uint64_t *ub,
                 void *data, double* itime)
 {
-    
+    // preset data volume for host_based / GDR = 50% : 50%
+    // cut the data along the highest dimension
+    // first piece goes to host, second piece goes to GDR
+    static double local_ratio = 0.5;
+    static double gdr_ratio = 0.5;
+    // the max msg_size for a single bulk transfer is 1GB
+    // 1GB*1e-3 = 1MB makes no difference for single or dual channel
+    double ratio_eps = 1e-3;
+    // make it to pure GDR or host-based when either the ratio is around 1 
+    double min_ratio = local_ratio > gdr_ratio ? gdr_ratio : local_ratio;
+    int pure_local = 0, pure_gdr = 0;
+    if(min_ratio < ratio_eps) {
+        if(local_ratio > gdr_ratio) {
+            pure_local = 1;
+        } else {
+            pure_gdr = 1;
+        }
+    }
+
+    int ret = dspaces_SUCCESS;
+    cudaError_t curet;
+    hg_return_t hret;
+    struct timeval start, end;
+
+    cudaStream_t stream;
+    struct cudaPointerAttributes ptr_attr;
+    obj_descriptor local_odsc, gdr_odsc;
+    struct global_dimension odsc_gdim;
+    hg_addr_t server_addr, owner_addr;
+    size_t owner_addr_size = 128;
+    hg_handle_t gdr_handle, *host_handle;
+    bulk_gdim_t gdr_in, *host_in;
+    bulk_out_t gdr_out, host_out;
+    margo_request gdr_req, host_req;
+    hg_size_t hg_gdr_rdma_size;
+    struct hg_bulk_attr bulk_attr;
+    void *gdr_data;
+    struct obj_data *local_od;
+
+    struct bbox host_bb = {.num_dims = ndim};
+    memset(host_bb.lb.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+    memset(host_bb.ub.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
+    memcpy(host_bb.lb.c, lb, sizeof(uint64_t) * ndim);
+    memcpy(host_bb.ub.c, ub, sizeof(uint64_t) * ndim);
+
+    int cut_dim; // find the highest dimension whose dim length > 1
+    for(int i=0; i<ndim; i++) {
+        if(ub[i]-lb[i]>0) {
+            cut_dim = i;
+            break;
+        }
+    }
+
+    uint64_t dist = ub[cut_dim] - lb[cut_dim] + 1;
+    host_bb.ub.c[cut_dim] = (uint64_t)(host_bb.lb.c[cut_dim] + dist * local_ratio);
+
+    size_t host_rdma_size = (size_t) (elem_size*bbox_volume(&host_bb));
+
+    void* host_buf = (void*) malloc(host_rdma_size);
+    if(!host_buf) { // insufficient memory
+        /* Since we merge put_local & iput & subscribe in 1 RPC call,
+           There is no margo request for client to check if bulk transfer
+           is finished. Client doesn't have to actively free host memory.
+           Client can just wait the notification from server to free the
+           host memory. So insufficient memory will directly go dual channel. */
+        ret = cuda_put_dual_channel_v2(client, var_name, ver, elem_size, ndim, lb, ub, data, itime);
+    } else { // GPU->host + GDR + put_local_sub_drain
+        /* Start D->H I/O ASAP */
+        curet = cudaStreamCreate(&stream);
+        if(curet != cudaSuccess) {
+            fprintf(stderr, "ERROR: (%s): cudaStreamCreate() failed, Err Code: (%s)\n",
+                    __func__, cudaGetErrorString(curet));
+            free(host_buf);
+            host_buf = NULL;
+            return dspaces_ERR_CUDA;
+        }
+
+        curet = cudaMemcpyAsync(host_buf, data, host_rdma_size, cudaMemcpyDeviceToHost, stream);
+        if(curet != cudaSuccess) {
+            fprintf(stderr, "ERROR: (%s): cudaMemcpyAsync() failed, Err Code: (%s)\n",
+                    __func__, cudaGetErrorString(curet));
+            cudaStreamDestroy(stream);
+            free(host_buf);
+            host_buf = NULL;
+            return dspaces_ERR_CUDA;
+        }
+
+        /* Start GDR I/O */
+        gdr_odsc.version = ver;
+        memset(gdr_odsc.owner, 0, sizeof(gdr_odsc.owner));
+        gdr_odsc.st = st;
+        gdr_odsc.flags = 0;
+        gdr_odsc.size = elem_size;
+        memcpy(&gdr_odsc.bb, &host_bb, sizeof(struct bbox));
+        gdr_odsc.bb.lb.c[cut_dim] = host_bb.ub.c[cut_dim] + 1;
+        memcpy(gdr_odsc.bb.ub.c, ub, sizeof(uint64_t) * ndim);
+        strncpy(gdr_odsc.name, var_name, sizeof(gdr_odsc.name) - 1);
+        gdr_odsc.name[sizeof(gdr_odsc.name) - 1] = '\0';
+        set_global_dimension(&(client->dcg->gdim_list), var_name,
+                        &(client->dcg->default_gdim), &odsc_gdim);
+        gdr_in.odsc.size = sizeof(obj_descriptor);
+        gdr_in.odsc.raw_odsc = (char *)(&gdr_odsc);
+        gdr_in.odsc.gdim_size = sizeof(struct global_dimension);
+        gdr_in.odsc.raw_gdim = (char *)(&odsc_gdim);
+        hg_gdr_rdma_size = elem_size*bbox_volume(&gdr_odsc.bb);
+
+        get_server_address(client, &server_addr);
+
+        curet = cudaPointerGetAttributes(&ptr_attr, data);
+        if(curet != cudaSuccess) {
+            fprintf(stderr, "ERROR: (%s): cudaPointerGetAttributes() failed, Err Code: (%s)\n",
+                    __func__, cudaGetErrorString(curet));
+            cudaStreamDestroy(stream);
+            free(host_buf);
+            host_buf = NULL;
+            return dspaces_ERR_CUDA;
+        }
+        bulk_attr.mem_type = HG_MEM_TYPE_CUDA;
+        bulk_attr.device = ptr_attr.device;
+
+        gdr_data = data+host_rdma_size;
+        hret = margo_bulk_create_attr(client->mid, 1, (void **)&gdr_data, &hg_gdr_rdma_size,
+                                HG_BULK_READ_ONLY, &bulk_attr, &gdr_in.handle);
+        if(hret != HG_SUCCESS) {
+            fprintf(stderr,
+                    "ERROR: (%s): margo_bulk_create_attr() failed! Err Code: %d\n",
+                    __func__, hret);
+            cudaStreamDestroy(stream);
+            free(host_buf);
+            host_buf = NULL;
+            return dspaces_ERR_MERCURY;
+        }
+
+        hret = margo_create(client->mid, server_addr, client->put_id, &gdr_handle);
+        if(hret != HG_SUCCESS) {
+            fprintf(stderr,
+                    "ERROR: (%s): margo_create() failed! Err Code: %d\n",
+                    __func__, hret);
+            cudaStreamDestroy(stream);
+            free(host_buf);
+            host_buf = NULL;
+            margo_bulk_free(gdr_in.handle);
+            return dspaces_ERR_MERCURY;
+        }
+
+        hret = margo_iforward(gdr_handle, &gdr_in, &gdr_req);
+        if(hret != HG_SUCCESS) {
+            fprintf(stderr,
+                    "ERROR: (%s): margo_iforward() failed! Err Code: %d\n",
+                    __func__, hret);
+            cudaStreamDestroy(stream);
+            free(host_buf);
+            host_buf = NULL;
+            margo_bulk_free(gdr_in.handle);
+            margo_destroy(gdr_handle);
+            return dspaces_ERR_MERCURY;
+        }
+
+        /* Prep PutLocal_SubDrain RPC */
+        if(client->listener_init == 0) {
+            ret = dspaces_init_listener(client);
+            if(ret != dspaces_SUCCESS) {
+                fprintf(stderr, "ERROR: (%s): dspaces_init_listener() failed, "
+                                "Err Code: (%d)\n",
+                                __func__, ret);
+                cudaStreamDestroy(stream);
+                free(host_buf);
+                host_buf = NULL;
+                margo_bulk_free(gdr_in.handle);
+                margo_destroy(gdr_handle);
+                return (ret);
+            }
+        }
+
+        local_odsc.version = ver;
+        memset(local_odsc.owner, 0, sizeof(local_odsc.owner));
+        local_odsc.st = st;
+        local_odsc.flags = 0;
+        local_odsc.size = elem_size;
+        margo_addr_self(client->mid, &owner_addr);
+        margo_addr_to_string(client->mid, local_odsc.owner, &owner_addr_size, owner_addr);
+        margo_addr_free(client->mid, owner_addr);
+        memcpy(&local_odsc.bb, &host_bb, sizeof(struct bbox));
+        strncpy(local_odsc.name, var_name, sizeof(local_odsc.name) - 1);
+        local_odsc.name[sizeof(local_odsc.name) - 1] = '\0';
+
+        // allocate local od with host_buf
+        local_od = obj_data_alloc_no_data(&local_odsc, host_buf);
+        set_global_dimension(&(client->dcg->gdim_list), var_name,
+                            &(client->dcg->default_gdim), &local_od->gdim);
+        
+        ABT_mutex_lock(client->ls_mutex);
+        ls_add_obj(client->dcg->ls, local_od);
+        client->local_put_count++;
+        DEBUG_OUT("Added into local_storage\n");
+        ABT_mutex_unlock(client->ls_mutex);
+
+        host_in = (bulk_gdim_t*) malloc(sizeof(bulk_gdim_t));
+        host_in->odsc.size = sizeof(local_odsc);
+        host_in->odsc.raw_odsc = (char *)(&local_odsc);
+        host_in->odsc.gdim_size = sizeof(struct global_dimension);
+        host_in->odsc.raw_gdim = (char *)(&local_od->gdim);
+
+
+
+    }
 }
 
 static void notify_drain_rpc(hg_handle_t handle)
@@ -5370,6 +5575,17 @@ static int dspaces_cuda_dcds_get(dspaces_client_t client, const char *var_name, 
         bulk_attr.mem_type = HG_MEM_TYPE_CUDA;
         bulk_attr.device = ptr_attr.device;
     }
+
+    if(client->listener_init == 0) {
+        ret = dspaces_init_listener(client);
+        if(ret != dspaces_SUCCESS) {
+            fprintf(stderr, "ERROR: (%s): dspaces_init_listener() failed, Err Code: (%s)\n",
+                    __func__, ret);
+            margo_destroy(qhandle);
+            margo_addr_free(client->mid, server_addr);
+            return (ret);
+        }
+    }
     // check get obj pattern
     struct getobj_list_entry *getobj_ent =
         lookup_getobj_list(&client->dcg->getobj_record_list, qodsc);
@@ -5421,6 +5637,7 @@ static int dspaces_cuda_dcds_get(dspaces_client_t client, const char *var_name, 
             margo_addr_free(client->mid, server_addr);
             return dspaces_ERR_SUB;
         }
+        getobj_ent->last_ver = qodsc.version;
         margo_destroy(sub_handle);
     } else {
         init_pattern = 1;
