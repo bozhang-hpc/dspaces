@@ -672,7 +672,7 @@ static int dspaces_init_gpu(dspaces_client_t client)
     if(envcudaputmode) {
         int cudaputmode = atoi(envcudaputmode);
         // mode check 0-7
-        if(cudaputmode >= 0 && cudaputmode < 8) {
+        if(cudaputmode >= 0 && cudaputmode < 9) {
             client->cuda_info.cuda_put_mode = cudaputmode;
         } else {
             client->cuda_info.cuda_put_mode = 0;
@@ -747,6 +747,9 @@ static int dspaces_init_gpu(dspaces_client_t client)
         break;
     case 7:
         sprintf(hint, "Dual Channel Dual Staging");
+        break;
+    case 8:
+        sprintf(hint, "Dual Channel Dual Staging V2");
         break;
     default:
         sprintf(hint, "Error");
@@ -2852,8 +2855,6 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             }
         }
 
-        client->local_put_count++;
-
         obj_descriptor odsc = {.version = ver,
                                 .st = st,
                                 .flags = DS_CLIENT_STORAGE,
@@ -2876,6 +2877,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
         ABT_mutex_lock(client->ls_mutex);
         ls_add_obj(client->dcg->ls, od);
         DEBUG_OUT("Added into local_storage\n");
+        client->local_put_count++;
         ABT_mutex_unlock(client->ls_mutex);
 
         bulk_gdim_t *in = (bulk_gdim_t*) malloc(sizeof(bulk_gdim_t));
@@ -2894,6 +2896,10 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             cudaStreamDestroy(stream);
             free(host_buf);
             host_buf = NULL;
+            ABT_mutex_lock(client->ls_mutex);
+            ls_remove(client->dcg->ls, od);
+            client->local_put_count--;
+            ABT_mutex_unlock(client->ls_mutex);
             obj_data_free(od);
             return dspaces_ERR_MERCURY;
         }
@@ -2908,6 +2914,10 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             free(host_buf);
             host_buf = NULL;
             margo_addr_free(client->mid, server_addr);
+            ABT_mutex_lock(client->ls_mutex);
+            ls_remove(client->dcg->ls, od);
+            client->local_put_count--;
+            ABT_mutex_unlock(client->ls_mutex);
             obj_data_free(od);
             margo_bulk_free(in->handle);
             return dspaces_ERR_MERCURY;
@@ -2936,6 +2946,10 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             free(host_buf);
             host_buf = NULL;
             margo_addr_free(client->mid, server_addr);
+            ABT_mutex_lock(client->ls_mutex);
+            ls_remove(client->dcg->ls, od);
+            client->local_put_count--;
+            ABT_mutex_unlock(client->ls_mutex);
             obj_data_free(od);
             margo_bulk_free(in->handle);
             margo_destroy(*handle);
@@ -2948,7 +2962,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
 
         gettimeofday(&end, NULL);
         timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
-        *itime = timer;
+        
 
         /* putlocal_subdrain RPC */
         hret = margo_forward(*handle, in);
@@ -2958,6 +2972,10 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             free(host_buf);
             host_buf = NULL;
             margo_addr_free(client->mid, server_addr);
+            ABT_mutex_lock(client->ls_mutex);
+            ls_remove(client->dcg->ls, od);
+            client->local_put_count--;
+            ABT_mutex_unlock(client->ls_mutex);
             obj_data_free(od);
             margo_bulk_free(in->handle);
             margo_destroy(*handle);
@@ -2975,6 +2993,10 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             free(host_buf);
             host_buf = NULL;
             margo_addr_free(client->mid, server_addr);
+            ABT_mutex_lock(client->ls_mutex);
+            ls_remove(client->dcg->ls, od);
+            client->local_put_count--;
+            ABT_mutex_unlock(client->ls_mutex);
             obj_data_free(od);
             margo_bulk_free(in->handle);
             margo_destroy(*handle);
@@ -2989,6 +3011,10 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             fprintf(stderr, "ERROR: putlocal_subdrain_rpc() failed at the server\n");
             free(host_buf);
             host_buf = NULL;
+            ABT_mutex_lock(client->ls_mutex);
+            ls_remove(client->dcg->ls, od);
+            client->local_put_count--;
+            ABT_mutex_unlock(client->ls_mutex);
             obj_data_free(od);
             ABT_cond_free(&e->delete_cond);
             ABT_mutex_lock(client->putlocal_subdrain_mutex);
@@ -3001,6 +3027,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
         CUDA_ASSERTRT(cudaStreamDestroy(stream));
         margo_free_output(*handle, &out);
         margo_addr_free(client->mid, server_addr);
+        *itime = 1;
     }
 
     return ret;
@@ -3018,14 +3045,17 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
     // the max msg_size for a single bulk transfer is 1GB
     // 1GB*1e-3 = 1MB makes no difference for single or dual channel
     double ratio_eps = 1e-3;
-    // make it to pure GDR or host-based when either the ratio is around 1 
+    // make it to pure GDR or local_put when either the ratio is around 1 
     double min_ratio = local_ratio > gdr_ratio ? gdr_ratio : local_ratio;
     int pure_local = 0, pure_gdr = 0;
     if(min_ratio < ratio_eps) {
-        if(local_ratio > gdr_ratio) {
-            pure_local = 1;
-        } else {
-            pure_gdr = 1;
+        if(local_ratio > gdr_ratio) { //pure dual staging
+            return cuda_put_dcds(client, var_name, ver, elem_size,
+                                    ndim, lb, ub, data, itime);
+        } else { //pure GDR
+            *itime = 0;
+            return cuda_put_gdr(client, var_name, ver, 
+                            elem_size, ndim, lb, ub, data);
         }
     }
 
@@ -3043,11 +3073,13 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
     hg_handle_t gdr_handle, *host_handle;
     bulk_gdim_t gdr_in, *host_in;
     bulk_out_t gdr_out, host_out;
-    margo_request gdr_req, host_req;
-    hg_size_t hg_gdr_rdma_size;
+    margo_request gdr_req;
+    hg_size_t hg_gdr_rdma_size, hg_host_rdma_size;
     struct hg_bulk_attr bulk_attr;
     void *gdr_data;
     struct obj_data *local_od;
+    static int wait_flag = 0;
+    double gdr_timer, host_timer;
 
     struct bbox host_bb = {.num_dims = ndim};
     memset(host_bb.lb.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
@@ -3116,8 +3148,6 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
         gdr_in.odsc.raw_gdim = (char *)(&odsc_gdim);
         hg_gdr_rdma_size = elem_size*bbox_volume(&gdr_odsc.bb);
 
-        get_server_address(client, &server_addr);
-
         curet = cudaPointerGetAttributes(&ptr_attr, data);
         if(curet != cudaSuccess) {
             fprintf(stderr, "ERROR: (%s): cudaPointerGetAttributes() failed, Err Code: (%s)\n",
@@ -3143,15 +3173,18 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
             return dspaces_ERR_MERCURY;
         }
 
+        get_server_address(client, &server_addr);
+
         hret = margo_create(client->mid, server_addr, client->put_id, &gdr_handle);
         if(hret != HG_SUCCESS) {
             fprintf(stderr,
                     "ERROR: (%s): margo_create() failed! Err Code: %d\n",
                     __func__, hret);
+            margo_addr_free(client->mid, server_addr);
+            margo_bulk_free(gdr_in.handle);
             cudaStreamDestroy(stream);
             free(host_buf);
             host_buf = NULL;
-            margo_bulk_free(gdr_in.handle);
             return dspaces_ERR_MERCURY;
         }
 
@@ -3160,11 +3193,12 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
             fprintf(stderr,
                     "ERROR: (%s): margo_iforward() failed! Err Code: %d\n",
                     __func__, hret);
+            margo_destroy(gdr_handle);
+            margo_addr_free(client->mid, server_addr);
+            margo_bulk_free(gdr_in.handle);
             cudaStreamDestroy(stream);
             free(host_buf);
             host_buf = NULL;
-            margo_bulk_free(gdr_in.handle);
-            margo_destroy(gdr_handle);
             return dspaces_ERR_MERCURY;
         }
 
@@ -3175,11 +3209,12 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
                 fprintf(stderr, "ERROR: (%s): dspaces_init_listener() failed, "
                                 "Err Code: (%d)\n",
                                 __func__, ret);
+                margo_destroy(gdr_handle);
+                margo_addr_free(client->mid, server_addr);
+                margo_bulk_free(gdr_in.handle);
                 cudaStreamDestroy(stream);
                 free(host_buf);
                 host_buf = NULL;
-                margo_bulk_free(gdr_in.handle);
-                margo_destroy(gdr_handle);
                 return (ret);
             }
         }
@@ -3187,7 +3222,7 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
         local_odsc.version = ver;
         memset(local_odsc.owner, 0, sizeof(local_odsc.owner));
         local_odsc.st = st;
-        local_odsc.flags = 0;
+        local_odsc.flags = DS_CLIENT_STORAGE;
         local_odsc.size = elem_size;
         margo_addr_self(client->mid, &owner_addr);
         margo_addr_to_string(client->mid, local_odsc.owner, &owner_addr_size, owner_addr);
@@ -3198,8 +3233,7 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
 
         // allocate local od with host_buf
         local_od = obj_data_alloc_no_data(&local_odsc, host_buf);
-        set_global_dimension(&(client->dcg->gdim_list), var_name,
-                            &(client->dcg->default_gdim), &local_od->gdim);
+        memcpy(&local_od->gdim, &odsc_gdim, sizeof(struct global_dimension));
         
         ABT_mutex_lock(client->ls_mutex);
         ls_add_obj(client->dcg->ls, local_od);
@@ -3212,10 +3246,324 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
         host_in->odsc.raw_odsc = (char *)(&local_odsc);
         host_in->odsc.gdim_size = sizeof(struct global_dimension);
         host_in->odsc.raw_gdim = (char *)(&local_od->gdim);
+        hg_host_rdma_size = host_rdma_size; 
 
+        hret = margo_bulk_create(client->mid, 1, (void **)&host_buf, &hg_host_rdma_size,
+                                HG_BULK_READ_ONLY, &(host_in->handle));
+        if(hret != HG_SUCCESS) {
+            fprintf(stderr, "ERROR: (%s): margo_bulk_create() failed! Err Code: %d\n", __func__, hret);
+            ABT_mutex_lock(client->ls_mutex);
+            ls_remove(client->dcg->ls, local_od);
+            client->local_put_count--;
+            ABT_mutex_unlock(client->ls_mutex);
+            obj_data_free(local_od);
+            margo_destroy(gdr_handle);
+            margo_addr_free(client->mid, server_addr);
+            margo_bulk_free(gdr_in.handle);
+            cudaStreamDestroy(stream);
+            free(host_buf);
+            host_buf = NULL;
+            return dspaces_ERR_MERCURY;
+        }
 
+        hret = margo_create(client->mid, server_addr, client->putlocal_subdrain_id, host_handle);
+        if(hret != HG_SUCCESS) {
+            fprintf(stderr, "ERROR: (%s): margo_create() failed! Err Code: %d\n", __func__, hret);
+            margo_bulk_free(host_in->handle);
+            ABT_mutex_lock(client->ls_mutex);
+            ls_remove(client->dcg->ls, local_od);
+            client->local_put_count--;
+            ABT_mutex_unlock(client->ls_mutex);
+            obj_data_free(local_od);
+            margo_destroy(gdr_handle);
+            margo_addr_free(client->mid, server_addr);
+            margo_bulk_free(gdr_in.handle);
+            cudaStreamDestroy(stream);
+            free(host_buf);
+            host_buf = NULL;
+            return dspaces_ERR_MERCURY;
+        }
 
+        // add req to putlocal_subdrain list
+        struct subdrain_list_entry *e = (struct subdrain_list_entry*) malloc(sizeof(*e));
+        e->odsc = local_odsc;
+        e->buffer = host_buf;
+        e->get_count = 0;
+        e->bulk_handle = host_in;
+        e->rpc_handle = host_handle;
+        ABT_cond_create(&e->delete_cond);
+        ABT_mutex_lock(client->putlocal_subdrain_mutex);
+        list_add(&e->entry, &client->dcg->putlocal_subdrain_list);
+        ABT_mutex_unlock(client->putlocal_subdrain_mutex);
+
+        /*  Try to tune the ratio every 2 timesteps
+            At timestep (t), if 2nd timer(t) < 2e-6 s, means 2nd request(t) finishes no later than the 1st(t).
+                Keep the same ratio at (t+1), but swap the request.
+                If the 2nd timer(t+1) < 2e-6 s, means almost same time; else, tune the ratio and not swap request
+                Suppose gdr finishes first initially: wait_flag = 0 -> gdr first; wait_flag = 1 -> host first
+            else
+        */
+
+        if(wait_flag == 0) { // wait gdr first
+            gettimeofday(&start, NULL);
+            hret = margo_wait(gdr_req);
+            gettimeofday(&end, NULL);
+            if(hret != HG_SUCCESS) {
+                fprintf(stderr, "ERROR: (%s): margo_wait() failed! Err Code: %d\n",
+                            __func__, hret);
+                ABT_cond_free(&e->delete_cond);
+                ABT_mutex_lock(client->putlocal_subdrain_mutex);
+                list_del(&e->entry);
+                ABT_mutex_unlock(client->putlocal_subdrain_mutex);
+                margo_destroy(*host_handle);
+                margo_bulk_free(host_in->handle);
+                ABT_mutex_lock(client->ls_mutex);
+                ls_remove(client->dcg->ls, local_od);
+                client->local_put_count--;
+                ABT_mutex_unlock(client->ls_mutex);
+                obj_data_free(local_od);
+                margo_destroy(gdr_handle);
+                margo_addr_free(client->mid, server_addr);
+                margo_bulk_free(gdr_in.handle);
+                cudaStreamDestroy(stream);
+                free(host_buf);
+                host_buf = NULL;
+                return dspaces_ERR_MERCURY;
+            }
+            margo_bulk_free(gdr_in.handle);
+            margo_destroy(gdr_handle);
+            gdr_timer = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+
+            /* Sync Device->Host I/O */
+            gettimeofday(&start, NULL);
+            curet = cudaStreamSynchronize(stream);
+            gettimeofday(&end, NULL);
+            if(curet != cudaSuccess) {
+                fprintf(stderr, "ERROR: (%s): cudaStreamSynchronize() failed, Err Code: (%s)\n",
+                        __func__, cudaGetErrorString(curet));
+                ABT_cond_free(&e->delete_cond);
+                ABT_mutex_lock(client->putlocal_subdrain_mutex);
+                list_del(&e->entry);
+                ABT_mutex_unlock(client->putlocal_subdrain_mutex);
+                margo_destroy(*host_handle);
+                margo_bulk_free(host_in->handle);
+                ABT_mutex_lock(client->ls_mutex);
+                ls_remove(client->dcg->ls, local_od);
+                client->local_put_count--;
+                ABT_mutex_unlock(client->ls_mutex);
+                obj_data_free(local_od);
+                margo_addr_free(client->mid, server_addr);
+                cudaStreamDestroy(stream);
+                free(host_buf);
+                host_buf = NULL;
+                return dspaces_ERR_CUDA;
+            }
+            /* putlocal_subdrain RPC */
+            hret = margo_forward(*host_handle, host_in);
+            if(hret != HG_SUCCESS) {
+                fprintf(stderr, "ERROR: (%s): margo_forward() failed! Err Code: %d\n", __func__, hret);
+                ABT_cond_free(&e->delete_cond);
+                ABT_mutex_lock(client->putlocal_subdrain_mutex);
+                list_del(&e->entry);
+                ABT_mutex_unlock(client->putlocal_subdrain_mutex);
+                margo_destroy(*host_handle);
+                margo_bulk_free(host_in->handle);
+                ABT_mutex_lock(client->ls_mutex);
+                ls_remove(client->dcg->ls, local_od);
+                client->local_put_count--;
+                ABT_mutex_unlock(client->ls_mutex);
+                obj_data_free(local_od);
+                margo_addr_free(client->mid, server_addr);
+                cudaStreamDestroy(stream);
+                free(host_buf);
+                host_buf = NULL;
+                return dspaces_ERR_MERCURY;
+            }
+            cudaStreamDestroy(stream);
+            host_timer = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+            if(host_timer > 2) { // host timer > 2ms
+                // host path takes longer time, tune ratio
+                gdr_ratio += ((host_timer - gdr_timer) / host_timer) * (1-gdr_ratio);
+                local_ratio = 1 - gdr_ratio;
+            } else {
+                // host request finishes no later than the GDR request
+                // swap request by setting flag = 1
+                wait_flag = 1;
+            }
+        } else { // wait D->H first
+            /* Sync Device->Host I/O */
+            gettimeofday(&start, NULL);
+            curet = cudaStreamSynchronize(stream);
+            gettimeofday(&end, NULL);
+            if(curet != cudaSuccess) {
+                fprintf(stderr, "ERROR: (%s): cudaStreamSynchronize() failed, Err Code: (%s)\n",
+                        __func__, cudaGetErrorString(curet));
+                ABT_cond_free(&e->delete_cond);
+                ABT_mutex_lock(client->putlocal_subdrain_mutex);
+                list_del(&e->entry);
+                ABT_mutex_unlock(client->putlocal_subdrain_mutex);
+                margo_destroy(*host_handle);
+                margo_bulk_free(host_in->handle);
+                ABT_mutex_lock(client->ls_mutex);
+                ls_remove(client->dcg->ls, local_od);
+                client->local_put_count--;
+                ABT_mutex_unlock(client->ls_mutex);
+                obj_data_free(local_od);
+                margo_destroy(gdr_handle);
+                margo_addr_free(client->mid, server_addr);
+                margo_bulk_free(gdr_in.handle);
+                cudaStreamDestroy(stream);
+                free(host_buf);
+                host_buf = NULL;
+                return dspaces_ERR_CUDA;
+            }
+            /* putlocal_subdrain RPC */
+            hret = margo_forward(*host_handle, host_in);
+            if(hret != HG_SUCCESS) {
+                fprintf(stderr, "ERROR: (%s): margo_forward() failed! Err Code: %d\n", __func__, hret);
+                ABT_cond_free(&e->delete_cond);
+                ABT_mutex_lock(client->putlocal_subdrain_mutex);
+                list_del(&e->entry);
+                ABT_mutex_unlock(client->putlocal_subdrain_mutex);
+                margo_destroy(*host_handle);
+                margo_bulk_free(host_in->handle);
+                ABT_mutex_lock(client->ls_mutex);
+                ls_remove(client->dcg->ls, local_od);
+                client->local_put_count--;
+                ABT_mutex_unlock(client->ls_mutex);
+                obj_data_free(local_od);
+                margo_destroy(gdr_handle);
+                margo_addr_free(client->mid, server_addr);
+                margo_bulk_free(gdr_in.handle);
+                cudaStreamDestroy(stream);
+                free(host_buf);
+                host_buf = NULL;
+                return dspaces_ERR_MERCURY;
+            }
+            cudaStreamDestroy(stream);
+            host_timer = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+        
+            gettimeofday(&start, NULL);
+            hret = margo_wait(gdr_req);
+            gettimeofday(&end, NULL);
+            if(hret != HG_SUCCESS) {
+                fprintf(stderr, "ERROR: (%s): margo_wait() failed! Err Code: %d\n",
+                            __func__, hret);
+                ABT_cond_free(&e->delete_cond);
+                ABT_mutex_lock(client->putlocal_subdrain_mutex);
+                list_del(&e->entry);
+                ABT_mutex_unlock(client->putlocal_subdrain_mutex);
+                margo_destroy(*host_handle);
+                margo_bulk_free(host_in->handle);
+                ABT_mutex_lock(client->ls_mutex);
+                ls_remove(client->dcg->ls, local_od);
+                client->local_put_count--;
+                ABT_mutex_unlock(client->ls_mutex);
+                obj_data_free(local_od);
+                margo_destroy(gdr_handle);
+                margo_addr_free(client->mid, server_addr);
+                margo_bulk_free(gdr_in.handle);
+                free(host_buf);
+                host_buf = NULL;
+            }
+            margo_bulk_free(gdr_in.handle);
+            margo_destroy(gdr_handle);
+            gdr_timer = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+            if(gdr_timer > 2) { // GDR timer > 2ms
+                // GDR path takes longer time, tune ratio
+                gdr_ratio -= ((gdr_timer - host_timer) / gdr_timer) * (gdr_ratio-0);
+                local_ratio = 1 - gdr_ratio;
+            } else {
+                // GDR request finishes no later than the host request
+                // swap request by setting flag = 0
+                wait_flag = 0;
+            }
+        }
+
+        hret = margo_get_output(gdr_handle, &gdr_out);
+        if(hret != HG_SUCCESS) {
+            fprintf(stderr, "ERROR: (%s):  margo_get_output() failed! Err Code: %d\n", __func__, hret);
+            ABT_cond_free(&e->delete_cond);
+            ABT_mutex_lock(client->putlocal_subdrain_mutex);
+            list_del(&e->entry);
+            ABT_mutex_unlock(client->putlocal_subdrain_mutex);
+            margo_destroy(*host_handle);
+            margo_bulk_free(host_in->handle);
+            ABT_mutex_lock(client->ls_mutex);
+            ls_remove(client->dcg->ls, local_od);
+            client->local_put_count--;
+            ABT_mutex_unlock(client->ls_mutex);
+            obj_data_free(local_od);
+            margo_addr_free(client->mid, server_addr);
+            free(host_buf);
+            host_buf = NULL;
+            return dspaces_ERR_MERCURY;
+        }
+
+        if(gdr_out.ret != dspaces_SUCCESS) {
+            fprintf(stderr, "ERROR: (%s):  put_rpc() failed at the server! Err Code: %d\n", __func__, gdr_out.ret);
+            ABT_cond_free(&e->delete_cond);
+            ABT_mutex_lock(client->putlocal_subdrain_mutex);
+            list_del(&e->entry);
+            ABT_mutex_unlock(client->putlocal_subdrain_mutex);
+            margo_destroy(*host_handle);
+            margo_bulk_free(host_in->handle);
+            ABT_mutex_lock(client->ls_mutex);
+            ls_remove(client->dcg->ls, local_od);
+            client->local_put_count--;
+            ABT_mutex_unlock(client->ls_mutex);
+            obj_data_free(local_od);
+            margo_addr_free(client->mid, server_addr);
+            free(host_buf);
+            host_buf = NULL;
+            return gdr_out.ret;
+        }
+
+        hret = margo_get_output(*host_handle, &host_out);
+        if(hret != HG_SUCCESS) {
+            fprintf(stderr, "ERROR: (%s):  margo_get_output() failed! Err Code: %d\n", __func__, hret);
+            ABT_cond_free(&e->delete_cond);
+            ABT_mutex_lock(client->putlocal_subdrain_mutex);
+            list_del(&e->entry);
+            ABT_mutex_unlock(client->putlocal_subdrain_mutex);
+            margo_destroy(*host_handle);
+            margo_bulk_free(host_in->handle);
+            ABT_mutex_lock(client->ls_mutex);
+            ls_remove(client->dcg->ls, local_od);
+            client->local_put_count--;
+            ABT_mutex_unlock(client->ls_mutex);
+            obj_data_free(local_od);
+            margo_addr_free(client->mid, server_addr);
+            free(host_buf);
+            host_buf = NULL;
+            return dspaces_ERR_MERCURY;
+        }
+
+        if(host_out.ret != dspaces_SUCCESS) {
+            fprintf(stderr, "ERROR: (%s):  putlocal_subdrain_rpc() failed at the server! Err Code: %d\n", __func__, host_out.ret);
+            ABT_cond_free(&e->delete_cond);
+            ABT_mutex_lock(client->putlocal_subdrain_mutex);
+            list_del(&e->entry);
+            ABT_mutex_unlock(client->putlocal_subdrain_mutex);
+            margo_destroy(*host_handle);
+            margo_bulk_free(host_in->handle);
+            ABT_mutex_lock(client->ls_mutex);
+            ls_remove(client->dcg->ls, local_od);
+            client->local_put_count--;
+            ABT_mutex_unlock(client->ls_mutex);
+            obj_data_free(local_od);
+            margo_addr_free(client->mid, server_addr);
+            free(host_buf);
+            host_buf = NULL;
+            return host_out.ret;
+        }
+
+        margo_free_output(gdr_handle, &gdr_out);
+        margo_free_output(*host_handle, &host_out);
+        margo_addr_free(client->mid, server_addr);
+        *itime = local_ratio;
     }
+    return ret;
 }
 
 static void notify_drain_rpc(hg_handle_t handle)
@@ -3321,6 +3669,9 @@ int dspaces_cuda_put(dspaces_client_t client, const char *var_name, unsigned int
         break;
     case 7:
         ret = cuda_put_dcds(client, var_name, ver, elem_size, ndim, lb, ub, data, itime);
+        break;
+    case 8:
+        ret = cuda_put_dcds_v2(client, var_name, ver, elem_size, ndim, lb, ub, data, itime);
         break;
     default:
         ret = cuda_put_hybrid(client, var_name, ver, elem_size, ndim, lb, ub, data, itime);
