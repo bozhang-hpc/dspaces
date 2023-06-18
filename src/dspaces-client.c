@@ -3335,7 +3335,6 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
                 return dspaces_ERR_MERCURY;
             }
             margo_bulk_free(gdr_in.handle);
-            margo_destroy(gdr_handle);
             gdr_timer = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
 
             /* Sync Device->Host I/O */
@@ -3476,7 +3475,6 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
                 margo_bulk_free(gdr_in.handle);
             }
             margo_bulk_free(gdr_in.handle);
-            margo_destroy(gdr_handle);
             gdr_timer = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
             if(gdr_timer > 2) { // GDR timer > 2ms
                 // GDR path takes longer time, tune ratio
@@ -3573,6 +3571,7 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
 
         margo_free_output(gdr_handle, &gdr_out);
         margo_free_output(*host_handle, &host_out);
+        margo_destroy(gdr_handle);
         margo_addr_free(client->mid, server_addr);
         *itime = local_ratio;
     }
