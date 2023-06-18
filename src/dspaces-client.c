@@ -2833,7 +2833,6 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
                     __func__, cudaGetErrorString(curet));
             cudaStreamDestroy(stream);
             free(host_buf);
-            host_buf = NULL;
             return dspaces_ERR_CUDA;
         }
 
@@ -2850,7 +2849,6 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
                                 __func__, ret);
                 cudaStreamDestroy(stream);
                 free(host_buf);
-                host_buf = NULL;
                 free(handle);
                 return (ret);
             }
@@ -2896,7 +2894,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             fprintf(stderr, "ERROR: (%s): margo_bulk_create() failed! Err Code: %d\n", __func__, hret);
             cudaStreamDestroy(stream);
             free(host_buf);
-            host_buf = NULL;
+            od->data = NULL;
             free(handle);
             ABT_mutex_lock(client->ls_mutex);
             ls_remove(client->dcg->ls, od);
@@ -2914,7 +2912,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             fprintf(stderr, "ERROR: (%s): margo_create() failed! Err Code: %d\n", __func__, hret);
             cudaStreamDestroy(stream);
             free(host_buf);
-            host_buf = NULL;
+            od->data = NULL;
             free(handle);
             margo_addr_free(client->mid, server_addr);
             ABT_mutex_lock(client->ls_mutex);
@@ -2947,7 +2945,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
                     __func__, cudaGetErrorString(curet));
             cudaStreamDestroy(stream);
             free(host_buf);
-            host_buf = NULL;
+            od->data = NULL;
             margo_addr_free(client->mid, server_addr);
             ABT_mutex_lock(client->ls_mutex);
             ls_remove(client->dcg->ls, od);
@@ -2974,7 +2972,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             fprintf(stderr, "ERROR: (%s): margo_forward() failed! Err Code: %d\n", __func__, hret);
             cudaStreamDestroy(stream);
             free(host_buf);
-            host_buf = NULL;
+            od->data = NULL;
             margo_addr_free(client->mid, server_addr);
             ABT_mutex_lock(client->ls_mutex);
             ls_remove(client->dcg->ls, od);
@@ -2996,7 +2994,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             fprintf(stderr, "ERROR: (%s):  margo_get_output() failed! Err Code: %d\n", __func__, hret);
             cudaStreamDestroy(stream);
             free(host_buf);
-            host_buf = NULL;
+            od->data = NULL;
             margo_addr_free(client->mid, server_addr);
             ABT_mutex_lock(client->ls_mutex);
             ls_remove(client->dcg->ls, od);
@@ -3016,7 +3014,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
         if(out.ret != dspaces_SUCCESS) {
             fprintf(stderr, "ERROR: putlocal_subdrain_rpc() failed at the server\n");
             free(host_buf);
-            host_buf = NULL;
+            od->data = NULL;
             ABT_mutex_lock(client->ls_mutex);
             ls_remove(client->dcg->ls, od);
             client->local_put_count--;
@@ -3124,7 +3122,6 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
             fprintf(stderr, "ERROR: (%s): cudaStreamCreate() failed, Err Code: (%s)\n",
                     __func__, cudaGetErrorString(curet));
             free(host_buf);
-            host_buf = NULL;
             return dspaces_ERR_CUDA;
         }
 
@@ -3134,7 +3131,6 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
                     __func__, cudaGetErrorString(curet));
             cudaStreamDestroy(stream);
             free(host_buf);
-            host_buf = NULL;
             return dspaces_ERR_CUDA;
         }
 
@@ -3163,7 +3159,6 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
                     __func__, cudaGetErrorString(curet));
             cudaStreamDestroy(stream);
             free(host_buf);
-            host_buf = NULL;
             return dspaces_ERR_CUDA;
         }
         bulk_attr.mem_type = HG_MEM_TYPE_CUDA;
@@ -3178,7 +3173,6 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
                     __func__, hret);
             cudaStreamDestroy(stream);
             free(host_buf);
-            host_buf = NULL;
             return dspaces_ERR_MERCURY;
         }
 
@@ -3193,7 +3187,6 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
             margo_bulk_free(gdr_in.handle);
             cudaStreamDestroy(stream);
             free(host_buf);
-            host_buf = NULL;
             return dspaces_ERR_MERCURY;
         }
 
@@ -3207,7 +3200,6 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
             margo_bulk_free(gdr_in.handle);
             cudaStreamDestroy(stream);
             free(host_buf);
-            host_buf = NULL;
             return dspaces_ERR_MERCURY;
         }
 
@@ -3223,7 +3215,6 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
                 margo_bulk_free(gdr_in.handle);
                 cudaStreamDestroy(stream);
                 free(host_buf);
-                host_buf = NULL;
                 return (ret);
             }
         }
@@ -3265,13 +3256,13 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
             ls_remove(client->dcg->ls, local_od);
             client->local_put_count--;
             ABT_mutex_unlock(client->ls_mutex);
+            free(host_buf);
+            local_od->data = NULL;
             obj_data_free(local_od);
             margo_destroy(gdr_handle);
             margo_addr_free(client->mid, server_addr);
             margo_bulk_free(gdr_in.handle);
             cudaStreamDestroy(stream);
-            free(host_buf);
-            host_buf = NULL;
             return dspaces_ERR_MERCURY;
         }
 
@@ -3286,13 +3277,13 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
             ls_remove(client->dcg->ls, local_od);
             client->local_put_count--;
             ABT_mutex_unlock(client->ls_mutex);
+            free(host_buf);
+            local_od->data = NULL;
             obj_data_free(local_od);
             margo_destroy(gdr_handle);
             margo_addr_free(client->mid, server_addr);
             margo_bulk_free(gdr_in.handle);
             cudaStreamDestroy(stream);
-            free(host_buf);
-            host_buf = NULL;
             return dspaces_ERR_MERCURY;
         }
 
@@ -3334,13 +3325,13 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
                 ls_remove(client->dcg->ls, local_od);
                 client->local_put_count--;
                 ABT_mutex_unlock(client->ls_mutex);
+                free(host_buf);
+                local_od->data = NULL;
                 obj_data_free(local_od);
                 margo_destroy(gdr_handle);
                 margo_addr_free(client->mid, server_addr);
                 margo_bulk_free(gdr_in.handle);
                 cudaStreamDestroy(stream);
-                free(host_buf);
-                host_buf = NULL;
                 return dspaces_ERR_MERCURY;
             }
             margo_bulk_free(gdr_in.handle);
@@ -3365,11 +3356,11 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
                 ls_remove(client->dcg->ls, local_od);
                 client->local_put_count--;
                 ABT_mutex_unlock(client->ls_mutex);
+                free(host_buf);
+                local_od->data = NULL;
                 obj_data_free(local_od);
                 margo_addr_free(client->mid, server_addr);
                 cudaStreamDestroy(stream);
-                free(host_buf);
-                host_buf = NULL;
                 return dspaces_ERR_CUDA;
             }
             /* putlocal_subdrain RPC */
@@ -3387,11 +3378,11 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
                 ls_remove(client->dcg->ls, local_od);
                 client->local_put_count--;
                 ABT_mutex_unlock(client->ls_mutex);
+                free(host_buf);
+                local_od->data = NULL;
                 obj_data_free(local_od);
                 margo_addr_free(client->mid, server_addr);
                 cudaStreamDestroy(stream);
-                free(host_buf);
-                host_buf = NULL;
                 return dspaces_ERR_MERCURY;
             }
             cudaStreamDestroy(stream);
@@ -3424,13 +3415,13 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
                 ls_remove(client->dcg->ls, local_od);
                 client->local_put_count--;
                 ABT_mutex_unlock(client->ls_mutex);
+                free(host_buf);
+                local_od->data = NULL;
                 obj_data_free(local_od);
                 margo_destroy(gdr_handle);
                 margo_addr_free(client->mid, server_addr);
                 margo_bulk_free(gdr_in.handle);
                 cudaStreamDestroy(stream);
-                free(host_buf);
-                host_buf = NULL;
                 return dspaces_ERR_CUDA;
             }
             /* putlocal_subdrain RPC */
@@ -3448,13 +3439,13 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
                 ls_remove(client->dcg->ls, local_od);
                 client->local_put_count--;
                 ABT_mutex_unlock(client->ls_mutex);
+                free(host_buf);
+                local_od->data = NULL;
                 obj_data_free(local_od);
                 margo_destroy(gdr_handle);
                 margo_addr_free(client->mid, server_addr);
                 margo_bulk_free(gdr_in.handle);
                 cudaStreamDestroy(stream);
-                free(host_buf);
-                host_buf = NULL;
                 return dspaces_ERR_MERCURY;
             }
             cudaStreamDestroy(stream);
@@ -3477,12 +3468,12 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
                 ls_remove(client->dcg->ls, local_od);
                 client->local_put_count--;
                 ABT_mutex_unlock(client->ls_mutex);
+                free(host_buf);
+                local_od->data = NULL;
                 obj_data_free(local_od);
                 margo_destroy(gdr_handle);
                 margo_addr_free(client->mid, server_addr);
                 margo_bulk_free(gdr_in.handle);
-                free(host_buf);
-                host_buf = NULL;
             }
             margo_bulk_free(gdr_in.handle);
             margo_destroy(gdr_handle);
@@ -3512,10 +3503,10 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
             ls_remove(client->dcg->ls, local_od);
             client->local_put_count--;
             ABT_mutex_unlock(client->ls_mutex);
+            free(host_buf);
+            local_od->data = NULL;
             obj_data_free(local_od);
             margo_addr_free(client->mid, server_addr);
-            free(host_buf);
-            host_buf = NULL;
             return dspaces_ERR_MERCURY;
         }
 
@@ -3532,10 +3523,10 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
             ls_remove(client->dcg->ls, local_od);
             client->local_put_count--;
             ABT_mutex_unlock(client->ls_mutex);
+            free(host_buf);
+            local_od->data = NULL;
             obj_data_free(local_od);
             margo_addr_free(client->mid, server_addr);
-            free(host_buf);
-            host_buf = NULL;
             return gdr_out.ret;
         }
 
@@ -3553,10 +3544,10 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
             ls_remove(client->dcg->ls, local_od);
             client->local_put_count--;
             ABT_mutex_unlock(client->ls_mutex);
+            free(host_buf);
+            local_od->data = NULL;
             obj_data_free(local_od);
             margo_addr_free(client->mid, server_addr);
-            free(host_buf);
-            host_buf = NULL;
             return dspaces_ERR_MERCURY;
         }
 
@@ -3573,10 +3564,10 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
             ls_remove(client->dcg->ls, local_od);
             client->local_put_count--;
             ABT_mutex_unlock(client->ls_mutex);
+            free(host_buf);
+            local_od->data = NULL;
             obj_data_free(local_od);
             margo_addr_free(client->mid, server_addr);
-            free(host_buf);
-            host_buf = NULL;
             return host_out.ret;
         }
 
