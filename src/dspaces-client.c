@@ -2851,6 +2851,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
                 cudaStreamDestroy(stream);
                 free(host_buf);
                 host_buf = NULL;
+                free(handle);
                 return (ret);
             }
         }
@@ -2896,6 +2897,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             cudaStreamDestroy(stream);
             free(host_buf);
             host_buf = NULL;
+            free(handle);
             ABT_mutex_lock(client->ls_mutex);
             ls_remove(client->dcg->ls, od);
             client->local_put_count--;
@@ -2913,6 +2915,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             cudaStreamDestroy(stream);
             free(host_buf);
             host_buf = NULL;
+            free(handle);
             margo_addr_free(client->mid, server_addr);
             ABT_mutex_lock(client->ls_mutex);
             ls_remove(client->dcg->ls, od);
@@ -2953,6 +2956,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             obj_data_free(od);
             margo_bulk_free(in->handle);
             margo_destroy(*handle);
+            free(handle);
             ABT_cond_free(&e->delete_cond);
             ABT_mutex_lock(client->putlocal_subdrain_mutex);
             list_del(&e->entry);
@@ -2979,6 +2983,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             obj_data_free(od);
             margo_bulk_free(in->handle);
             margo_destroy(*handle);
+            free(handle);
             ABT_cond_free(&e->delete_cond);
             ABT_mutex_lock(client->putlocal_subdrain_mutex);
             list_del(&e->entry);
@@ -3000,6 +3005,7 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             obj_data_free(od);
             margo_bulk_free(in->handle);
             margo_destroy(*handle);
+            free(handle);
             ABT_cond_free(&e->delete_cond);
             ABT_mutex_lock(client->putlocal_subdrain_mutex);
             list_del(&e->entry);
@@ -3016,6 +3022,9 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             client->local_put_count--;
             ABT_mutex_unlock(client->ls_mutex);
             obj_data_free(od);
+            margo_bulk_free(in->handle);
+            margo_destroy(*handle);
+            free(handle);
             ABT_cond_free(&e->delete_cond);
             ABT_mutex_lock(client->putlocal_subdrain_mutex);
             list_del(&e->entry);
@@ -3266,9 +3275,12 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
             return dspaces_ERR_MERCURY;
         }
 
+        host_handle = (hg_handle_t*) malloc(sizeof(hg_handle_t));
+
         hret = margo_create(client->mid, server_addr, client->putlocal_subdrain_id, host_handle);
         if(hret != HG_SUCCESS) {
             fprintf(stderr, "ERROR: (%s): margo_create() failed! Err Code: %d\n", __func__, hret);
+            free(host_handle);
             margo_bulk_free(host_in->handle);
             ABT_mutex_lock(client->ls_mutex);
             ls_remove(client->dcg->ls, local_od);
@@ -3316,6 +3328,7 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
                 list_del(&e->entry);
                 ABT_mutex_unlock(client->putlocal_subdrain_mutex);
                 margo_destroy(*host_handle);
+                free(host_handle);
                 margo_bulk_free(host_in->handle);
                 ABT_mutex_lock(client->ls_mutex);
                 ls_remove(client->dcg->ls, local_od);
@@ -3346,6 +3359,7 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
                 list_del(&e->entry);
                 ABT_mutex_unlock(client->putlocal_subdrain_mutex);
                 margo_destroy(*host_handle);
+                free(host_handle);
                 margo_bulk_free(host_in->handle);
                 ABT_mutex_lock(client->ls_mutex);
                 ls_remove(client->dcg->ls, local_od);
@@ -3367,6 +3381,7 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
                 list_del(&e->entry);
                 ABT_mutex_unlock(client->putlocal_subdrain_mutex);
                 margo_destroy(*host_handle);
+                free(host_handle);
                 margo_bulk_free(host_in->handle);
                 ABT_mutex_lock(client->ls_mutex);
                 ls_remove(client->dcg->ls, local_od);
@@ -3403,6 +3418,7 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
                 list_del(&e->entry);
                 ABT_mutex_unlock(client->putlocal_subdrain_mutex);
                 margo_destroy(*host_handle);
+                free(host_handle);
                 margo_bulk_free(host_in->handle);
                 ABT_mutex_lock(client->ls_mutex);
                 ls_remove(client->dcg->ls, local_od);
@@ -3426,6 +3442,7 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
                 list_del(&e->entry);
                 ABT_mutex_unlock(client->putlocal_subdrain_mutex);
                 margo_destroy(*host_handle);
+                free(host_handle);
                 margo_bulk_free(host_in->handle);
                 ABT_mutex_lock(client->ls_mutex);
                 ls_remove(client->dcg->ls, local_od);
@@ -3454,6 +3471,7 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
                 list_del(&e->entry);
                 ABT_mutex_unlock(client->putlocal_subdrain_mutex);
                 margo_destroy(*host_handle);
+                free(host_handle);
                 margo_bulk_free(host_in->handle);
                 ABT_mutex_lock(client->ls_mutex);
                 ls_remove(client->dcg->ls, local_od);
@@ -3488,6 +3506,7 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
             list_del(&e->entry);
             ABT_mutex_unlock(client->putlocal_subdrain_mutex);
             margo_destroy(*host_handle);
+            free(host_handle);
             margo_bulk_free(host_in->handle);
             ABT_mutex_lock(client->ls_mutex);
             ls_remove(client->dcg->ls, local_od);
@@ -3507,6 +3526,7 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
             list_del(&e->entry);
             ABT_mutex_unlock(client->putlocal_subdrain_mutex);
             margo_destroy(*host_handle);
+            free(host_handle);
             margo_bulk_free(host_in->handle);
             ABT_mutex_lock(client->ls_mutex);
             ls_remove(client->dcg->ls, local_od);
@@ -3527,6 +3547,7 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
             list_del(&e->entry);
             ABT_mutex_unlock(client->putlocal_subdrain_mutex);
             margo_destroy(*host_handle);
+            free(host_handle);
             margo_bulk_free(host_in->handle);
             ABT_mutex_lock(client->ls_mutex);
             ls_remove(client->dcg->ls, local_od);
@@ -3546,6 +3567,7 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
             list_del(&e->entry);
             ABT_mutex_unlock(client->putlocal_subdrain_mutex);
             margo_destroy(*host_handle);
+            free(host_handle);
             margo_bulk_free(host_in->handle);
             ABT_mutex_lock(client->ls_mutex);
             ls_remove(client->dcg->ls, local_od);
