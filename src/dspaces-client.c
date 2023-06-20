@@ -2490,7 +2490,18 @@ static int cuda_put_dual_channel_v2(dspaces_client_t client, const char *var_nam
     }
 
     uint64_t dist = ub[cut_dim] - lb[cut_dim] + 1;
-    host_bb.ub.c[cut_dim] = (uint64_t)(host_bb.lb.c[cut_dim] + dist * host_ratio);
+    uint64_t cut_dist = dist * host_ratio;
+    if(cut_dist == 0) { // host_ratio near zero, go to pure GDR
+        *itime = 0;
+        return cuda_put_gdr(client, var_name, ver, 
+                        elem_size, ndim, lb, ub, data);
+    }
+
+    host_bb.ub.c[cut_dim] = (uint64_t)(host_bb.lb.c[cut_dim] + cut_dist - 1);
+    if(host_bb.ub.c[cut_dim] == ub[cut_dim]) { // host_ratio near one, go to pure host-based
+        return cuda_put_pipeline(client, var_name, ver, 
+                            elem_size, ndim, lb, ub, data, itime);
+    }
 
     size_t host_rdma_size = (size_t) (elem_size*bbox_volume(&host_bb));
 
@@ -3103,7 +3114,18 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
     }
 
     uint64_t dist = ub[cut_dim] - lb[cut_dim] + 1;
-    host_bb.ub.c[cut_dim] = (uint64_t)(host_bb.lb.c[cut_dim] + dist * local_ratio);
+    uint64_t cut_dist = dist * local_ratio;
+    if(cut_dist == 0) { // host_ratio near zero, go to pure GDR
+        *itime = 0;
+        return cuda_put_gdr(client, var_name, ver, 
+                        elem_size, ndim, lb, ub, data);
+    }
+
+    host_bb.ub.c[cut_dim] = (uint64_t)(host_bb.lb.c[cut_dim] + cut_dist - 1);
+    if(host_bb.ub.c[cut_dim] == ub[cut_dim]) { // host_ratio near one, go to pure host-based
+        return cuda_put_pipeline(client, var_name, ver, 
+                            elem_size, ndim, lb, ub, data, itime);
+    }
 
     size_t host_rdma_size = (size_t) (elem_size*bbox_volume(&host_bb));
 
