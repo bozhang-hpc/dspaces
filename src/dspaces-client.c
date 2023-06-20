@@ -2495,13 +2495,11 @@ static int cuda_put_dual_channel_v2(dspaces_client_t client, const char *var_nam
         *itime = 0;
         return cuda_put_gdr(client, var_name, ver, 
                         elem_size, ndim, lb, ub, data);
-    }
-
-    host_bb.ub.c[cut_dim] = (uint64_t)(host_bb.lb.c[cut_dim] + cut_dist - 1);
-    if(host_bb.ub.c[cut_dim] == ub[cut_dim]) { // host_ratio near one, go to pure host-based
+    } else if(cut_dist == dist) { // host_ratio near one, go to pure host-based
         return cuda_put_pipeline(client, var_name, ver, 
                             elem_size, ndim, lb, ub, data, itime);
     }
+    host_bb.ub.c[cut_dim] = (uint64_t)(host_bb.lb.c[cut_dim] + cut_dist - 1);
 
     size_t host_rdma_size = (size_t) (elem_size*bbox_volume(&host_bb));
 
@@ -3098,6 +3096,7 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
     struct obj_data *local_od;
     static int wait_flag = 0;
     double gdr_timer, host_timer;
+    double lr = 0.5;
 
     struct bbox host_bb = {.num_dims = ndim};
     memset(host_bb.lb.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
@@ -3119,13 +3118,11 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
         *itime = 0;
         return cuda_put_gdr(client, var_name, ver, 
                         elem_size, ndim, lb, ub, data);
-    }
-
-    host_bb.ub.c[cut_dim] = (uint64_t)(host_bb.lb.c[cut_dim] + cut_dist - 1);
-    if(host_bb.ub.c[cut_dim] == ub[cut_dim]) { // host_ratio near one, go to pure host-based
+    } else if(cut_dist == dist) { // host_ratio near one, go to pure host-based
         return cuda_put_pipeline(client, var_name, ver, 
                             elem_size, ndim, lb, ub, data, itime);
     }
+    host_bb.ub.c[cut_dim] = (uint64_t)(host_bb.lb.c[cut_dim] + cut_dist - 1);
 
     size_t host_rdma_size = (size_t) (elem_size*bbox_volume(&host_bb));
 
@@ -3413,7 +3410,7 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
                     gdr_timer, host_timer);
             if(host_timer > 2) { // host timer > 2ms
                 // host path takes longer time, tune ratio
-                gdr_ratio += ((host_timer - gdr_timer) / host_timer) * (1-gdr_ratio);
+                gdr_ratio += ((host_timer - gdr_timer) / host_timer) * lr * (1-gdr_ratio);
                 local_ratio = 1 - gdr_ratio;
             } else {
                 // host request finishes no later than the GDR request
@@ -3506,7 +3503,7 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
                     gdr_timer, host_timer);
             if(gdr_timer > 2) { // GDR timer > 2ms
                 // GDR path takes longer time, tune ratio
-                gdr_ratio -= ((gdr_timer - host_timer) / gdr_timer) * (gdr_ratio-0);
+                gdr_ratio -= ((gdr_timer - host_timer) / gdr_timer) * lr * (gdr_ratio-0);
                 local_ratio = 1 - gdr_ratio;
             } else {
                 // GDR request finishes no later than the host request
