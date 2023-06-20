@@ -3359,7 +3359,6 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
             /* Sync Device->Host I/O */
             gettimeofday(&start, NULL);
             curet = cudaStreamSynchronize(stream);
-            gettimeofday(&end, NULL);
             if(curet != cudaSuccess) {
                 fprintf(stderr, "ERROR: (%s): cudaStreamSynchronize() failed, Err Code: (%s)\n",
                         __func__, cudaGetErrorString(curet));
@@ -3403,6 +3402,7 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
                 cudaStreamDestroy(stream);
                 return dspaces_ERR_MERCURY;
             }
+            gettimeofday(&end, NULL);
             cudaStreamDestroy(stream);
             host_timer = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
             fprintf(stdout, "ts = %u, gdr_ratio = %lf, local_ratio = %lf,"
@@ -3421,7 +3421,6 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
             /* Sync Device->Host I/O */
             gettimeofday(&start, NULL);
             curet = cudaStreamSynchronize(stream);
-            gettimeofday(&end, NULL);
             if(curet != cudaSuccess) {
                 fprintf(stderr, "ERROR: (%s): cudaStreamSynchronize() failed, Err Code: (%s)\n",
                         __func__, cudaGetErrorString(curet));
@@ -3469,6 +3468,7 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
                 cudaStreamDestroy(stream);
                 return dspaces_ERR_MERCURY;
             }
+            gettimeofday(&end, NULL);
             cudaStreamDestroy(stream);
             host_timer = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
         
