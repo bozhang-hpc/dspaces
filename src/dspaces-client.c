@@ -3386,6 +3386,9 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
             }
             cudaStreamDestroy(stream);
             host_timer = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+            fprintf(stdout, "ts = %u, gdr_ratio = %lf, local_ratio = %lf,"
+                    "gdr_timer = %lf, host_timer = %lf\n", ver, gdr_ratio, local_ratio,
+                    gdr_timer, host_timer);
             if(host_timer > 2) { // host timer > 2ms
                 // host path takes longer time, tune ratio
                 gdr_ratio += ((host_timer - gdr_timer) / host_timer) * (1-gdr_ratio);
@@ -3476,6 +3479,9 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
             }
             margo_bulk_free(gdr_in.handle);
             gdr_timer = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+            fprintf(stdout, "ts = %u, gdr_ratio = %lf, local_ratio = %lf,"
+                    "gdr_timer = %lf, host_timer = %lf\n", ver, gdr_ratio, local_ratio,
+                    gdr_timer, host_timer);
             if(gdr_timer > 2) { // GDR timer > 2ms
                 // GDR path takes longer time, tune ratio
                 gdr_ratio -= ((gdr_timer - host_timer) / gdr_timer) * (gdr_ratio-0);
