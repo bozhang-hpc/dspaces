@@ -1054,6 +1054,8 @@ int dspaces_server_init(char *listen_addr_str, MPI_Comm comm,
                                         bulk_out_t, putlocal_subdrain_rpc);
         margo_register_data(server->mid, server->putlocal_subdrain_id,
                             (void *)server, NULL);
+        margo_registered_disable_response(server->mid, server->putlocal_subdrain_id,
+                             HG_TRUE);
         server->notify_drain_id =
             MARGO_REGISTER(server->mid, "notify_drain_rpc", odsc_list_t, void, NULL);
         margo_registered_disable_response(server->mid, server->notify_drain_id,
@@ -2447,7 +2449,6 @@ static void putlocal_subdrain_rpc(hg_handle_t handle)
 {
     hg_return_t hret;
     bulk_gdim_t in;
-    bulk_out_t out;
     hg_bulk_t bulk_handle;
     hg_addr_t client_addr, server_addr;
     hg_handle_t notifyh;
@@ -2498,10 +2499,6 @@ static void putlocal_subdrain_rpc(hg_handle_t handle)
     // now update the dht
     obj_update_dht(server, client_od, DS_OBJ_NEW);
     DEBUG_OUT("Finished obj_put_local_update in putlocal_subdrain_rpc\n");
-
-    // respond to the client after update dht for put_local
-    out.ret = dspaces_SUCCESS;
-    margo_respond(handle, &out);
 
     free(client_od);
 

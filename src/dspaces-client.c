@@ -965,6 +965,8 @@ static int dspaces_init_margo(dspaces_client_t client,
         client->putlocal_subdrain_id =
             MARGO_REGISTER(client->mid, "putlocal_subdrain_rpc", bulk_gdim_t,
                                         bulk_out_t, NULL);
+        margo_registered_disable_response(client->mid, client->putlocal_subdrain_id,
+                                            HG_TRUE);
         client->notify_drain_id = MARGO_REGISTER(client->mid, "notify_drain_rpc",
                                            odsc_list_t, void, notify_drain_rpc);
         margo_register_data(client->mid, client->notify_drain_id, (void *)client,
@@ -2977,9 +2979,9 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
         gettimeofday(&end, NULL);
         timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
         
-
+        margo_request req;
         /* putlocal_subdrain RPC */
-        hret = margo_forward(*handle, in);
+        hret = margo_iforward(*handle, in, &req);
         if(hret != HG_SUCCESS) {
             fprintf(stderr, "ERROR: (%s): margo_forward() failed! Err Code: %d\n", __func__, hret);
             cudaStreamDestroy(stream);
@@ -2999,47 +3001,6 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             list_del(&e->entry);
             ABT_mutex_unlock(client->putlocal_subdrain_mutex);
             return dspaces_ERR_MERCURY;
-        }
-
-        hret = margo_get_output(*handle, &out);
-        if(hret != HG_SUCCESS) {
-            fprintf(stderr, "ERROR: (%s):  margo_get_output() failed! Err Code: %d\n", __func__, hret);
-            cudaStreamDestroy(stream);
-            free(host_buf);
-            od->data = NULL;
-            margo_addr_free(client->mid, server_addr);
-            ABT_mutex_lock(client->ls_mutex);
-            ls_remove(client->dcg->ls, od);
-            client->local_put_count--;
-            ABT_mutex_unlock(client->ls_mutex);
-            obj_data_free(od);
-            margo_bulk_free(in->handle);
-            margo_destroy(*handle);
-            free(handle);
-            ABT_cond_free(&e->delete_cond);
-            ABT_mutex_lock(client->putlocal_subdrain_mutex);
-            list_del(&e->entry);
-            ABT_mutex_unlock(client->putlocal_subdrain_mutex);
-            return dspaces_ERR_MERCURY;
-        }
-
-        if(out.ret != dspaces_SUCCESS) {
-            fprintf(stderr, "ERROR: putlocal_subdrain_rpc() failed at the server\n");
-            free(host_buf);
-            od->data = NULL;
-            ABT_mutex_lock(client->ls_mutex);
-            ls_remove(client->dcg->ls, od);
-            client->local_put_count--;
-            ABT_mutex_unlock(client->ls_mutex);
-            obj_data_free(od);
-            margo_bulk_free(in->handle);
-            margo_destroy(*handle);
-            free(handle);
-            ABT_cond_free(&e->delete_cond);
-            ABT_mutex_lock(client->putlocal_subdrain_mutex);
-            list_del(&e->entry);
-            ABT_mutex_unlock(client->putlocal_subdrain_mutex);
-            ret = out.ret;
         }
         /* putlocal_subdrain RPC end */
 
