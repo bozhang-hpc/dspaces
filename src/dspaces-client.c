@@ -2448,12 +2448,15 @@ static int cuda_put_dual_channel_v2(dspaces_client_t client, const char *var_nam
     // first piece goes to host, second piece goes to GDR
     static double host_ratio = 0.5;
     static double gdr_ratio = 0.5;
-    // the max msg_size for a single bulk transfer is 1GB
-    // 1GB*1e-3 = 1MB makes no difference for single or dual channel
-    double ratio_eps = 1e-3;
+    // 1MB makes no difference for single or dual channel
+    uint64_t ratio_eps = 1 << 20;
     // make it to pure GDR or host-based when either the ratio is around 1 
     double min_ratio = host_ratio > gdr_ratio ? gdr_ratio : host_ratio;
-    if(min_ratio < ratio_eps) { // go to either pure GDR or host-based
+    uint64_t put_rdma_size = elem_size;
+    for(int i=0; i<ndim; i++) {
+        put_rdma_size *= (ub[i] - lb[i] + 1);
+    }
+    if(min_ratio * put_rdma_size < ratio_eps) { // go to either pure GDR or host-based
         if(host_ratio > gdr_ratio) { // pure host
             return cuda_put_pipeline(client, var_name, ver, 
                             elem_size, ndim, lb, ub, data, itime);
@@ -3058,13 +3061,15 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
     // first piece goes to host, second piece goes to GDR
     static double local_ratio = 0.5;
     static double gdr_ratio = 0.5;
-    // the max msg_size for a single bulk transfer is 1GB
-    // 1GB*1e-3 = 1MB makes no difference for single or dual channel
-    double ratio_eps = 1e-3;
+    // 1MB makes no difference for single or dual channel
+    uint64_t ratio_eps = 1 << 20;
     // make it to pure GDR or local_put when either the ratio is around 1 
     double min_ratio = local_ratio > gdr_ratio ? gdr_ratio : local_ratio;
-    int pure_local = 0, pure_gdr = 0;
-    if(min_ratio < ratio_eps) {
+    uint64_t put_rdma_size = elem_size;
+    for(int i=0; i<ndim; i++) {
+        put_rdma_size *= (ub[i] - lb[i] +1 );
+    }
+    if(min_ratio * put_rdma_size < ratio_eps) {
         if(local_ratio > gdr_ratio) { //pure dual staging
             return cuda_put_dcds(client, var_name, ver, elem_size,
                                     ndim, lb, ub, data, itime);
@@ -5449,14 +5454,15 @@ static int get_data_dual_channel_v2(dspaces_client_t client, int num_odscs,
     // first piece goes to host, second piece goes to GDR
     static double host_ratio = 0.5;
     static double gdr_ratio = 0.5;
-    // the max msg_size for a single bulk transfer is 1GB
-    // 1GB*1e-3 = 1MB makes no difference for single or dual channel
-    double ratio_eps = 1e-3;
-
+    // 1MB makes no difference for single or dual channel
+    uint64_t ratio_eps = 1 << 20;
     // make it to pure GDR or host-based when either the ratio is around 1 
     double min_ratio = host_ratio > gdr_ratio ? gdr_ratio : host_ratio;
-
-    if(min_ratio < ratio_eps) { // go to either pure GDR or host-based
+    uint64_t get_rdma_size = req_obj.size;
+    for(int i=0; i<req_obj.bb.num_dims; i++) {
+        get_rdma_size *= (req_obj.bb.ub.c[i] - req_obj.bb.lb.c[i] + 1);
+    }
+    if(min_ratio * get_rdma_size < ratio_eps) { // go to either pure GDR or host-based
         if(host_ratio > gdr_ratio) { // pure host
             return get_data_hybrid(client, num_odscs, req_obj,
                                     odsc_tab, d_data, ctime);
@@ -5500,6 +5506,7 @@ static int get_data_dual_channel_v2(dspaces_client_t client, int num_odscs,
 
     int cut_dim; // find the highest dimension whose dim length > 1
     uint64_t dist; // the bbox distance of the cut_dim
+    uint64_t cut_dist; // dist * host_ratio
     hg_size_t host_rdma_size, gdr_rdma_size;
     hg_addr_t server_addr;
     int gdr_idx;
@@ -5513,8 +5520,9 @@ static int get_data_dual_channel_v2(dspaces_client_t client, int num_odscs,
             }
         }
         dist = odsc_tab[i].bb.ub.c[cut_dim]- odsc_tab[i].bb.lb.c[cut_dim] + 1;
+        cut_dist  = dist * host_ratio;
         odsc_tab[i].bb.ub.c[cut_dim] = 
-            (uint64_t) (odsc_tab[i].bb.lb.c[cut_dim] + dist * host_ratio);
+            (uint64_t) (odsc_tab[i].bb.lb.c[cut_dim] + cut_dist - 1);
         margo_addr_lookup(client->mid, odsc_tab[i].owner, &server_addr);
         /* Start host-based RPC ASAP */
         od[i] = obj_data_alloc(&odsc_tab[i]);
@@ -5534,7 +5542,11 @@ static int get_data_dual_channel_v2(dspaces_client_t client, int num_odscs,
         margo_iforward(hndl[i], &in[i], &serv_req[i]);
         /* GDR RPC */
         gdr_idx = i + num_odscs;
-        gdr_odsc_tab[i].bb.lb.c[cut_dim] = odsc_tab[i].bb.ub.c[cut_dim] + 1;
+        if(cut_dist == dist) {
+            gdr_odsc_tab[i].bb.lb.c[cut_dim] = odsc_tab[i].bb.ub.c[cut_dim];
+        } else {
+            gdr_odsc_tab[i].bb.lb.c[cut_dim] = odsc_tab[i].bb.ub.c[cut_dim] + 1;
+        }
         od[gdr_idx] = obj_data_alloc_cuda(&gdr_odsc_tab[i]);
         in[gdr_idx].odsc.size = sizeof(obj_descriptor);
         in[gdr_idx].odsc.raw_odsc = (char *)(&gdr_odsc_tab[i]);
@@ -5887,13 +5899,16 @@ static int dspaces_cuda_dcds_get(dspaces_client_t client, const char *var_name, 
     // first piece goes to host, second piece goes to GDR
     static double host_ratio = 0.5;
     static double gdr_ratio = 0.5;
-    // the max msg_size for a single bulk transfer is 1GB
-    // 1GB*1e-3 = 1MB makes no difference for single or dual channel
-    double ratio_eps = 1e-3;
+    // 1MB makes no difference for single or dual channel
+    uint64_t ratio_eps = 1 << 20;
     // make it to pure GDR or host-based when either the ratio is around 1 
     double min_ratio = host_ratio > gdr_ratio ? gdr_ratio : host_ratio;
+    uint64_t get_rdma_size = elem_size;
+    for(int i=0; i<ndim; i++) {
+        get_rdma_size *= (ub[i] - lb[i] + 1);
+    }
     int pure_host = 0, pure_gdr = 0;
-    if(min_ratio < ratio_eps) {
+    if(min_ratio * get_rdma_size < ratio_eps) {
         if(host_ratio > gdr_ratio) {
             pure_host = 1;
         } else {
@@ -6234,6 +6249,7 @@ static int dspaces_cuda_dcds_get(dspaces_client_t client, const char *var_name, 
 
     int cut_dim; // find the highest dimension whose dim length > 1
     uint64_t dist; // the bbox distance of the cut_dim
+    uint64_t cut_dist; // dist * host_ratio
     hg_size_t host_rdma_size, gdr_rdma_size;
     hg_addr_t bserver_addr;
     int gdr_idx;
@@ -6368,8 +6384,9 @@ static int dspaces_cuda_dcds_get(dspaces_client_t client, const char *var_name, 
                     }
                 }
                 dist = remote_odsc_tab[i].bb.ub.c[cut_dim]- remote_odsc_tab[i].bb.lb.c[cut_dim] + 1;
+                cut_dist = dist * host_ratio;
                 remote_odsc_tab[i].bb.ub.c[cut_dim] = 
-                    (uint64_t) (remote_odsc_tab[i].bb.lb.c[cut_dim] + dist * host_ratio);
+                    (uint64_t) (remote_odsc_tab[i].bb.lb.c[cut_dim] + cut_dist -1);
                 margo_addr_lookup(client->mid, remote_odsc_tab[i].owner, &bserver_addr);
                 /* Start host-based RPC ASAP */
                 remote_od[i] = obj_data_alloc(&remote_odsc_tab[i]);
@@ -6389,7 +6406,11 @@ static int dspaces_cuda_dcds_get(dspaces_client_t client, const char *var_name, 
                 margo_iforward(bhndl[i], &bin[i], &breq[i]);
                 /* GDR RPC */
                 gdr_idx = i + num_remote;
-                remote_odsc_tab[gdr_idx].bb.lb.c[cut_dim] = remote_odsc_tab[i].bb.ub.c[cut_dim] + 1;
+                if(cut_dist == dist) {
+                    remote_odsc_tab[gdr_idx].bb.lb.c[cut_dim] = remote_odsc_tab[i].bb.ub.c[cut_dim];
+                } else {
+                    remote_odsc_tab[gdr_idx].bb.lb.c[cut_dim] = remote_odsc_tab[i].bb.ub.c[cut_dim] + 1;
+                }
                 remote_od[gdr_idx] = obj_data_alloc_cuda(&remote_odsc_tab[gdr_idx]);
                 bin[gdr_idx].odsc.size = sizeof(obj_descriptor);
                 bin[gdr_idx].odsc.raw_odsc = (char *)(&remote_odsc_tab[gdr_idx]);
