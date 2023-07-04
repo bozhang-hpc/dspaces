@@ -1508,7 +1508,8 @@ static int cuda_put_pipeline(dspaces_client_t client, const char *var_name, unsi
     bulk_out_t out;
     int ret = dspaces_SUCCESS;
     struct timeval start, end;
-    double timer = 0; // timer in millisecond
+    double *timer = (double*)malloc(6*sizeof(double)); // timer in millisecond
+
     gettimeofday(&start, NULL);
 
     obj_descriptor odsc = {.version = ver,
@@ -1533,6 +1534,10 @@ static int cuda_put_pipeline(dspaces_client_t client, const char *var_name, unsi
     
     void* buffer = (void*) malloc(rdma_size);
 
+    gettimeofday(&end, NULL);
+    timer[0] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+    
+    gettimeofday(&start, NULL);
     cudaError_t curet;
     curet = cudaMemcpyAsync(buffer, data, rdma_size, cudaMemcpyDeviceToHost, stream);
     if(curet != cudaSuccess) {
@@ -1541,7 +1546,10 @@ static int cuda_put_pipeline(dspaces_client_t client, const char *var_name, unsi
         free(buffer);
         return dspaces_ERR_CUDA;
     }
+    gettimeofday(&end, NULL);
+    timer[1] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
 
+    gettimeofday(&start, NULL);
     strncpy(odsc.name, var_name, sizeof(odsc.name) - 1);
     odsc.name[sizeof(odsc.name) - 1] = '\0';
     struct global_dimension odsc_gdim;
@@ -1574,6 +1582,10 @@ static int cuda_put_pipeline(dspaces_client_t client, const char *var_name, unsi
         return dspaces_ERR_MERCURY;
     }
 
+    gettimeofday(&end, NULL);
+    timer[2] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+
+    gettimeofday(&start, NULL);
     curet = cudaStreamSynchronize(stream);
     if(curet != cudaSuccess) {
         fprintf(stderr, "ERROR: (%s): cudaStreamSynchronize() failed, Err Code: (%s)\n", __func__, cudaGetErrorString(curet));
@@ -1584,9 +1596,9 @@ static int cuda_put_pipeline(dspaces_client_t client, const char *var_name, unsi
     }
 
     gettimeofday(&end, NULL);
-    timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
-    *itime = timer;
+    timer[3] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
 
+    gettimeofday(&start, NULL);
     hret = margo_forward(handle, &in);
     if(hret != HG_SUCCESS) {
         fprintf(stderr, "ERROR: (%s): margo_forward() failed! Err Code: %d\n", __func__, hret);
@@ -1596,7 +1608,10 @@ static int cuda_put_pipeline(dspaces_client_t client, const char *var_name, unsi
         free(buffer);
         return dspaces_ERR_MERCURY;
     }
+    gettimeofday(&end, NULL);
+    timer[4] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
 
+    gettimeofday(&start, NULL);
     hret = margo_get_output(handle, &out);
     if(hret != HG_SUCCESS) {
         fprintf(stderr, "ERROR: (%s): margo_get_output() failed! Err Code: %d\n", __func__, hret);
@@ -1616,6 +1631,14 @@ static int cuda_put_pipeline(dspaces_client_t client, const char *var_name, unsi
     CUDA_ASSERTRT(cudaStreamDestroy(stream));
     free(buffer);
 
+    gettimeofday(&end, NULL);
+    timer[5] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+
+    fprintf(stdout, "Rank %d: ts = %d, timer0 = %lf, timer1 = %lf, timer2 = %lf"
+                    "timer3 = %lf, timer4 = %lf, timer5 = %lf.\n", client->rank, ver,
+                    timer[0], timer[1], timer[2], timer[3], timer[4], timer[5]);
+    free(timer);
+    *itime = 0;
     return ret;
 }
 
@@ -1624,6 +1647,9 @@ static int cuda_put_gdr(dspaces_client_t client, const char *var_name, unsigned 
                 const void *data)
 {
     // fprintf(stdout, "cuda_put_gdr()\n");
+
+    struct timeval start, end;
+    double *timer = (double*) malloc(4*sizeof(double));
     hg_addr_t server_addr;
     hg_handle_t handle;
     hg_return_t hret;
@@ -1631,6 +1657,7 @@ static int cuda_put_gdr(dspaces_client_t client, const char *var_name, unsigned 
     bulk_out_t out;
     int ret = dspaces_SUCCESS;
 
+    gettimeofday(&start, NULL);
     obj_descriptor odsc = {.version = ver,
                            .owner = {0},
                            .st = st,
@@ -1665,6 +1692,11 @@ static int cuda_put_gdr(dspaces_client_t client, const char *var_name, unsigned 
     CUDA_ASSERTRT(cudaPointerGetAttributes(&ptr_attr, data));
     struct hg_bulk_attr bulk_attr = {.mem_type = HG_MEM_TYPE_CUDA,
                                      .device = ptr_attr.device };
+    
+    gettimeofday(&end, NULL);
+    timer[0] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+
+    gettimeofday(&start, NULL);
 
     hret = margo_bulk_create_attr(client->mid, 1, (void **)&data, &rdma_size,
                                   HG_BULK_READ_ONLY, &bulk_attr, &in.handle);
@@ -1682,6 +1714,11 @@ static int cuda_put_gdr(dspaces_client_t client, const char *var_name, unsigned 
         return dspaces_ERR_MERCURY;
     }
 
+    gettimeofday(&end, NULL);
+    timer[1] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+
+    gettimeofday(&start, NULL);
+
     hret = margo_forward(handle, &in);
     if(hret != HG_SUCCESS) {
         fprintf(stderr, "ERROR: (%s): margo_forward() failed! Err Code: %d\n", __func__, hret);
@@ -1689,6 +1726,11 @@ static int cuda_put_gdr(dspaces_client_t client, const char *var_name, unsigned 
         margo_destroy(handle);
         return dspaces_ERR_MERCURY;
     }
+
+    gettimeofday(&end, NULL);
+    timer[2] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+
+    gettimeofday(&start, NULL);
 
     hret = margo_get_output(handle, &out);
     if(hret != HG_SUCCESS) {
@@ -1703,6 +1745,15 @@ static int cuda_put_gdr(dspaces_client_t client, const char *var_name, unsigned 
     margo_bulk_free(in.handle);
     margo_destroy(handle);
     margo_addr_free(client->mid, server_addr);
+
+    gettimeofday(&end, NULL);
+    timer[3] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+
+    fprintf(stdout, "Rank %d: ts = %d, timer0 = %lf, timer1 = %lf, timer2 = %lf"
+                    "timer3 = %lf.\n", client->rank, ver,
+                    timer[0], timer[1], timer[2], timer[3]);
+    free(timer);
+
     return ret;
 }
 
@@ -2475,7 +2526,7 @@ static int cuda_put_dual_channel_v2(dspaces_client_t client, const char *var_nam
     margo_request gdr_req, host_req;
     int ret = dspaces_SUCCESS;
     struct timeval start, end;
-    double timer = 0; // timer in millisecond
+    double *timer = (double*)malloc(6*sizeof(double)); // timer in millisecond
     gettimeofday(&start, NULL);
 
     struct bbox host_bb = {.num_dims = ndim};
@@ -2511,6 +2562,9 @@ static int cuda_put_dual_channel_v2(dspaces_client_t client, const char *var_nam
     
     void* h_buffer = (void*) malloc(host_rdma_size);
     
+    gettimeofday(&end, NULL);
+    timer[0] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+    gettimeofday(&start, NULL);
     /* Start D->H I/O ASAP */
     cudaError_t curet;
     curet = cudaMemcpyAsync(h_buffer, data, host_rdma_size, cudaMemcpyDeviceToHost, stream);
@@ -2522,6 +2576,10 @@ static int cuda_put_dual_channel_v2(dspaces_client_t client, const char *var_nam
         return dspaces_ERR_CUDA;
     }
 
+    gettimeofday(&end, NULL);
+    timer[1] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+
+    gettimeofday(&start, NULL);
     /* Start GDR I/O */
     obj_descriptor gdr_odsc = {.version = ver,
                                .owner = {0},
@@ -2580,6 +2638,10 @@ static int cuda_put_dual_channel_v2(dspaces_client_t client, const char *var_nam
         return dspaces_ERR_MERCURY;
     }
 
+    gettimeofday(&end, NULL);
+    timer[2] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+
+    gettimeofday(&start, NULL);
     /* Prep Host->Remote Staging I/O */
     obj_descriptor host_odsc = {.version = ver,
                                .owner = {0},
@@ -2619,6 +2681,9 @@ static int cuda_put_dual_channel_v2(dspaces_client_t client, const char *var_nam
         return dspaces_ERR_MERCURY;
     }
 
+    gettimeofday(&end, NULL);
+    timer[3] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+    gettimeofday(&start, NULL);
     /* Sync Host Buffer */
     curet = cudaStreamSynchronize(stream);
     if(curet != cudaSuccess) {
@@ -2633,8 +2698,7 @@ static int cuda_put_dual_channel_v2(dspaces_client_t client, const char *var_nam
     }
 
     gettimeofday(&end, NULL);
-    timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
-    *itime = timer;
+    timer[4] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
 
     hret = margo_iforward(host_handle, &host_in, &host_req);
     if(hret != HG_SUCCESS) {
@@ -2730,6 +2794,8 @@ static int cuda_put_dual_channel_v2(dspaces_client_t client, const char *var_nam
                 "gdr_time = %lf, host_time = %lf\n", ver, gdr_ratio, host_ratio, 
                     gdr_timer, host_timer);
 
+    gettimeofday(&start, NULL);
+
     hret = margo_get_output(gdr_handle, &gdr_out);
     if(hret != HG_SUCCESS) {
         fprintf(stderr, "ERROR: (%s): margo_get_output() failed! Err Code: %d\n", __func__, hret);
@@ -2770,6 +2836,15 @@ static int cuda_put_dual_channel_v2(dspaces_client_t client, const char *var_nam
     
     margo_addr_free(client->mid, server_addr);
 
+    gettimeofday(&end, NULL);
+    timer[5] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+    fprintf(stdout, "Rank %d: ts = %d, timer0 = %lf, timer1 = %lf, timer2 = %lf"
+                    "timer3 = %lf, timer4 = %lf, timer5 = %lf.\n", client->rank, ver,
+                    timer[0], timer[1], timer[2], timer[3], timer[4], timer[5]);
+
+    free(timer);
+
+    *itime = 0;
     return ret;
 }
 
@@ -2815,7 +2890,9 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
 
     int ret = dspaces_SUCCESS;
     struct timeval start, end;
-    double timer = 0; // timer in millisecond
+    double *timer = (double*)malloc(6*sizeof(double)); // timer in millisecond
+
+    gettimeofday(&start, NULL);
 
     struct bbox bb = {.num_dims = ndim};
     memset(bb.lb.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
@@ -2838,6 +2915,9 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
         
         cudaStream_t stream;
         CUDA_ASSERTRT(cudaStreamCreate(&stream));
+        gettimeofday(&end, NULL);
+        timer[0] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+        gettimeofday(&start, NULL);
         cudaError_t curet;
         curet = cudaMemcpyAsync(host_buf, data, rdma_size, cudaMemcpyDeviceToHost, stream);
         if(curet != cudaSuccess) {
@@ -2847,6 +2927,10 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             free(host_buf);
             return dspaces_ERR_CUDA;
         }
+
+        gettimeofday(&end, NULL);
+        timer[1] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+        gettimeofday(&start, NULL);
 
         hg_handle_t *handle = (hg_handle_t*) malloc(sizeof(hg_handle_t));
         hg_return_t hret;
@@ -2900,6 +2984,10 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
         in->odsc.raw_gdim = (char *)(&od->gdim);
         hg_size_t hg_rdma_size = rdma_size;
 
+        gettimeofday(&end, NULL);
+        timer[2] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+        gettimeofday(&start, NULL);
+
         hret = margo_bulk_create(client->mid, 1, (void **)&host_buf, &hg_rdma_size,
                                 HG_BULK_READ_ONLY, &(in->handle));
         if(hret != HG_SUCCESS) {
@@ -2950,6 +3038,10 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
         ABT_mutex_unlock(client->putlocal_subdrain_mutex);
         /* putlocal_subdrain Prep. end*/
 
+        gettimeofday(&end, NULL);
+        timer[3] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+        gettimeofday(&start, NULL);
+
         /* Sync Device->Host I/O */
         curet = cudaStreamSynchronize(stream);
         if(curet != cudaSuccess) {
@@ -2975,7 +3067,8 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
         }
 
         gettimeofday(&end, NULL);
-        timer += (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+        timer[4] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+        gettimeofday(&start, NULL);
         
 
         /* putlocal_subdrain RPC */
@@ -3000,6 +3093,10 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
             ABT_mutex_unlock(client->putlocal_subdrain_mutex);
             return dspaces_ERR_MERCURY;
         }
+
+        gettimeofday(&end, NULL);
+        timer[5] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+        gettimeofday(&start, NULL);
 
         hret = margo_get_output(*handle, &out);
         if(hret != HG_SUCCESS) {
@@ -3046,9 +3143,15 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
         CUDA_ASSERTRT(cudaStreamDestroy(stream));
         margo_free_output(*handle, &out);
         margo_addr_free(client->mid, server_addr);
-        *itime = 1;
+        gettimeofday(&end, NULL);
+        timer[6] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+        fprintf(stdout, "Rank %d: ts = %d, timer0 = %lf, timer1 = %lf, timer2 = %lf"
+                    "timer3 = %lf, timer4 = %lf, timer5 = %lf, timer6 = %lf.\n", 
+                    client->rank, ver,timer[0], timer[1], timer[2], timer[3],
+                    timer[4], timer[5], timer[6]);
+        *itime = 0;
     }
-
+    free(timer);
     return ret;
 }
 
@@ -3101,7 +3204,7 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
     struct obj_data *local_od;
     static int wait_flag = 0;
     double gdr_timer, host_timer;
-    double lr = 0.5;
+    double lr = 1.0;
 
     struct bbox host_bb = {.num_dims = ndim};
     memset(host_bb.lb.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
