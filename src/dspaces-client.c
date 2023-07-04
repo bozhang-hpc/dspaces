@@ -3628,16 +3628,19 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
             list_del(&e->entry);
             ABT_mutex_unlock(client->putlocal_subdrain_mutex);
             margo_destroy(*host_handle);
+            fprintf(stderr, "DEBUG0\n");
             free(host_handle);
             margo_bulk_free(host_in->handle);
             ABT_mutex_lock(client->ls_mutex);
             ls_remove(client->dcg->ls, local_od);
             client->local_put_count--;
             ABT_mutex_unlock(client->ls_mutex);
+            fprintf(stderr, "DEBUG1\n");
             free(host_buf);
             local_od->data = NULL;
             obj_data_free(local_od);
             margo_addr_free(client->mid, server_addr);
+            fprintf(stderr, "DEBUG2\n");
             return dspaces_ERR_MERCURY;
         }
 
@@ -3669,16 +3672,19 @@ static int cuda_put_dcds_v2(dspaces_client_t client, const char *var_name, unsig
             list_del(&e->entry);
             ABT_mutex_unlock(client->putlocal_subdrain_mutex);
             margo_destroy(*host_handle);
+            fprintf(stderr, "DEBUG3\n");
             free(host_handle);
             margo_bulk_free(host_in->handle);
             ABT_mutex_lock(client->ls_mutex);
             ls_remove(client->dcg->ls, local_od);
             client->local_put_count--;
             ABT_mutex_unlock(client->ls_mutex);
+            fprintf(stderr, "DEBUG4\n");
             free(host_buf);
             local_od->data = NULL;
             obj_data_free(local_od);
             margo_addr_free(client->mid, server_addr);
+            fprintf(stderr, "DEBUG5\n");
             return dspaces_ERR_MERCURY;
         }
 
