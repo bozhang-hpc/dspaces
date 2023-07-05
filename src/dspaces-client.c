@@ -1634,9 +1634,9 @@ static int cuda_put_pipeline(dspaces_client_t client, const char *var_name, unsi
     gettimeofday(&end, NULL);
     timer[5] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
 
-    fprintf(stdout, "Rank %d: ts = %d, timer0 = %lf, timer1 = %lf, timer2 = %lf"
-                    "timer3 = %lf, timer4 = %lf, timer5 = %lf.\n", client->rank, ver,
-                    timer[0], timer[1], timer[2], timer[3], timer[4], timer[5]);
+    fprintf(stdout, "(%s): Rank %d: ts = %d, timer0 = %lf, timer1 = %lf, timer2 = %lf"
+                    "timer3 = %lf, timer4 = %lf, timer5 = %lf.\n", __func__, client->rank,
+                    ver, timer[0], timer[1], timer[2], timer[3], timer[4], timer[5]);
     free(timer);
     *itime = 0;
     return ret;
@@ -1749,8 +1749,8 @@ static int cuda_put_gdr(dspaces_client_t client, const char *var_name, unsigned 
     gettimeofday(&end, NULL);
     timer[3] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
 
-    fprintf(stdout, "Rank %d: ts = %d, timer0 = %lf, timer1 = %lf, timer2 = %lf"
-                    "timer3 = %lf.\n", client->rank, ver,
+    fprintf(stdout, "(%s): Rank %d: ts = %d, timer0 = %lf, timer1 = %lf, timer2 = %lf"
+                    "timer3 = %lf.\n", __func__, client->rank, ver,
                     timer[0], timer[1], timer[2], timer[3]);
     free(timer);
 
@@ -2064,8 +2064,21 @@ static int cuda_put_heuristic(dspaces_client_t client, const char *var_name, uns
         Total score  = Performance Score + Heating Score
         Use Softmax of the total score for random choosing
     */
+    double r;
+    static int cnt = 0;
+    cnt++;
+    if(cnt < 3) { // 2 iters for warm-up
+        srand((unsigned)time(NULL));
+        r = ((double) rand() / (RAND_MAX));
+        if(r < 0.5) { // choose host-based path
+            return cuda_put_pipeline(client, var_name, ver, elem_size, ndim, lb, ub, data, itime);
+        } else { // choose gdr path
+            return cuda_put_gdr(client, var_name, ver, elem_size, ndim, lb, ub, data);
+        }
+    }
     int ret;
     struct timeval start, end;
+    int perf_score = 10, heat_score_max = 5;
 
     struct bbox bb = {.num_dims = ndim};
     memset(bb.lb.c, 0, sizeof(uint64_t) * BBOX_MAX_NDIM);
@@ -2074,12 +2087,13 @@ static int cuda_put_heuristic(dspaces_client_t client, const char *var_name, uns
     memcpy(bb.ub.c, ub, sizeof(uint64_t) * ndim);
 
     size_t rdma_size = elem_size * bbox_volume(&bb);
+    
 
     struct gpu_bulk_list_entry *e;
     e = lookup_gpu_bulk_list(&client->dcg->gpu_bulk_put_list, rdma_size);
     if(!e) { // no record for this rdma size, randomly choose one of the path
         srand((unsigned)time(NULL));
-        double r = ((double) rand() / (RAND_MAX));
+        r = ((double) rand() / (RAND_MAX));
         e = (struct gpu_bulk_list_entry *) malloc(sizeof(*e));
         e->rdma_size = rdma_size;
         // each entry keeps 3 performance record
@@ -2095,14 +2109,14 @@ static int cuda_put_heuristic(dspaces_client_t client, const char *var_name, uns
             gettimeofday(&end, NULL);
             e->host_time[0] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
             e->host_heat_score = 0;
-            e->gdr_heat_score =  e->gdr_heat_score < 5 ? e->gdr_heat_score++ : 5;
+            e->gdr_heat_score =  e->gdr_heat_score < heat_score_max ? e->gdr_heat_score++ : heat_score_max;
         } else { // choose gdr path
             gettimeofday(&start, NULL);
             ret = cuda_put_gdr(client, var_name, ver, elem_size, ndim, lb, ub, data);
             gettimeofday(&end, NULL);
             e->gdr_time[0] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
             e->gdr_heat_score = 0;
-            e->host_heat_score = e->host_heat_score < 5 ? e->host_heat_score++ : 5;
+            e->host_heat_score = e->host_heat_score < heat_score_max ? e->host_heat_score++ : heat_score_max;
         }
         list_add(&e->entry, &client->dcg->gpu_bulk_put_list);
     } else if(e->host_time[0] < 0) { // no record for host-based path, force to choose it
@@ -2114,7 +2128,7 @@ static int cuda_put_heuristic(dspaces_client_t client, const char *var_name, uns
         }
         e->host_time[0] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
         e->host_heat_score = 0;
-        e->gdr_heat_score =  e->gdr_heat_score < 5 ? e->gdr_heat_score++ : 5;
+        e->gdr_heat_score =  e->gdr_heat_score < heat_score_max ? e->gdr_heat_score++ : heat_score_max;
     } else if(e->gdr_time[0] < 0) { // no record for gdr path, force to choose it
         gettimeofday(&start, NULL);
         ret = cuda_put_gdr(client, var_name, ver, elem_size, ndim, lb, ub, data);
@@ -2124,10 +2138,10 @@ static int cuda_put_heuristic(dspaces_client_t client, const char *var_name, uns
         }
         e->gdr_time[0] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
         e->gdr_heat_score = 0;
-        e->host_heat_score = e->host_heat_score < 5 ? e->host_heat_score++ : 5;
+        e->host_heat_score = e->host_heat_score < heat_score_max ? e->host_heat_score++ : heat_score_max;
     } else { // have both records, choose the path according to score
-        double host_perf_score, gdr_perf_score,
-               host_total_score, gdr_total_score, max_total_score;
+        int host_perf_score, gdr_perf_score;
+        double host_total_score, gdr_total_score, max_total_score;
         double avg_host_time = 0.0, avg_gdr_time = 0.0;
         int avg_host_cnt = 0, avg_gdr_cnt = 0;
         double host_prob, gdr_prob;
@@ -2144,11 +2158,11 @@ static int cuda_put_heuristic(dspaces_client_t client, const char *var_name, uns
         avg_host_time /= avg_host_cnt;
         avg_gdr_time /= avg_gdr_cnt;
         if(avg_gdr_time > avg_host_time) { // host perf better
-            host_perf_score = 10;
+            host_perf_score = perf_score;
             gdr_perf_score = 0;
         } else { // gdr perf better
             host_perf_score = 0;
-            gdr_perf_score = 10;
+            gdr_perf_score = perf_score;
         }
         host_total_score = host_perf_score + e->host_heat_score;
         gdr_total_score = gdr_perf_score + e->gdr_heat_score;
@@ -2169,7 +2183,7 @@ static int cuda_put_heuristic(dspaces_client_t client, const char *var_name, uns
             }
             e->host_time[0] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
             e->host_heat_score = 0;
-            e->gdr_heat_score =  e->gdr_heat_score < 5 ? e->gdr_heat_score++ : 5;
+            e->gdr_heat_score =  e->gdr_heat_score < heat_score_max ? e->gdr_heat_score++ : heat_score_max;
         } else { // choose gdr path
             gettimeofday(&start, NULL);
             ret = cuda_put_gdr(client, var_name, ver, elem_size, ndim, lb, ub, data);
@@ -2179,7 +2193,7 @@ static int cuda_put_heuristic(dspaces_client_t client, const char *var_name, uns
             }
             e->gdr_time[0] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
             e->gdr_heat_score = 0;
-            e->host_heat_score = e->host_heat_score < 5 ? e->host_heat_score++ : 5;
+            e->host_heat_score = e->host_heat_score < heat_score_max ? e->host_heat_score++ : heat_score_max;
         }
     }
     return ret;
@@ -2838,9 +2852,9 @@ static int cuda_put_dual_channel_v2(dspaces_client_t client, const char *var_nam
 
     gettimeofday(&end, NULL);
     timer[5] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
-    fprintf(stdout, "Rank %d: ts = %d, timer0 = %lf, timer1 = %lf, timer2 = %lf"
-                    "timer3 = %lf, timer4 = %lf, timer5 = %lf.\n", client->rank, ver,
-                    timer[0], timer[1], timer[2], timer[3], timer[4], timer[5]);
+    fprintf(stdout, "(%s): Rank %d: ts = %d, timer0 = %lf, timer1 = %lf, timer2 = %lf"
+                    "timer3 = %lf, timer4 = %lf, timer5 = %lf.\n", __func__, client->rank, 
+                    ver, timer[0], timer[1], timer[2], timer[3], timer[4], timer[5]);
 
     free(timer);
 
