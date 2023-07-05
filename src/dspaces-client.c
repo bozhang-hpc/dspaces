@@ -2540,7 +2540,7 @@ static int cuda_put_dual_channel_v2(dspaces_client_t client, const char *var_nam
     margo_request gdr_req, host_req;
     int ret = dspaces_SUCCESS;
     struct timeval start, end;
-    double *timer = (double*)malloc(6*sizeof(double)); // timer in millisecond
+    double *timer = (double*)malloc(8*sizeof(double)); // timer in millisecond
     gettimeofday(&start, NULL);
 
     struct bbox host_bb = {.num_dims = ndim};
@@ -2768,6 +2768,7 @@ static int cuda_put_dual_channel_v2(dspaces_client_t client, const char *var_nam
         return dspaces_ERR_MERCURY;
     }
     *timer0 = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+    timer[5] = *timer0;
 
     gettimeofday(&start, NULL);
     hret = margo_wait(*req1);
@@ -2784,6 +2785,7 @@ static int cuda_put_dual_channel_v2(dspaces_client_t client, const char *var_nam
         return dspaces_ERR_MERCURY;
     }
     *timer1 = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+    timer[6] = *timer1;
 
     if(*timer1 > 2e-3) {
         // 2nd request takes longer time, tune ratio
@@ -2851,10 +2853,11 @@ static int cuda_put_dual_channel_v2(dspaces_client_t client, const char *var_nam
     margo_addr_free(client->mid, server_addr);
 
     gettimeofday(&end, NULL);
-    timer[5] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
-    fprintf(stdout, "(%s): Rank %d: ts = %d, timer0 = %lf, timer1 = %lf, timer2 = %lf"
-                    "timer3 = %lf, timer4 = %lf, timer5 = %lf.\n", __func__, client->rank, 
-                    ver, timer[0], timer[1], timer[2], timer[3], timer[4], timer[5]);
+    timer[7] = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_usec - start.tv_usec) * 1e-3;
+    fprintf(stdout, "(%s): Rank %d: ts = %d, timer0 = %lf, timer1 = %lf, timer2 = %lf, "
+                    "timer3 = %lf, timer4 = %lf, timer5 = %lf, timer6 = %lf, timer7 = %lf.\n",
+                    __func__, client->rank, ver, timer[0], timer[1], timer[2], timer[3],
+                    timer[4], timer[5], timer[6], timer[7]);
 
     free(timer);
 
