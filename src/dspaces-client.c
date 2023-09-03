@@ -4542,6 +4542,18 @@ static int get_data_heuristic(dspaces_client_t client, int num_odscs,
         Total score  = Performance Score + Heating Score
         Use Softmax of the total score for random choosing
     */
+    double r;
+    static int cnt = 0;
+    cnt++;
+    if(cnt < 3) { // 2 iters for warm-up
+        srand((unsigned)time(NULL));
+        r = ((double) rand() / (RAND_MAX));
+        if(r < 0.5) { // choose host-based path
+            return get_data_hybrid(client, num_odscs, req_obj, odsc_tab, d_data, ctime);
+        } else { // choose gdr path
+            return get_data_gdr(client, num_odscs, req_obj, odsc_tab, d_data, ctime);
+        }
+    }
     int ret = dspaces_SUCCESS;
     struct timeval start, end;
 
