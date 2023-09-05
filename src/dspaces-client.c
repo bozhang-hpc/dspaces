@@ -2844,7 +2844,9 @@ static int cuda_put_dcds(dspaces_client_t client, const char *var_name, unsigned
         ret = cuda_put_dual_channel_v2(client, var_name, ver, elem_size, ndim, lb, ub, data, itime);
     } else { // GPU->host + put_local_sub_drain
         /* CUDA Async MemCpy */
-        
+        struct cudaPointerAttributes ptr_attr;
+        CUDA_ASSERTRT(cudaPointerGetAttributes(&ptr_attr, data));
+        CUDA_ASSERTRT(cudaSetDevice(ptr_attr.device));
         cudaStream_t stream;
         CUDA_ASSERTRT(cudaStreamCreate(&stream));
         cudaError_t curet;
