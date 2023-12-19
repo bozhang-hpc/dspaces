@@ -152,6 +152,12 @@ struct subods_list_entry {
     obj_descriptor qodsc;
 };
 
+struct margo_request_list_entry {
+    struct list_head entry;
+    hg_handle_t hndl;
+    margo_request req;
+};
+
 typedef struct {
     int num_obj;
     int size_hash;
