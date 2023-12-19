@@ -2598,8 +2598,8 @@ static void putlocal_subdrain_rpc(hg_handle_t handle)
     margo_free_input(handle, &in);
     margo_bulk_free(bulk_handle);
 
-    struct margo_request_list_entry *dht_ent;
-    list_for_each_entry(dht_ent, &dht_req_list, struct margo_request_list_entry, entry) {
+    struct margo_request_list_entry *dht_ent, *t;
+    list_for_each_entry_safe(dht_ent, t, &dht_req_list, struct margo_request_list_entry, entry) {
         margo_wait(dht_ent->req);
         margo_destroy(dht_ent->hndl);
         list_del(&dht_ent->entry);
