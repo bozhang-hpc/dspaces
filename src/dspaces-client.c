@@ -2457,24 +2457,27 @@ static int cuda_put_dual_channel_v2(dspaces_client_t client, const char *var_nam
        6 - Tune the ratio according to the time 
     */
 
-    // preset data volume for gdr / pipeline = 50% : 50%
+    // Given the prior knowledge that GDR is faster than pipeline
+    // preset data volume for gdr / pipeline = 75% : 25%
     // cut the data along the highest dimension
     // first piece goes to host, second piece goes to GDR
-    static double host_ratio = 0.5;
-    static double gdr_ratio = 0.5;
+    static double host_ratio = 0.25;
+    static double gdr_ratio = 0.75;
     // 1MB makes no difference for single or dual channel
     uint64_t ratio_eps = 1 << 20;
-    // make it to pure GDR or host-based when either the ratio is around 1 
-    double min_ratio = host_ratio > gdr_ratio ? gdr_ratio : host_ratio;
-    uint64_t put_rdma_size = elem_size;
-    for(int i=0; i<ndim; i++) {
-        put_rdma_size *= (ub[i] - lb[i] + 1);
-    }
-    if(min_ratio * put_rdma_size < ratio_eps) { // go to either pure GDR or host-based
-        if(host_ratio > gdr_ratio) { // pure host
-            return cuda_put_pipeline(client, var_name, ver, 
-                            elem_size, ndim, lb, ub, data, itime);
-        } else { // pure GDR
+    // Since GDR is always faster, if the host_ratio > gdr_ratio
+    // it means the context switching overhead is too big, and we should go pure GDR
+    if(host_ratio > gdr_ratio) {
+        *itime = 0;
+        return cuda_put_gdr(client, var_name, ver, 
+                        elem_size, ndim, lb, ub, data);
+    } else {
+        // make it to pure GDR when the host_ratio is around 1 
+        uint64_t put_rdma_size = elem_size;
+        for(int i=0; i<ndim; i++) {
+            put_rdma_size *= (ub[i] - lb[i] + 1);
+        }
+        if(host_ratio * put_rdma_size < ratio_eps) {
             *itime = 0;
             return cuda_put_gdr(client, var_name, ver, 
                             elem_size, ndim, lb, ub, data);
@@ -2510,9 +2513,6 @@ static int cuda_put_dual_channel_v2(dspaces_client_t client, const char *var_nam
         *itime = 0;
         return cuda_put_gdr(client, var_name, ver, 
                         elem_size, ndim, lb, ub, data);
-    } else if(cut_dist == dist) { // host_ratio near one, go to pure host-based
-        return cuda_put_pipeline(client, var_name, ver, 
-                            elem_size, ndim, lb, ub, data, itime);
     }
     host_bb.ub.c[cut_dim] = (uint64_t)(host_bb.lb.c[cut_dim] + cut_dist - 1);
 
@@ -5473,24 +5473,26 @@ static int get_data_dual_channel_v2(dspaces_client_t client, int num_odscs,
        5 - Tune the ratio according to the time 
     */
 
-    // preset data volume for host_based / GDR = 50% : 50%
+    // Given the prior knowledge that GDR is faster than pipeline
+    // preset data volume for host_based / GDR = 25% : 75%
     // cut the data along the highest dimension
     // first piece goes to host, second piece goes to GDR
-    static double host_ratio = 0.5;
-    static double gdr_ratio = 0.5;
+    static double host_ratio = 0.25;
+    static double gdr_ratio = 0.75;
     // 1MB makes no difference for single or dual channel
     uint64_t ratio_eps = 1 << 20;
-    // make it to pure GDR or host-based when either the ratio is around 1 
-    double min_ratio = host_ratio > gdr_ratio ? gdr_ratio : host_ratio;
-    uint64_t get_rdma_size = req_obj.size;
-    for(int i=0; i<req_obj.bb.num_dims; i++) {
-        get_rdma_size *= (req_obj.bb.ub.c[i] - req_obj.bb.lb.c[i] + 1);
-    }
-    if(min_ratio * get_rdma_size < ratio_eps) { // go to either pure GDR or host-based
-        if(host_ratio > gdr_ratio) { // pure host
-            return get_data_hybrid(client, num_odscs, req_obj,
-                                    odsc_tab, d_data, ctime);
-        } else { // pure GDR
+    // Since GDR is always faster, if the host_ratio > gdr_ratio
+    // it means the context switching overhead is too big, and we should go pure GDR
+    if(host_ratio > gdr_ratio) {
+        return get_data_gdr(client, num_odscs, req_obj,
+                                odsc_tab, d_data, ctime);
+    } else {
+        // make it to pure GDR when either the host_ratio is around 1 
+        uint64_t get_rdma_size = req_obj.size;
+        for(int i=0; i<req_obj.bb.num_dims; i++) {
+            get_rdma_size *= (req_obj.bb.ub.c[i] - req_obj.bb.lb.c[i] + 1);
+        }
+        if(host_ratio * get_rdma_size < ratio_eps) { // go to either pure GDR or host-based
             return get_data_gdr(client, num_odscs, req_obj,
                                     odsc_tab, d_data, ctime);
         }
