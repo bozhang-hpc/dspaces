@@ -1026,17 +1026,19 @@ static int read_topology_mpi(dspaces_client_t client, MPI_Comm comm, char* liste
         fi_getinfo(FI_VERSION(FI_MAJOR_VERSION, FI_MINOR_VERSION),
                     NULL, NULL, 0, hints, &info);
         for (cur = info; cur; cur = cur->next) {
-            found = 0;
-            list_for_each_entry(nic, &nic_list, struct nic_list_entry, entry) {
-                if(strcmp(nic->name, cur->nic->device_attr->name)==0) {
-                    found = 1;
+            if(cur->nic) {
+                found = 0;
+                list_for_each_entry(nic, &nic_list, struct nic_list_entry, entry) {
+                    if(strcmp(nic->name, cur->nic->device_attr->name)==0) {
+                        found = 1;
+                    }
                 }
-            }
-            if(!found) {
-                e = (struct nic_list_entry*) malloc(sizeof(*e));
-                e->name = strdup(cur->nic->device_attr->name);
-                list_add(&e->entry, &nic_list);
-                client->cuda_info.nic_num++;
+                if(!found) {
+                    e = (struct nic_list_entry*) malloc(sizeof(*e));
+                    e->name = strdup(cur->nic->device_attr->name);
+                    list_add(&e->entry, &nic_list);
+                    client->cuda_info.nic_num++;
+                }
             }
         }
 
